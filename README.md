@@ -1,11 +1,9 @@
 <p align="center">
-  <a href="https://loomic-one.vercel.app" target="_blank">
-    <img src="apps/web/public/logo.svg" alt="Loomic Logo" width="80" />
-  </a>
+  <img src="apps/web/public/logo.svg" alt="Loomic Logo" width="80" />
 </p>
 
 <h1 align="center">
-  <a href="https://loomic-one.vercel.app" target="_blank">Loomic</a>
+  Loomic
 </h1>
 
 <p align="center">
@@ -14,9 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://loomic-one.vercel.app">
-    <img width="900" src="docs/images/base-image.png" alt="Loomic" />
-  </a>
+  <img width="900" src="docs/images/base-image.png" alt="Loomic" />
 </p>
 
 <p align="center">
@@ -229,7 +225,7 @@ pnpm seed
 | `pro@test.loomic.com` | `opensourceloomic` | Pro | 5,000 |
 | `ultra@test.loomic.com` | `opensourceloomic` | Ultra | 15,000 |
 
-> These accounts are created in YOUR Supabase instance, not the hosted version at loomic.one.
+> These accounts are created in YOUR Supabase instance.
 
 ### 5. Start Development
 
