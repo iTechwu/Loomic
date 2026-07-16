@@ -12,7 +12,7 @@ import type { JobService } from "../features/jobs/job-service.js";
 import { JobServiceError } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type { UploadService } from "../features/uploads/upload-service.js";
-import type { AuthenticatedUser, RequestAuthenticator } from "../supabase/user.js";
+import type { AuthenticatedUser, RequestAuthenticator } from "../auth/sso-authenticator.js";
 
 const generateImageRequestSchema = z.object({
   prompt: z.string().min(1),
@@ -77,7 +77,7 @@ export async function registerGenerateRoutes(
         ...(payload.quality ? { quality: payload.quality } : {}),
       });
 
-      // Download and persist to Supabase Storage
+      // Download and persist to TOS/CDN Storage
       const { signedUrl, assetId } = await downloadAndUpload(
         result.url,
         result.mimeType,

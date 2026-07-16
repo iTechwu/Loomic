@@ -83,7 +83,7 @@ import { createNativeSkillRepository } from "./database/skill-repository.js";
 import { createSsoIdentityRepository } from "./database/sso-identity-repository.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
-import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./supabase/user.js";
+import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./auth/sso-authenticator.js";
 
 export type BuildAppOptions = {
   agentFactory?: LovartDofeAgentFactory;

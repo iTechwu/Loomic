@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { getAvailableVideoModels } from "../generation/providers/registry.js";
-import type { RequestAuthenticator } from "../supabase/user.js";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 
 export async function registerVideoModelRoutes(

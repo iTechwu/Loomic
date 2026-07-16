@@ -10,7 +10,6 @@
     "test:workspace": "node --test tests/workspace.test.mjs",
     "test:packages": "turbo run test",
     "test": "pnpm run test:workspace && pnpm run test:packages",
-    "seed": "node scripts/seed-test-accounts.mjs",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

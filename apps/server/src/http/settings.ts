@@ -12,7 +12,7 @@ import {
   SettingsServiceError,
   type SettingsService,
 } from "../features/settings/settings-service.js";
-import type { RequestAuthenticator } from "../supabase/user.js";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 
 export async function registerSettingsRoutes(
   app: FastifyInstance,

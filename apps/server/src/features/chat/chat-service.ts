@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatMessageCreateRequest, ChatSessionSummary, ContentBlock } from "@lovart.dofe/shared";
 import type { NativeChatRepository } from "../../database/chat-repository.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 import type { ThreadService } from "./thread-service.js";
 export class ChatServiceError extends Error { constructor(readonly code: "chat_error" | "session_not_found", message: string, readonly statusCode: number) { super(message); } }
 export type ChatService = { listSessions(user: AuthenticatedUser, canvasId: string): Promise<ChatSessionSummary[]>; createSession(user: AuthenticatedUser, canvasId: string, title?: string): Promise<ChatSessionSummary>; updateSessionTitle(user: AuthenticatedUser, sessionId: string, title: string): Promise<void>; deleteSession(user: AuthenticatedUser, sessionId: string): Promise<void>; listMessages(user: AuthenticatedUser, sessionId: string): Promise<ChatMessage[]>; createMessage(user: AuthenticatedUser, sessionId: string, input: ChatMessageCreateRequest): Promise<ChatMessage> };

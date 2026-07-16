@@ -13,7 +13,7 @@ import {
   ProjectServiceError,
   type ProjectService,
 } from "../features/projects/project-service.js";
-import type { RequestAuthenticator } from "../supabase/user.js";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 
 export async function registerProjectRoutes(
   app: FastifyInstance,

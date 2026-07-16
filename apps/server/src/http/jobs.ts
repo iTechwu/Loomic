@@ -15,7 +15,7 @@ import {
   type JobService,
 } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
-import type { RequestAuthenticator } from "../supabase/user.js";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 
 export async function registerJobRoutes(
   app: FastifyInstance,

@@ -13,7 +13,7 @@ import {
   MarketplaceError,
   searchMarketplace,
 } from "../features/skills/marketplace-service.js";
-import type { RequestAuthenticator } from "../supabase/user.js";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 
 export async function registerMarketplaceRoutes(
   app: FastifyInstance,

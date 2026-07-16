@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Database } from "@lovart.dofe/shared";
-
 import { mapHomeDiscoveryRows } from "@/lib/home-discovery-library";
 
-type HomeDiscoveryCategoryRow =
-  Database["public"]["Tables"]["home_discovery_categories"]["Row"];
-type HomeDiscoveryCaseRow =
-  Database["public"]["Tables"]["home_discovery_cases"]["Row"];
+type HomeDiscoveryCategoryRow = { key: string; label: string; sort_order: number; [key: string]: unknown };
+type HomeDiscoveryCaseRow = { id: string; category_key: string; title: string; cover_image_url: string; author_name: string; author_avatar_url: string; view_count: number; like_count: number; seed_prompt: string; sort_order: number; [key: string]: unknown };
 
 describe("mapHomeDiscoveryRows", () => {
   it("groups active cases under sorted discovery categories", () => {

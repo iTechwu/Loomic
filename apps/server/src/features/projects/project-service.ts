@@ -3,7 +3,7 @@ import type { ProjectCreateRequest, ProjectSummary, ProjectUpdateRequest } from 
 import type { NativeDataRepository, NativeProjectRow } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 import { BootstrapError, type ViewerService } from "../bootstrap/ensure-user-foundation.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
 

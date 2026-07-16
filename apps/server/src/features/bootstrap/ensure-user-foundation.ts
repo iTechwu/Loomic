@@ -1,7 +1,7 @@
 import type { ViewerResponse } from "@lovart.dofe/shared";
 
 import type { NativeDataRepository } from "../../database/native-data-repository.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 
 const BOOTSTRAP_FAILED_MESSAGE = "Unable to prepare viewer workspace.";
 

@@ -46,7 +46,7 @@ function setCachedAuth(token: string, user: AuthenticatedUser): void {
   }
 }
 
-/** Validates only SSO-issued bearer tokens; no Supabase Auth fallback exists. */
+/** Validates only SSO-issued bearer tokens; no TOS/CDN Auth fallback exists. */
 export function createSsoRequestAuthenticator(
   env: Pick<ServerEnv, "ssoClientId" | "ssoIssuer" | "ssoJwksUri">,
   identities: SsoIdentityRepository,

@@ -55,12 +55,11 @@ describe("HomeDiscoveryGallery", () => {
     );
 
     expect(onCaseSelect).toHaveBeenCalledWith({
-      authorAvatarUrl:
-        "https://lh3.googleusercontent.com/a/ACg8ocJ0nBUJkE5T9tLTwRlVXScB576EqOEeRS-6__BLxjYxrO5Jtxjjig=s96-c",
-      authorName: "Ken Allman",
+      authorAvatarUrl: "https://assets.dofe.ai/home-seeds/discovery/avatars/branding-design.svg",
+      authorName: "Studio Arken",
       categoryKey: "branding-design",
       categoryLabel: "品牌设计",
-      coverImageUrl: expect.stringContaining("supabase.co"),
+      coverImageUrl: expect.stringContaining("assets.dofe.ai"),
       id: "ji5ey5l",
       likeCount: 7,
       prompt:

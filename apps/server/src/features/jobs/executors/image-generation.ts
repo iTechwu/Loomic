@@ -74,7 +74,7 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
     lap("image_download_done");
 
     // Subscription watermarking moves with the credits repository migration.
-    // This job path deliberately does not query Supabase for plan state.
+    // This job path deliberately does not query TOS/CDN for plan state.
     const timestamp = Date.now();
     const objectPath = `generated/${workspaceId}/${timestamp}-${jobId}.png`;
     const uploaded = await ctx.objectStorage.put({ body: buffer, contentType: generated.mimeType ?? "image/png", key: objectPath });

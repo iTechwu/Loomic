@@ -2,7 +2,7 @@ import type { CanvasContent, CanvasDetail } from "@lovart.dofe/shared";
 
 import type { NativeDataRepository } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 
 const TOS_MARKER_PREFIX = "tos://";
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
@@ -83,7 +83,7 @@ function resolveFiles(storage: TosObjectStorage, content: CanvasContent): Canvas
 function markerKey(value: string | undefined): string | null {
   if (!value) return null;
   if (value.startsWith(TOS_MARKER_PREFIX)) return value.slice(TOS_MARKER_PREFIX.length) || null;
-  // Legacy Supabase markers used the same object key after the bucket name.
+  // Legacy TOS/CDN markers used the same object key after the bucket name.
   if (value.startsWith("oss://")) {
     const slash = value.indexOf("/", "oss://".length);
     return slash === -1 ? null : value.slice(slash + 1) || null;

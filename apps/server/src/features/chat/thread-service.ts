@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { NativeChatRepository } from "../../database/chat-repository.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 export class ThreadServiceError extends Error { readonly code = "session_not_found"; constructor(message: string, readonly statusCode: number) { super(message); } }
 export type SessionThreadBinding = { sessionId: string; threadId: string };
 export type ThreadService = { createThreadId(): string; resolveOwnedSessionThread(user: AuthenticatedUser, sessionId: string): Promise<SessionThreadBinding> };

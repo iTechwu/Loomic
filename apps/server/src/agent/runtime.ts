@@ -21,7 +21,7 @@ import { createPipelineLogger } from "../ws/logger.js";
 import type { AgentRunMetadataService } from "../features/agent-runs/agent-run-service.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
-import type { AuthenticatedUser } from "../supabase/user.js";
+import type { AuthenticatedUser } from "../auth/sso-authenticator.js";
 import type { ConnectionManager } from "../ws/connection-manager.js";
 // execute 工具由 deepagents 内置提供（LocalShellBackend 作为 sandbox backend）
 // 不需要自定义代码执行工具
@@ -795,10 +795,10 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
               : createDefaultModelSpecifier({ agentModel: run.modelOverride })
             : options.model;
 
-          // Build persistImage closure using the user's Supabase client.
+          // Build persistImage closure using the user's TOS/CDN client.
           // Client creation is deferred into the closure so it only runs
           // when an image is actually generated (avoids throwing in tests
-          // that don't configure Supabase env vars).
+          // that don't configure TOS/CDN env vars).
           let persistImage:
             | ((url: string, mime: string, prompt: string) => Promise<string>)
             | undefined;
@@ -1146,7 +1146,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
           }
         } catch (streamError) {
           // Catch DB / checkpoint errors that bubble up from the LangGraph stream
-          // (e.g. Supabase circuit-breaker, connection pool exhaustion).
+          // (e.g. TOS/CDN circuit-breaker, connection pool exhaustion).
           // Instead of crashing the process, yield a clean failure event.
           console.error(
             "[agent-runtime] Stream iteration failed:",

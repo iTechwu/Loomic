@@ -1,6 +1,6 @@
 import type { WorkspaceSettings } from "@lovart.dofe/shared";
 import type { NativeSettingsRepository } from "../../database/settings-repository.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 const FALLBACK_MODEL="gpt-5.4-mini";
 export class SettingsServiceError extends Error {constructor(readonly code:"settings_not_found"|"settings_read_failed"|"settings_update_failed",message:string,readonly statusCode:number){super(message);}}
 export type SettingsService={getWorkspaceSettings(user:AuthenticatedUser,workspaceId:string):Promise<WorkspaceSettings>;updateWorkspaceSettings(user:AuthenticatedUser,workspaceId:string,settings:WorkspaceSettings):Promise<WorkspaceSettings>};

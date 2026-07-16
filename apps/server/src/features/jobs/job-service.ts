@@ -2,7 +2,7 @@ import type { BackgroundJob, BackgroundJobStatus, BackgroundJobType } from "@lov
 
 import type { NativeJobRepository, JobRow } from "../../database/job-repository.js";
 import type { RabbitMqClient } from "../../queue/rabbitmq-client.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 
 const QUEUE_MAP: Record<BackgroundJobType, string> = { image_generation: "image_generation_jobs", video_generation: "video_generation_jobs" };
 

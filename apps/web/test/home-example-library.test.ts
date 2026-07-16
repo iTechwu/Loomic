@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Database } from "@lovart.dofe/shared";
-
 import { mapHomeExampleRows } from "@/lib/home-example-library";
 
-type HomeExampleCategoryRow =
-  Database["public"]["Tables"]["home_example_categories"]["Row"];
-type HomeExampleExampleRow =
-  Database["public"]["Tables"]["home_example_examples"]["Row"];
+type HomeExampleCategoryRow = { key: string; label: string; data_type: string; accent: string | null; sort_order: number; [key: string]: unknown };
+type HomeExampleExampleRow = { category_key: string; title: string; prompt: string; image_urls: string[]; input_mentions: unknown; sort_order: number; [key: string]: unknown };
 
 describe("mapHomeExampleRows", () => {
   it("groups and sorts categories and examples into the home browser shape", () => {

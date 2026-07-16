@@ -12,7 +12,7 @@ import type {
 import type { QueryResultRow } from "pg";
 
 import type { DatabasePool } from "../../database/pool.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;

@@ -14,7 +14,7 @@ import {
 } from "../features/bootstrap/ensure-user-foundation.js";
 import type {
   RequestAuthenticator,
-} from "../supabase/user.js";
+} from "../auth/sso-authenticator.js";
 
 export async function registerViewerRoutes(
   app: FastifyInstance,

@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
   <img src="https://img.shields.io/badge/Fastify-5-000000?logo=fastify" alt="Fastify" />
   <img src="https://img.shields.io/badge/LangGraph-1.2-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph" />
-  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Native-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Excalidraw-Canvas-6965DB?logo=excalidraw&logoColor=white" alt="Excalidraw" />
   <img src="https://img.shields.io/badge/Turborepo-Monorepo-EF4444?logo=turborepo&logoColor=white" alt="Turborepo" />
   <img src="https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white" alt="pnpm" />
@@ -223,26 +223,7 @@ long-lived SSO credentials to JavaScript.
 
 > **Note**: See [Environment Variables Reference](#environment-variables-reference) for the full list.
 
-### 4. Seed Test Accounts (optional)
-
-自部署后，跑一下种子脚本就能直接体验各套餐功能，不需要接支付：
-
-```bash
-pnpm seed
-```
-
-脚本会在**你自己的 Supabase** 中创建 4 个测试账号：
-
-| Email | Password | Plan | Credits |
-|-------|----------|------|---------|
-| `free@test.lovart-dofe.com` | `opensourcelovart-dofe` | Free | 50 |
-| `starter@test.lovart-dofe.com` | `opensourcelovart-dofe` | Starter | 1,200 |
-| `pro@test.lovart-dofe.com` | `opensourcelovart-dofe` | Pro | 5,000 |
-| `ultra@test.lovart-dofe.com` | `opensourcelovart-dofe` | Ultra | 15,000 |
-
-> These accounts are created in YOUR Supabase instance.
-
-### 5. Start Development
+### 4. Start Development
 
 ```bash
 pnpm dev
@@ -268,7 +249,7 @@ Open http://localhost:3000 and start creating!
 # Connect your repo to Vercel, then set:
 # Build Command:   pnpm --filter @lovart.dofe/shared build && pnpm --filter @lovart.dofe/web build
 # Output Directory: apps/web/out
-# Environment Variables: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SERVER_BASE_URL
+# Environment Variables: NEXT_PUBLIC_SERVER_BASE_URL
 ```
 
 ### Backend → Railway
@@ -287,18 +268,15 @@ SERVICE_MODE=worker
 WORKER_ID=railway-w1
 ```
 
-Both services share the same environment variables (Supabase, AI keys, etc.).
+Both services share the native data-plane and AI environment variables.
 
 The `Dockerfile` at `apps/server/Dockerfile` handles the multi-stage build.
 
-### Database → Supabase
+### Database → PostgreSQL
 
 ```bash
-# Apply all migrations
-supabase db push
-
-# Generate TypeScript types (after schema changes)
-supabase gen types typescript --linked > packages/shared/src/supabase-types.ts
+# Apply all server-owned migrations
+pnpm --filter @lovart.dofe/server db:migrate
 ```
 
 ---
@@ -365,8 +343,7 @@ lovart.dofe/
 │   ├── canvas-design/          #   Canvas design guidance
 │   └── json-image-prompt/      #   Image prompt templates
 │
-├── supabase/
-│   └── migrations/             # Database migrations (18 files)
+├── apps/server/migrations/     # Server-owned PostgreSQL migrations
 │
 ├── .env.example                # Environment template
 ├── turbo.json                  # Turborepo config

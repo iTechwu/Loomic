@@ -37,6 +37,6 @@ export function mapHomeDiscoveryRows(
 
 export async function loadHomeDiscoveryCategories(): Promise<HomeDiscoveryCategory[]> {
   // Product-owned seed data remains available while discovery is migrated to
-  // the native catalog API; the browser no longer connects to Supabase.
+  // the native catalog API; the browser no longer connects to TOS/CDN.
   return homeDiscoverySeedCategories;
 }

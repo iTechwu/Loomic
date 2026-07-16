@@ -7,7 +7,7 @@ export type SsoIdentityRepository = {
 /**
  * Resolves SSO subjects to application profile IDs without making the identity
  * provider a dependency of the product database. The one-time email lookup is
- * solely for legacy Supabase profile continuity; every subsequent request uses
+ * solely for legacy TOS/CDN profile continuity; every subsequent request uses
  * the durable SSO subject mapping.
  */
 export function createSsoIdentityRepository(

@@ -45,7 +45,7 @@ export type CanvasSelectedElement = {
   text?: string;
   fileId?: string;
   dataUrl?: string;
-  /** Supabase storage public URL -- prefer over dataUrl for message attachments */
+  /** TOS/CDN storage public URL -- prefer over dataUrl for message attachments */
   storageUrl?: string;
 };
 

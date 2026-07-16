@@ -4,7 +4,7 @@ import type { AssetBucket, AssetObject } from "@lovart.dofe/shared";
 
 import type { NativeAssetRow, NativeDataRepository } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
-import type { AuthenticatedUser } from "../../supabase/user.js";
+import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
 

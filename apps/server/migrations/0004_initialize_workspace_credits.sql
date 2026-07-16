@@ -1,4 +1,4 @@
--- Keep new workspaces immediately usable without relying on a Supabase trigger.
+-- Keep new workspaces immediately usable without relying on an external auth trigger.
 create or replace function initialize_workspace_credits() returns trigger language plpgsql as $$
 begin
   insert into subscriptions (workspace_id, plan) values (new.id, 'free') on conflict do nothing;
