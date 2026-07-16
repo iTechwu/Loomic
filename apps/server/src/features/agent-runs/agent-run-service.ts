@@ -1,4 +1,4 @@
-import type { AdminSupabaseClient } from "../../supabase/admin.js";
+import type { DatabasePool } from "../../database/pool.js";
 import type {
   CreateAcceptedAgentRunInput,
   UpdateAgentRunInput,
@@ -21,36 +21,32 @@ export type AgentRunMetadataService = {
 };
 
 export function createAgentRunMetadataService(options: {
-  getAdminClient: () => AdminSupabaseClient;
+  pool: DatabasePool;
 }): AgentRunMetadataService {
   return {
     async createAcceptedRun(input) {
-      const { error } = await options.getAdminClient().from("agent_runs").insert({
-        id: input.runId,
-        model: input.model ?? null,
-        session_id: input.sessionId,
-        status: "accepted",
-        thread_id: input.threadId,
-      });
-
-      if (error) {
+      try {
+        await options.pool.query(
+          `insert into agent_runs (id, model, session_id, status, thread_id)
+           values ($1, $2, $3, 'accepted', $4)`,
+          [input.runId, input.model ?? null, input.sessionId, input.threadId],
+        );
+      } catch (error) {
+        console.error("[agent-run-metadata] create failed", { runId: input.runId, message: error instanceof Error ? error.message : String(error) });
         throw new AgentRunPersistenceError("Failed to persist accepted run.");
       }
     },
 
     async updateRun(input) {
-      const patch = {
-        ...(input.completedAt ? { completed_at: input.completedAt } : {}),
-        ...(input.errorCode ? { error_code: input.errorCode } : {}),
-        ...(input.errorMessage ? { error_message: input.errorMessage } : {}),
-        status: input.status,
-      };
-      const { error } = await options.getAdminClient()
-        .from("agent_runs")
-        .update(patch)
-        .eq("id", input.runId);
-
-      if (error) {
+      try {
+        await options.pool.query(
+          `update agent_runs set status = $2, completed_at = coalesce($3::timestamptz, completed_at),
+             error_code = coalesce($4, error_code), error_message = coalesce($5, error_message)
+           where id = $1`,
+          [input.runId, input.status, input.completedAt ?? null, input.errorCode ?? null, input.errorMessage ?? null],
+        );
+      } catch (error) {
+        console.error("[agent-run-metadata] update failed", { runId: input.runId, message: error instanceof Error ? error.message : String(error) });
         throw new AgentRunPersistenceError("Failed to update run metadata.");
       }
     },

@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ServerEnv } from "../config/env.js";
-import { registerOidcAuthRoutes } from "./oidc-auth.js";
+import { chooseDataUserId, registerOidcAuthRoutes } from "./oidc-auth.js";
 
 const configuredEnv: ServerEnv = {
   agentBackendMode: "state",
@@ -32,6 +32,12 @@ function createTestApp(env: ServerEnv) {
 }
 
 describe("OIDC auth routes", () => {
+  it("preserves a mapped or uniquely matched legacy data user", () => {
+    expect(chooseDataUserId("sso-user", "mapped-user", [])).toBe("mapped-user");
+    expect(chooseDataUserId("sso-user", null, ["legacy-user"])).toBe("legacy-user");
+    expect(chooseDataUserId("sso-user", null, ["legacy-a", "legacy-b"])).toBe("sso-user");
+  });
+
   it("returns a diagnosable error when SSO is not configured", async () => {
     const { ssoClientSecret: _unused, ...env } = configuredEnv;
     const app = createTestApp(env);
@@ -42,13 +48,13 @@ describe("OIDC auth routes", () => {
     expect(response.json()).toEqual({ error: "sso_not_configured" });
   });
 
-  it("starts a PKCE authorization request with the allowed SSO scopes", async () => {
+  it("starts a PKCE authorization request with refresh-capable SSO scopes", async () => {
     const app = createTestApp(configuredEnv);
     await registerOidcAuthRoutes(app, { env: configuredEnv, getAdminClient: () => null as never });
 
     const response = await app.inject({ method: "GET", url: "/api/auth/oidc/start?returnTo=%2Fpricing" });
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toContain("scope=openid+profile+email");
+    expect(response.headers.location).toContain("scope=openid+profile+email+offline_access");
     expect(response.headers.location).toContain("code_challenge_method=S256");
     expect(response.headers.location).toContain("redirect_uri=https%3A%2F%2Flovart.example.test%2Fauth%2Fcallback");
     expect(response.headers["set-cookie"]).toContain("lovart_oidc_pkce=");

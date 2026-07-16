@@ -5,12 +5,7 @@ import { resolveVideoProviderName } from "../../../generation/providers/registry
 registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorContext) => {
   const t0 = Date.now();
 
-  const admin = ctx.getAdminClient();
-  const { data: jobRow } = await admin
-    .from("background_jobs")
-    .select("created_by, workspace_id, canvas_id, session_id, payload")
-    .eq("id", jobId)
-    .single();
+  const jobRow = await ctx.jobRepository.find(jobId);
 
   if (!jobRow) throw new Error(`Job ${jobId} not found in database`);
 
@@ -38,13 +33,6 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
 
   const model = payload.model ?? "wan-video/wan-2.6";
   const providerName = resolveVideoProviderName(model);
-
-  // Renew VT every 120s (roughly half of the 300s video queue VT) to prevent
-  // the message from becoming visible during long video generation.
-  const VIDEO_VT_SECONDS = 300;
-  const heartbeatTimer = setInterval(() => {
-    ctx.renewVt(VIDEO_VT_SECONDS);
-  }, 120_000);
 
   try {
     lap("replicate_call_start");
@@ -78,46 +66,19 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
 
     const ext = generated.mimeType === "video/webm" ? "webm" : "mp4";
     const timestamp = Date.now();
-    const objectPath = `${workspaceId}/generated/${timestamp}-${jobId}.${ext}`;
-
-    const { error: uploadError } = await admin.storage
-      .from("project-assets")
-      .upload(objectPath, buffer, {
-        contentType: generated.mimeType ?? "video/mp4",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw new Error(`Storage upload failed: ${uploadError.message}`);
-    }
+    const objectPath = `generated/${workspaceId}/${timestamp}-${jobId}.${ext}`;
+    const uploaded = await ctx.objectStorage.put({ body: buffer, contentType: generated.mimeType ?? "video/mp4", key: objectPath });
     lap("storage_upload_done");
 
-    const { data: assetRow, error: assetError } = await admin
-      .from("asset_objects")
-      .insert({
-        workspace_id: workspaceId,
-        bucket: "project-assets",
-        object_path: objectPath,
-        mime_type: generated.mimeType ?? "video/mp4",
-        byte_size: buffer.length,
-        ...(createdBy ? { created_by: createdBy } : {}),
-      })
-      .select("id")
-      .single();
-
-    if (assetError || !assetRow) {
-      throw new Error(`Failed to create asset record: ${assetError?.message ?? "unknown error"}`);
-    }
+    if (!createdBy) throw new Error(`Job ${jobId} has no creator`);
+    const assetRow = await ctx.dataRepository.createAsset({ bucket: "project-assets", byteSize: buffer.length, createdBy, etag: uploaded.etag, mimeType: generated.mimeType ?? "video/mp4", objectPath, ...(jobRow.project_id ? { projectId: jobRow.project_id } : {}), workspaceId });
+    if (!assetRow) throw new Error("Failed to create asset metadata");
     lap("asset_record_done");
-
-    const { data: urlData } = admin.storage
-      .from("project-assets")
-      .getPublicUrl(objectPath);
 
     lap("total");
     return {
-      asset_id: (assetRow as { id: string }).id,
-      signed_url: urlData.publicUrl,
+      asset_id: assetRow.id,
+      signed_url: ctx.objectStorage.createReadUrl(objectPath, 3600),
       object_path: objectPath,
       width: generated.width,
       height: generated.height,
@@ -132,7 +93,5 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
     (wrapped as Error & { code?: string }).code =
       (err as { code?: string })?.code ?? "executor_error";
     throw wrapped;
-  } finally {
-    clearInterval(heartbeatTimer);
-  }
+  } finally {}
 });

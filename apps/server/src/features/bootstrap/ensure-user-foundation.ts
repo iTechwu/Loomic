@@ -1,16 +1,13 @@
-import {
-  type Json,
-  type ViewerResponse,
-  viewerResponseSchema,
-} from "@lovart.dofe/shared";
+import type { ViewerResponse } from "@lovart.dofe/shared";
 
-import type { AdminSupabaseClient } from "../../supabase/admin.js";
+import type { NativeDataRepository } from "../../database/native-data-repository.js";
 import type { AuthenticatedUser } from "../../supabase/user.js";
 
 const BOOTSTRAP_FAILED_MESSAGE = "Unable to prepare viewer workspace.";
 
 export type ViewerService = {
   ensureViewer(user: AuthenticatedUser): Promise<ViewerResponse>;
+  updateProfile(user: AuthenticatedUser, displayName: string): Promise<ViewerResponse["profile"]>;
 };
 
 export class BootstrapError extends Error {
@@ -22,110 +19,37 @@ export class BootstrapError extends Error {
   }
 }
 
-export function createViewerService(options: {
-  getAdminClient: () => AdminSupabaseClient;
-}): ViewerService {
+export function createViewerService(options: { repository: NativeDataRepository }): ViewerService {
   return {
     async ensureViewer(user) {
-      const admin = options.getAdminClient();
-
-      const { error: rpcError } = await admin.rpc("bootstrap_viewer", {
-        p_user_id: user.id,
-        p_email: user.email,
-        p_user_meta: user.userMetadata as Json,
-      });
-
-      if (rpcError) {
+      try {
+        return await options.repository.ensureViewer({
+          avatarUrl: stringValue(user.userMetadata.avatar_url),
+          displayName: displayName(user),
+          email: user.email,
+          userId: user.id,
+        });
+      } catch (error) {
+        console.error("[viewer-service] workspace bootstrap failed", {
+          message: error instanceof Error ? error.message : String(error),
+          userId: user.id,
+        });
         throw new BootstrapError();
       }
-
-      const workspace = await loadPersonalWorkspace(admin, user.id);
-
-      if (!workspace) {
-        throw new BootstrapError();
-      }
-
-      const [profile, membership] = await Promise.all([
-        loadProfile(admin, user.id),
-        loadMembership(admin, workspace.id, user.id),
-      ]);
-
-      if (!profile || !membership) {
-        throw new BootstrapError();
-      }
-
-      return viewerResponseSchema.parse({
-        membership,
-        profile,
-        workspace,
-      });
+    },
+    async updateProfile(user, name) {
+      const profile = await options.repository.updateProfile(user.id, name);
+      if (!profile) throw new BootstrapError();
+      return profile;
     },
   };
 }
 
-async function loadPersonalWorkspace(
-  admin: AdminSupabaseClient,
-  userId: string,
-) {
-  const { data, error } = await admin
-    .from("workspaces")
-    .select("id, name, type, owner_user_id")
-    .eq("owner_user_id", userId)
-    .eq("type", "personal")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: data.name,
-    ownerUserId: data.owner_user_id,
-    type: data.type,
-  } as const;
+function displayName(user: AuthenticatedUser): string {
+  const fromMetadata = stringValue(user.userMetadata.name);
+  return fromMetadata || user.email.split("@", 1)[0] || "Personal";
 }
 
-async function loadProfile(admin: AdminSupabaseClient, userId: string) {
-  const { data, error } = await admin
-    .from("profiles")
-    .select("id, email, display_name, avatar_url")
-    .eq("id", userId)
-    .single();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    avatarUrl: data.avatar_url ?? null,
-    displayName: data.display_name ?? "Personal",
-    email: data.email ?? "",
-    id: data.id,
-  } as const;
-}
-
-async function loadMembership(
-  admin: AdminSupabaseClient,
-  workspaceId: string,
-  userId: string,
-) {
-  const { data, error } = await admin
-    .from("workspace_members")
-    .select("workspace_id, user_id, role")
-    .eq("workspace_id", workspaceId)
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    role: data.role,
-    userId: data.user_id,
-    workspaceId: data.workspace_id,
-  } as const;
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

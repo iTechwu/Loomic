@@ -39,6 +39,8 @@ export type ServerEnv = {
   openAIApiKey?: string;
   port: number;
   replicateApiToken?: string;
+  rabbitMqUrl?: string;
+  redisUrl?: string;
   internalApiSecret?: string;
   ssoApiUrl?: string;
   ssoClientId?: string;
@@ -60,17 +62,6 @@ export type ServerEnv = {
   version: string;
   volcesApiKey?: string;
   volcesBaseUrl?: string;
-  lemonSqueezyApiKey?: string;
-  lemonSqueezyStoreId?: string;
-  lemonSqueezyWebhookSecret?: string;
-  lemonSqueezyVariantStarterMonthly?: string;
-  lemonSqueezyVariantStarterYearly?: string;
-  lemonSqueezyVariantProMonthly?: string;
-  lemonSqueezyVariantProYearly?: string;
-  lemonSqueezyVariantUltraMonthly?: string;
-  lemonSqueezyVariantUltraYearly?: string;
-  lemonSqueezyVariantBusinessMonthly?: string;
-  lemonSqueezyVariantBusinessYearly?: string;
   skillsRoot?: string;
   webOrigin: string;
   workerConcurrency?: number;
@@ -146,32 +137,14 @@ export function loadServerEnv(
     overrides.googleVertexVideoLocation ?? normalizeOptionalString(source.GOOGLE_VERTEX_VIDEO_LOCATION);
   const replicateApiToken =
     overrides.replicateApiToken ?? normalizeOptionalString(source.REPLICATE_API_TOKEN);
+  const rabbitMqUrl =
+    overrides.rabbitMqUrl ?? normalizeOptionalString(source.RABBITMQ_URL);
+  const redisUrl =
+    overrides.redisUrl ?? normalizeOptionalString(source.REDIS_URL);
   const volcesApiKey =
     overrides.volcesApiKey ?? normalizeOptionalString(source.VOLCES_API_KEY);
   const volcesBaseUrl =
     overrides.volcesBaseUrl ?? normalizeOptionalString(source.VOLCES_BASE_URL);
-  const lemonSqueezyApiKey =
-    overrides.lemonSqueezyApiKey ?? normalizeOptionalString(source.LEMONSQUEEZY_API_KEY);
-  const lemonSqueezyStoreId =
-    overrides.lemonSqueezyStoreId ?? normalizeOptionalString(source.LEMONSQUEEZY_STORE_ID);
-  const lemonSqueezyWebhookSecret =
-    overrides.lemonSqueezyWebhookSecret ?? normalizeOptionalString(source.LEMONSQUEEZY_WEBHOOK_SECRET);
-  const lemonSqueezyVariantStarterMonthly =
-    overrides.lemonSqueezyVariantStarterMonthly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_STARTER_MONTHLY);
-  const lemonSqueezyVariantStarterYearly =
-    overrides.lemonSqueezyVariantStarterYearly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_STARTER_YEARLY);
-  const lemonSqueezyVariantProMonthly =
-    overrides.lemonSqueezyVariantProMonthly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_PRO_MONTHLY);
-  const lemonSqueezyVariantProYearly =
-    overrides.lemonSqueezyVariantProYearly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_PRO_YEARLY);
-  const lemonSqueezyVariantUltraMonthly =
-    overrides.lemonSqueezyVariantUltraMonthly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_ULTRA_MONTHLY);
-  const lemonSqueezyVariantUltraYearly =
-    overrides.lemonSqueezyVariantUltraYearly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_ULTRA_YEARLY);
-  const lemonSqueezyVariantBusinessMonthly =
-    overrides.lemonSqueezyVariantBusinessMonthly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_BUSINESS_MONTHLY);
-  const lemonSqueezyVariantBusinessYearly =
-    overrides.lemonSqueezyVariantBusinessYearly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_BUSINESS_YEARLY);
   const skillsRoot =
     overrides.skillsRoot ?? normalizeOptionalString(source.LOVART_DOFE_SKILLS_ROOT);
   const workerConcurrency = overrides.workerConcurrency ??
@@ -243,19 +216,10 @@ export function loadServerEnv(
     ...(googleVertexLocation ? { googleVertexLocation } : {}),
     ...(googleVertexVideoLocation ? { googleVertexVideoLocation } : {}),
     ...(replicateApiToken ? { replicateApiToken } : {}),
+    ...(rabbitMqUrl ? { rabbitMqUrl } : {}),
+    ...(redisUrl ? { redisUrl } : {}),
     ...(volcesApiKey ? { volcesApiKey } : {}),
     ...(volcesBaseUrl ? { volcesBaseUrl } : {}),
-    ...(lemonSqueezyApiKey ? { lemonSqueezyApiKey } : {}),
-    ...(lemonSqueezyStoreId ? { lemonSqueezyStoreId } : {}),
-    ...(lemonSqueezyWebhookSecret ? { lemonSqueezyWebhookSecret } : {}),
-    ...(lemonSqueezyVariantStarterMonthly ? { lemonSqueezyVariantStarterMonthly } : {}),
-    ...(lemonSqueezyVariantStarterYearly ? { lemonSqueezyVariantStarterYearly } : {}),
-    ...(lemonSqueezyVariantProMonthly ? { lemonSqueezyVariantProMonthly } : {}),
-    ...(lemonSqueezyVariantProYearly ? { lemonSqueezyVariantProYearly } : {}),
-    ...(lemonSqueezyVariantUltraMonthly ? { lemonSqueezyVariantUltraMonthly } : {}),
-    ...(lemonSqueezyVariantUltraYearly ? { lemonSqueezyVariantUltraYearly } : {}),
-    ...(lemonSqueezyVariantBusinessMonthly ? { lemonSqueezyVariantBusinessMonthly } : {}),
-    ...(lemonSqueezyVariantBusinessYearly ? { lemonSqueezyVariantBusinessYearly } : {}),
     ...(skillsRoot ? { skillsRoot } : {}),
     ...(workerConcurrency ? { workerConcurrency } : {}),
     ...(workerImageConcurrency ? { workerImageConcurrency } : {}),

@@ -47,28 +47,14 @@ import {
   type UploadService,
 } from "./features/uploads/upload-service.js";
 import { type ServerEnv, loadServerEnv, resolveDefaultAgentModel } from "./config/env.js";
-import { createPgmqClient } from "./queue/pgmq-client.js";
-import {
-  createCreditService,
-  type CreditService,
-} from "./features/credits/credit-service.js";
-import {
-  createTierGuard,
-  type TierGuard,
-} from "./features/credits/tier-guard.js";
+import { createRabbitMqClient } from "./queue/rabbitmq-client.js";
+import { createNativeJobRepository } from "./database/job-repository.js";
+import { createNativeChatRepository } from "./database/chat-repository.js";
+import { createNativeSettingsRepository } from "./database/settings-repository.js";
 import {
   createJobService,
   type JobService,
 } from "./features/jobs/job-service.js";
-import { createLemonSqueezyClient } from "./features/payments/lemon-squeezy-client.js";
-import {
-  createPaymentService,
-  buildVariantMap,
-  type PaymentService,
-} from "./features/payments/payment-service.js";
-import { registerPaymentRoutes } from "./http/payments.js";
-import { registerPaymentWebhookRoute } from "./http/payments-webhook.js";
-import { registerCreditRoutes } from "./http/credits.js";
 import { registerFontsRoutes } from "./http/fonts.js";
 import { registerJobRoutes } from "./http/jobs.js";
 import { registerBrandKitRoutes } from "./http/brand-kits.js";
@@ -92,6 +78,10 @@ import { CanvasEventBuffer } from "./ws/event-buffer.js";
 import { ConnectionManager } from "./ws/connection-manager.js";
 import { registerWsRoute } from "./ws/handler.js";
 import { createAdminSupabaseClient } from "./supabase/admin.js";
+import { createDatabasePool } from "./database/pool.js";
+import { createNativeDataRepository } from "./database/native-data-repository.js";
+import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
+import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
 import {
   createSupabaseRequestAuthenticator,
   createUserSupabaseClientFactory,
@@ -108,11 +98,8 @@ export type BuildAppOptions = {
   canvasService?: CanvasService;
   chatService?: ChatService;
   connectionManager?: ConnectionManager;
-  creditService?: CreditService;
   env?: Partial<ServerEnv>;
   jobService?: JobService;
-  paymentService?: PaymentService;
-  tierGuard?: TierGuard;
   uploadService?: UploadService;
   mockEventDelayMs?: number;
   projectService?: ProjectService;
@@ -156,60 +143,49 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     adminClient ??= createAdminSupabaseClient(env);
     return adminClient;
   };
-  const viewerService =
-    options.viewerService ?? createViewerService({ getAdminClient });
+  if (!env.databaseUrl || !env.tos) {
+    throw new Error("DATABASE_URL and complete TOS_* configuration are required for the native metadata data plane.");
+  }
+  const databasePool = createDatabasePool(env.databaseUrl);
+  const dataRepository = createNativeDataRepository(databasePool);
+  const chatRepository = createNativeChatRepository(databasePool);
+  const settingsRepository = createNativeSettingsRepository(databasePool);
+  const objectStorage = createConfiguredTosObjectStorage(env.tos);
+  const canvasElementWriter = createCanvasElementWriter({ repository: dataRepository, storage: objectStorage });
+  app.addHook("onClose", async () => databasePool.end());
+  const viewerService = options.viewerService ?? createViewerService({ repository: dataRepository });
   const projectService =
     options.projectService ??
-    createProjectService({ createUserClient, viewerService });
+    createProjectService({ repository: dataRepository, storage: objectStorage, viewerService });
   const brandKitService =
     options.brandKitService ?? createBrandKitService({ createUserClient });
   const canvasService =
-    options.canvasService ?? createCanvasService({ createUserClient });
+    options.canvasService ?? createCanvasService({ repository: dataRepository, storage: objectStorage });
   const threadService =
-    options.threadService ?? createThreadService({ createUserClient });
+    options.threadService ?? createThreadService({ repository: chatRepository });
   const chatService =
-    options.chatService ?? createChatService({ createUserClient, threadService });
+    options.chatService ?? createChatService({ repository: chatRepository, threadService });
   const agentRunMetadataService =
     options.agentRunMetadataService ??
-    createAgentRunMetadataService({ getAdminClient });
+    createAgentRunMetadataService({ pool: databasePool });
   const agentPersistenceService =
     options.agentPersistenceService ?? createAgentPersistenceService(env);
   const settingsService =
     options.settingsService ??
       createSettingsService({
-        createUserClient,
+        repository: settingsRepository,
         defaultModel: resolveDefaultAgentModel(env),
       });
   const uploadService =
-    options.uploadService ?? createUploadService({ createUserClient });
-  const pgmq = env.supabaseDbUrl
-    ? createPgmqClient(env.supabaseDbUrl)
-    : undefined;
+    options.uploadService ?? createUploadService({ repository: dataRepository, storage: objectStorage });
+  const rabbitMq = env.rabbitMqUrl ? createRabbitMqClient(env.rabbitMqUrl) : undefined;
+  const jobRepository = createNativeJobRepository(databasePool);
+  if (rabbitMq) app.addHook("onClose", async () => rabbitMq.close());
   const jobService =
     options.jobService ??
-    (pgmq
-      ? createJobService({ createUserClient, getAdminClient, pgmq })
+    (rabbitMq
+      ? createJobService({ repository: jobRepository, rabbitMq })
       : undefined);
-  const creditService =
-    options.creditService ?? createCreditService({ getAdminClient });
-  const tierGuard =
-    options.tierGuard ?? createTierGuard({ getAdminClient });
-
-  // Payment service — only created when Lemon Squeezy is configured
-  let paymentService: PaymentService | undefined = options.paymentService;
-  if (!paymentService && env.lemonSqueezyApiKey && env.lemonSqueezyStoreId) {
-    const lsClient = createLemonSqueezyClient({
-      apiKey: env.lemonSqueezyApiKey,
-      storeId: env.lemonSqueezyStoreId,
-    });
-    paymentService = createPaymentService({
-      lemonSqueezy: lsClient,
-      getAdminClient,
-      variantMap: buildVariantMap(env),
-      webOrigin: env.webOrigin,
-    });
-  }
-
   const connectionManager = options.connectionManager ?? new ConnectionManager();
   const eventBuffer = new CanvasEventBuffer();
   setInterval(() => eventBuffer.cleanup(), 5 * 60 * 1000);
@@ -217,6 +193,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     agentPersistenceService,
     ...(options.agentFactory ? { agentFactory: options.agentFactory } : {}),
     agentRunMetadataService,
+    canvasElementWriter,
+    dataRepository,
+    databasePool,
     connectionManager,
     createUserClient,
     ...(options.agentModel ? { model: options.agentModel } : {}),
@@ -224,9 +203,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? {}
       : { eventDelayMs: options.mockEventDelayMs }),
     env,
+    objectStorage,
     ...(jobService ? { jobService } : {}),
-    creditService,
-    tierGuard,
     viewerService,
   });
 
@@ -272,8 +250,6 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   void registerViewerRoutes(app, {
     auth,
-    createUserClient,
-    creditService,
     viewerService,
   });
   void registerBrandKitRoutes(app, {
@@ -294,8 +270,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     viewerService,
   });
   void registerModelRoutes(app, env);
-  void registerImageModelRoutes(app, { auth, creditService, viewerService });
-  void registerVideoModelRoutes(app, { auth, creditService, viewerService });
+  void registerImageModelRoutes(app, { auth, viewerService });
+  void registerVideoModelRoutes(app, { auth, viewerService });
   void registerChatRoutes(app, {
     auth,
     chatService,
@@ -307,36 +283,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   void registerGenerateRoutes(app, {
     auth,
-    creditService,
     uploadService,
     viewerService,
     ...(jobService ? { jobService } : {}),
-    ...(tierGuard ? { tierGuard } : {}),
   });
-  void registerCreditRoutes(app, { auth, creditService, viewerService });
   if (jobService) {
-    void registerJobRoutes(app, { auth, creditService, jobService, tierGuard, viewerService });
+    void registerJobRoutes(app, { auth, jobService, viewerService });
   }
   void registerSkillRoutes(app, { auth, createUserClient, viewerService });
   void registerMarketplaceRoutes(app, { auth, createUserClient, viewerService });
-
-  // Payment routes — only registered when Lemon Squeezy is configured
-  if (paymentService) {
-    void registerPaymentRoutes(app, { auth, paymentService, viewerService });
-
-    if (env.lemonSqueezyWebhookSecret) {
-      // Webhook route is registered in an encapsulated plugin so the custom
-      // content-type parser (needed for raw body access) does not leak to
-      // other routes.
-      void app.register(async (webhookScope) => {
-        await registerPaymentWebhookRoute(webhookScope, {
-          getAdminClient,
-          paymentService: paymentService!,
-          webhookSecret: env.lemonSqueezyWebhookSecret!,
-        });
-      });
-    }
-  }
 
   return app;
 }

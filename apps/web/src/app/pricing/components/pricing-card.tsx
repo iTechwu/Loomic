@@ -1,8 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Crown, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Check, Crown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -27,18 +26,6 @@ export function PricingCard({
   const price =
     billingPeriod === "monthly" ? tier.monthlyPrice : tier.yearlyPrice;
   const isCurrentPlan = currentPlan === tier.id;
-  const [loading, setLoading] = useState(false);
-
-  async function handleCheckout() {
-    if (!onCheckout || tier.id === "free" || tier.id === "business") return;
-    setLoading(true);
-    try {
-      await onCheckout(tier.id, billingPeriod);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function renderCta() {
     if (isCurrentPlan) {
       return (
@@ -54,19 +41,15 @@ export function PricingCard({
       );
     }
 
-    const buttonContent = loading ? (
-      <Loader2 className="h-4 w-4 animate-spin" />
-    ) : (
-      tier.cta
-    );
+    const buttonContent = tier.cta;
 
     if (tier.ctaVariant === "accent") {
       return (
         <Button
           className="w-full cursor-pointer"
           size="lg"
-          disabled={loading}
-          onClick={handleCheckout}
+          disabled={!onCheckout}
+          onClick={() => void onCheckout?.(tier.id, billingPeriod)}
           style={{
             backgroundColor: "oklch(0.90 0.17 115)",
             color: "oklch(0.205 0 0)",
@@ -83,11 +66,11 @@ export function PricingCard({
         className="w-full cursor-pointer"
         size="lg"
         variant={tier.ctaVariant === "outline" ? "outline" : "default"}
-        disabled={loading || (tier.id === "free" && !onCheckout)}
+        disabled={!onCheckout || tier.id === "free"}
         onClick={
           tier.id === "free" || tier.id === "business"
             ? undefined
-            : handleCheckout
+            : () => void onCheckout?.(tier.id, billingPeriod)
         }
       >
         {buttonContent}

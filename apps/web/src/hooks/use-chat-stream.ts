@@ -173,7 +173,7 @@ export function useChatStream(updateSessionMessages: MessageUpdater) {
           break;
 
         case "run.canceled":
-          // Clean up running tool blocks when run is aborted (e.g. billing error)
+          // Clean up running tool blocks when a run is aborted.
           update((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId) return m;

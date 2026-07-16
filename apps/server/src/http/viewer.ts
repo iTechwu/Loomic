@@ -1,32 +1,25 @@
-// @credits-system — Viewer endpoint: auto-claims daily credits, returns balance and plan info
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import {
-  PLAN_CONFIGS,
   applicationErrorResponseSchema,
   profileUpdateRequestSchema,
   profileUpdateResponseSchema,
   unauthenticatedErrorResponseSchema,
   viewerResponseSchema,
-  type SubscriptionPlan,
 } from "@lovart.dofe/shared";
 
 import {
   BootstrapError,
   type ViewerService,
 } from "../features/bootstrap/ensure-user-foundation.js";
-import type { CreditService } from "../features/credits/credit-service.js";
 import type {
   RequestAuthenticator,
-  UserSupabaseClient,
 } from "../supabase/user.js";
 
 export async function registerViewerRoutes(
   app: FastifyInstance,
   options: {
     auth: RequestAuthenticator;
-    createUserClient: (accessToken: string) => UserSupabaseClient;
-    creditService?: CreditService;
     viewerService: ViewerService;
   },
 ) {
@@ -47,43 +40,9 @@ export async function registerViewerRoutes(
 
       const viewer = await options.viewerService.ensureViewer(user);
 
-      // @credits-system: Auto-claim daily credits on login + attach credits info
-      let credits: Record<string, unknown> | undefined;
-      if (options.creditService) {
-        try {
-          // Auto-claim daily credits for free users on each viewer request
-          // (idempotent — claim_daily_credits is a no-op if already claimed today)
-          const balance = await options.creditService.getBalance(
-            viewer.workspace.id,
-          );
-          if (balance.plan === "free" && !balance.dailyClaimed) {
-            await options.creditService.claimDailyCredits(viewer.workspace.id);
-          }
-
-          // Re-fetch balance after potential claim
-          const updatedBalance = await options.creditService.getBalance(
-            viewer.workspace.id,
-          );
-          const config = PLAN_CONFIGS[updatedBalance.plan as SubscriptionPlan];
-          credits = {
-            balance: updatedBalance.balance,
-            plan: updatedBalance.plan,
-            dailyClaimed: updatedBalance.dailyClaimed,
-            limits: {
-              maxConcurrentJobs: config.maxConcurrentJobs,
-              maxResolution: config.maxResolution,
-              monthlyCredits: config.monthlyCredits,
-              dailyCredits: config.dailyCredits,
-            },
-          };
-        } catch {
-          // Credits fetch failure is non-fatal — viewer still works
-        }
-      }
-
       return reply
         .code(200)
-        .send(viewerResponseSchema.parse({ ...viewer, credits }));
+        .send(viewerResponseSchema.parse(viewer));
     } catch (error) {
       return sendApplicationError(
         error,
@@ -110,32 +69,15 @@ export async function registerViewerRoutes(
       }
 
       const payload = profileUpdateRequestSchema.parse(request.body);
-      const client = options.createUserClient(user.accessToken);
-      const { data, error } = await client
-        .from("profiles")
-        .update({ display_name: payload.displayName })
-        .eq("id", user.id)
-        .select("id, email, display_name, avatar_url")
-        .single();
-
-      if (error || !data) {
-        return reply.code(500).send(
-          applicationErrorResponseSchema.parse({
-            error: {
-              code: "profile_update_failed",
-              message: "Unable to update profile.",
-            },
-          }),
-        );
-      }
+      const data = await options.viewerService.updateProfile(user, payload.displayName);
 
       return reply.code(200).send(
         profileUpdateResponseSchema.parse({
           profile: {
             id: data.id,
-            email: data.email ?? "",
-            displayName: data.display_name ?? "",
-            avatarUrl: data.avatar_url ?? null,
+            email: data.email,
+            displayName: data.displayName,
+            avatarUrl: data.avatarUrl,
           },
         }),
       );

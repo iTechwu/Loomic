@@ -217,10 +217,9 @@ GOOGLE_API_KEY=your-google-api-key             # for Gemini + Imagen + Veo
 # GOOGLE_APPLICATION_CREDENTIALS=               # path to SA JSON
 ```
 
-The configured `lovart-dofe-ai-local` client currently allows `openid profile email`.
-The app redirects through SSO again after a browser reload or short-lived data-session
-expiry; an active SSO session returns directly to the requested workspace. Enable
-`offline_access` for this client only when persistent refresh-token sessions are required.
+The configured `lovart-dofe-ai-local` client allows `openid profile email offline_access`.
+Refresh tokens remain in an HttpOnly cookie, so browser session renewal does not expose
+long-lived SSO credentials to JavaScript.
 
 > **Note**: See [Environment Variables Reference](#environment-variables-reference) for the full list.
 
@@ -409,16 +408,6 @@ lovart.dofe/
 | `GOOGLE_VERTEX_PROJECT` | GCP project ID |
 | `GOOGLE_VERTEX_LOCATION` | Region for image/LLM (`global`) |
 | `GOOGLE_VERTEX_VIDEO_LOCATION` | Region for video (`us-central1`) |
-
-### Payments (optional)
-
-| Variable | Description |
-|----------|-------------|
-| `LEMONSQUEEZY_API_KEY` | LemonSqueezy API key |
-| `LEMONSQUEEZY_STORE_ID` | LemonSqueezy store ID |
-| `LEMONSQUEEZY_WEBHOOK_SECRET` | Webhook HMAC secret |
-| `LEMONSQUEEZY_VARIANT_*_MONTHLY` | Plan variant IDs (monthly) |
-| `LEMONSQUEEZY_VARIANT_*_YEARLY` | Plan variant IDs (yearly) |
 
 ### Server & Worker
 

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
-import { CreditBalance } from "@/components/credits/credit-balance";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
@@ -222,9 +221,6 @@ export function AppSidebar() {
 
         {/* Spacer pushes bottom section down */}
         <div className="flex-1" />
-
-        {/* Credits balance */}
-        <CreditBalance />
 
         {/* Settings / Profile */}
         <NavButton

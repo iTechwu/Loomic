@@ -26,7 +26,6 @@ import { useImageModelPreference } from "../hooks/use-image-model-preference";
 import { useVideoModelPreference } from "../hooks/use-video-model-preference";
 import type { WebSocketHandle } from "../hooks/use-websocket";
 import { fetchBrandKit } from "../lib/brand-kit-api";
-import { claimDailyCredits } from "../lib/credits-api";
 import { fetchImageModels, fetchWorkspaceSkills, saveMessage } from "../lib/server-api";
 import type { CanvasSelectedElement } from "./canvas-editor";
 import {
@@ -40,8 +39,6 @@ import {
 import { ChatInput } from "./chat-input";
 import { ChatMessage } from "./chat-message";
 import { ChatSkills } from "./chat-skills";
-import { CreditInsufficientDialog } from "./credits/credit-insufficient-dialog";
-import { useTierLimitToast } from "./credits/tier-limit-toast";
 import { useToast } from "./toast";
 import { ErrorBoundary } from "./error-boundary";
 import { SessionSelector } from "./session-selector";
@@ -126,13 +123,6 @@ export function ChatSidebar({
   const [skillMentionItems, setSkillMentionItems] = useState<
     SkillMentionItem[]
   >([]);
-  const [creditDialog, setCreditDialog] = useState<{
-    open: boolean;
-    currentBalance: number;
-    requiredAmount: number;
-    plan: string;
-    dailyClaimed: boolean;
-  } | null>(null);
   const chatInputRef = useRef<import("./chat-input").ChatInputHandle>(null);
 
   const initialPromptSent = useRef(false);
@@ -171,7 +161,6 @@ export function ChatSidebar({
   const agentModelRef = useRef(agentModel);
   agentModelRef.current = agentModel;
 
-  const { showTierLimit } = useTierLimitToast();
   const { toast: showToast } = useToast();
 
   // ── Sidebar resize ──
@@ -494,22 +483,6 @@ export function ChatSidebar({
               `[perf] send → first token: ${(perf.tFirstToken - perf.t0Send).toFixed(0)}ms` +
                 ` (ack→token: ${(perf.tFirstToken - perf.tAck).toFixed(0)}ms)`,
             );
-          }
-
-          // Billing error: route to appropriate UI, run.canceled will follow
-          if (event.type === "billing.error") {
-            if (event.code === "insufficient_credits") {
-              setCreditDialog({
-                open: true,
-                currentBalance: event.currentBalance ?? 0,
-                requiredAmount: event.requiredAmount ?? 0,
-                plan: event.plan ?? "free",
-                dailyClaimed: event.dailyClaimed ?? false,
-              });
-            } else {
-              // model_not_accessible, resolution_not_allowed, concurrency_limit
-              showTierLimit({ code: event.code, message: event.message });
-            }
           }
 
           // Apply event to messages (single source of truth — shared with reconnect)
@@ -1026,20 +999,6 @@ export function ChatSidebar({
     </>
   );
 
-  const creditDialogEl = creditDialog && (
-    <CreditInsufficientDialog
-      open={creditDialog.open}
-      onClose={() => setCreditDialog(null)}
-      currentBalance={creditDialog.currentBalance}
-      requiredAmount={creditDialog.requiredAmount}
-      plan={creditDialog.plan}
-      dailyClaimed={creditDialog.dailyClaimed}
-      onClaimDaily={async () => {
-        await claimDailyCredits(accessTokenRef.current);
-      }}
-    />
-  );
-
   // ── Mobile / Tablet: full-screen overlay with backdrop ──
   if (isOverlay) {
     return (
@@ -1061,7 +1020,6 @@ export function ChatSidebar({
         >
           {panelContent}
         </div>
-        {creditDialogEl}
       </>
     );
   }
@@ -1090,7 +1048,6 @@ export function ChatSidebar({
       <div className="flex flex-1 flex-col bg-card min-w-0">
         {panelContent}
       </div>
-      {creditDialogEl}
     </div>
   );
 }

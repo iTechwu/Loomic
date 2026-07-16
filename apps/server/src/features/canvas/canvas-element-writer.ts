@@ -1,6 +1,9 @@
 // apps/server/src/features/canvas/canvas-element-writer.ts
 
-import type { CanvasContent, Json } from "@lovart.dofe/shared";
+import type { CanvasContent } from "@lovart.dofe/shared";
+
+import type { NativeDataRepository } from "../../database/native-data-repository.js";
+import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +34,11 @@ type VideoInsertOpts = {
 type Placement = { x: number; y: number; width: number; height: number };
 
 type InsertResult = { elementId: string };
+
+export type CanvasElementWriter = {
+  insertImage(userId: string, opts: ImageInsertOpts, explicitPlacement?: Placement): Promise<InsertResult>;
+  insertVideo(userId: string, opts: VideoInsertOpts, explicitPlacement?: Placement): Promise<InsertResult>;
+};
 
 // ---------------------------------------------------------------------------
 // Placement calculation (ported from apps/web/src/lib/canvas-elements.ts)
@@ -183,47 +191,22 @@ function buildVideoElement(
 // Public API — Read-Modify-Write canvas content
 // ---------------------------------------------------------------------------
 
-const CANVAS_FILES_BUCKET = "project-assets";
 const IMAGE_MAX_SIZE = 600;
 const VIDEO_MAX_SIZE = 800;
+const TOS_MARKER_PREFIX = "tos://";
 
 /**
  * Insert an image element into a canvas. Reads current content, appends element
  * with auto-placement (or explicit placement), writes it back.
  *
- * The image file is already in Supabase Storage (uploaded by worker executor).
- * We download it and embed as base64 dataURL in the canvas files map so
- * Excalidraw can render it natively (consistent with frontend-inserted images).
+ * The image file is already in TOS (uploaded by the worker). The frontend
+ * resolves its marker to a short-lived signed read URL when the canvas loads.
  */
-export async function insertImageElement(
-  client: { from: (table: string) => any; storage: { from: (bucket: string) => any } },
-  opts: ImageInsertOpts,
-  explicitPlacement?: Placement,
-): Promise<InsertResult> {
-  // 1. Download image from storage and convert to base64 dataURL
-  const { data: blob, error: dlError } = await client
-    .storage.from(CANVAS_FILES_BUCKET)
-    .download(opts.objectPath);
-
-  if (dlError || !blob) {
-    throw new Error(`Failed to download image from storage: ${dlError?.message ?? "no data"}`);
-  }
-
-  const buffer = Buffer.from(await blob.arrayBuffer());
-  const base64 = buffer.toString("base64");
-  const dataURL = `data:${opts.mimeType};base64,${base64}`;
-
-  // 2. Read canvas
-  const { data, error } = await client
-    .from("canvases")
-    .select("content")
-    .eq("id", opts.canvasId)
-    .single();
-
-  if (error || !data) {
-    throw new Error(`Canvas not found: ${opts.canvasId}`);
-  }
-
+export function createCanvasElementWriter(options: { repository: NativeDataRepository; storage: TosObjectStorage }): CanvasElementWriter {
+  return {
+    async insertImage(userId, opts, explicitPlacement) {
+  const data = await options.repository.findCanvas(userId, opts.canvasId);
+  if (!data) throw new Error(`Canvas not found or inaccessible: ${opts.canvasId}`);
   const content = (data.content as CanvasContent) ?? { elements: [], appState: {} };
   const elements: CanvasElement[] = (content.elements as CanvasElement[]) ?? [];
   const files = ((content as any).files as Record<string, Record<string, unknown>>) ?? {};
@@ -233,7 +216,7 @@ export async function insertImageElement(
     elements, opts.width, opts.height, IMAGE_MAX_SIZE,
   );
 
-  // 4. Build element + files entry with base64 dataURL
+  // 4. Build element + a TOS object marker; no blob passes through PostgreSQL.
   const fileId = generateId();
   const element = buildImageElement(fileId, placement, opts);
 
@@ -241,52 +224,34 @@ export async function insertImageElement(
     ...files,
     [fileId]: {
       id: fileId,
-      dataURL,
+      dataURL: `${TOS_MARKER_PREFIX}${opts.objectPath}`,
       mimeType: opts.mimeType,
       created: Date.now(),
     },
   };
 
-  // 5. Write
+  // 5. Write through the membership-scoped native repository.
   const updatedContent = {
     ...content,
     elements: [...elements, element],
     files: updatedFiles,
   };
 
-  const { error: writeError } = await client
-    .from("canvases")
-    .update({ content: updatedContent as unknown as Json })
-    .eq("id", opts.canvasId);
-
-  if (writeError) {
-    throw new Error(`Failed to write canvas: ${writeError.message}`);
+  if (!await options.repository.saveCanvas(userId, opts.canvasId, updatedContent as unknown as import("@lovart.dofe/shared").Json)) {
+    throw new Error(`Canvas not found or inaccessible: ${opts.canvasId}`);
   }
 
   console.log(`[canvas-element-writer] image inserted canvasId=${opts.canvasId} elementId=${element.id}`);
   return { elementId: element.id as string };
-}
+    },
 
 /**
  * Insert a video element into a canvas. Videos use Excalidraw's `embeddable`
  * type with a link URL — no files map entry needed.
  */
-export async function insertVideoElement(
-  client: { from: (table: string) => any; storage: { from: (bucket: string) => any } },
-  opts: VideoInsertOpts,
-  explicitPlacement?: Placement,
-): Promise<InsertResult> {
-  // 1. Read
-  const { data, error } = await client
-    .from("canvases")
-    .select("content")
-    .eq("id", opts.canvasId)
-    .single();
-
-  if (error || !data) {
-    throw new Error(`Canvas not found: ${opts.canvasId}`);
-  }
-
+    async insertVideo(userId, opts, explicitPlacement) {
+  const data = await options.repository.findCanvas(userId, opts.canvasId);
+  if (!data) throw new Error(`Canvas not found or inaccessible: ${opts.canvasId}`);
   const content = (data.content as CanvasContent) ?? { elements: [], appState: {} };
   const elements: CanvasElement[] = (content.elements as CanvasElement[]) ?? [];
 
@@ -304,15 +269,12 @@ export async function insertVideoElement(
     elements: [...elements, element],
   };
 
-  const { error: writeError } = await client
-    .from("canvases")
-    .update({ content: updatedContent as unknown as Json })
-    .eq("id", opts.canvasId);
-
-  if (writeError) {
-    throw new Error(`Failed to write canvas: ${writeError.message}`);
+  if (!await options.repository.saveCanvas(userId, opts.canvasId, updatedContent as unknown as import("@lovart.dofe/shared").Json)) {
+    throw new Error(`Canvas not found or inaccessible: ${opts.canvasId}`);
   }
 
   console.log(`[canvas-element-writer] video inserted canvasId=${opts.canvasId} elementId=${element.id}`);
   return { elementId: element.id as string };
+    },
+  };
 }

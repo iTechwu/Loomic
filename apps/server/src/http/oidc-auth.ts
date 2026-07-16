@@ -48,6 +48,11 @@ type BrowserSession = {
   };
 };
 
+type DataUserResolution = {
+  dataUserId: string;
+  source: "legacy_email_match" | "new_sso_user";
+};
+
 export async function registerOidcAuthRoutes(
   app: FastifyInstance,
   options: {
@@ -75,9 +80,7 @@ export async function registerOidcAuthRoutes(
     authorizationUrl.searchParams.set("client_id", config.clientId);
     authorizationUrl.searchParams.set("redirect_uri", config.redirectUri);
     authorizationUrl.searchParams.set("response_type", "code");
-    // This client is currently registered for standard identity scopes only.
-    // Refresh handling remains available for deployments that later permit offline_access.
-    authorizationUrl.searchParams.set("scope", "openid profile email");
+    authorizationUrl.searchParams.set("scope", "openid profile email offline_access");
     authorizationUrl.searchParams.set("state", state);
     authorizationUrl.searchParams.set("nonce", nonce);
     authorizationUrl.searchParams.set("code_challenge", codeChallenge);
@@ -282,33 +285,47 @@ async function createDataSession(
     throw new Error("SUPABASE_URL, SUPABASE_ANON_KEY, and INTERNAL_API_SECRET are required for SSO data sessions.");
   }
 
-  const shadowEmail = `sso-${identity.id}@lovart.dofe.internal`;
-  const { data: existing, error: lookupError } = await admin.auth.admin.getUserById(identity.id);
+  const resolution = await resolveDataUser(identity, admin);
+  const shadowEmail = `sso-${resolution.dataUserId}@lovart.dofe.internal`;
+  const { data: existing, error: lookupError } = await admin.auth.admin.getUserById(resolution.dataUserId);
   if (lookupError && !isUserNotFoundError(lookupError)) throw lookupError;
 
-  // Do not silently repurpose a legacy Supabase account. Its data must be migrated
-  // to the SSO subject deliberately before it can become an SSO shadow account.
-  if (existing.user && existing.user.email !== shadowEmail) {
-    throw new Error("Existing Supabase user conflicts with the SSO subject; migrate the account before login.");
-  }
+  const existingMetadata = existing.user?.user_metadata;
+  const ssoMetadata = {
+    ...(isRecord(existingMetadata) ? existingMetadata : {}),
+    ...(identity.avatarUrl ? { avatar_url: identity.avatarUrl } : {}),
+    ...(identity.name ? { name: identity.name } : {}),
+    sso_email: identity.email,
+    sso_user_id: identity.id,
+  };
+  let authEmail = shadowEmail;
 
   if (!existing.user) {
     const { error } = await admin.auth.admin.createUser({
       email: shadowEmail,
       email_confirm: true,
-      id: identity.id,
-      password: shadowPassword(identity.id, env.internalApiSecret),
-      user_metadata: { sso_user_id: identity.id },
+      id: resolution.dataUserId,
+      password: shadowPassword(resolution.dataUserId, env.internalApiSecret),
+      user_metadata: ssoMetadata,
+    });
+    if (error) throw error;
+  } else {
+    authEmail = existing.user.email ?? shadowEmail;
+    const { error } = await admin.auth.admin.updateUserById(resolution.dataUserId, {
+      password: shadowPassword(resolution.dataUserId, env.internalApiSecret),
+      user_metadata: ssoMetadata,
     });
     if (error) throw error;
   }
+
+  await persistSsoMapping(identity, resolution, admin);
 
   const dataClient = createClient<Database>(env.supabaseUrl, env.supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { data, error } = await dataClient.auth.signInWithPassword({
-    email: shadowEmail,
-    password: shadowPassword(identity.id, env.internalApiSecret),
+    email: authEmail,
+    password: shadowPassword(resolution.dataUserId, env.internalApiSecret),
   });
   if (error || !data.session) throw error ?? new Error("Unable to create Supabase data session");
 
@@ -317,13 +334,67 @@ async function createDataSession(
     expiresAt: data.session.expires_at ?? Math.floor(Date.now() / 1000) + 300,
     user: {
       email: identity.email,
-      id: identity.id,
+      id: resolution.dataUserId,
       userMetadata: {
         ...(identity.avatarUrl ? { avatar_url: identity.avatarUrl } : {}),
         ...(identity.name ? { name: identity.name } : {}),
       },
     },
   };
+}
+
+async function resolveDataUser(
+  identity: SsoIdentity,
+  admin: AdminSupabaseClient,
+): Promise<DataUserResolution> {
+  const mappings = (admin as any).from("sso_user_mappings");
+  const { data: mapping, error: mappingError } = await mappings
+    .select("data_user_id")
+    .eq("sso_user_id", identity.id)
+    .maybeSingle();
+  if (mappingError) throw mappingError;
+
+  const { data: candidates, error: candidateError } = await admin
+    .from("profiles")
+    .select("id")
+    .ilike("email", identity.email)
+    .limit(2);
+  if (candidateError) throw candidateError;
+
+  const dataUserId = chooseDataUserId(
+    identity.id,
+    typeof mapping?.data_user_id === "string" ? mapping.data_user_id : null,
+    (candidates ?? []).map((candidate) => candidate.id),
+  );
+  return {
+    dataUserId,
+    source: dataUserId === identity.id ? "new_sso_user" : "legacy_email_match",
+  };
+}
+
+async function persistSsoMapping(
+  identity: SsoIdentity,
+  resolution: DataUserResolution,
+  admin: AdminSupabaseClient,
+) {
+  const { error } = await (admin as any)
+    .from("sso_user_mappings")
+    .upsert({
+      data_user_id: resolution.dataUserId,
+      mapping_source: resolution.source,
+      matched_email: identity.email,
+      sso_user_id: identity.id,
+    }, { onConflict: "sso_user_id" });
+  if (error) throw error;
+}
+
+export function chooseDataUserId(
+  ssoUserId: string,
+  mappedDataUserId: string | null,
+  legacyCandidateIds: string[],
+): string {
+  if (mappedDataUserId) return mappedDataUserId;
+  return legacyCandidateIds.length === 1 ? legacyCandidateIds[0]! : ssoUserId;
 }
 
 async function revokeToken(config: OidcConfig, token: string) {
@@ -412,4 +483,8 @@ function constantTimeEqual(left: string, right: string): boolean {
   let result = 0;
   for (let index = 0; index < left.length; index += 1) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
   return result === 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,25 +1,21 @@
 import type { BackgroundJobType } from "@lovart.dofe/shared";
 
 import type { JobService } from "./job-service.js";
-import type { PgmqClient } from "../../queue/pgmq-client.js";
-import type { AdminSupabaseClient } from "../../supabase/admin.js";
 import type { ServerEnv } from "../../config/env.js";
+import type { NativeDataRepository } from "../../database/native-data-repository.js";
+import type { NativeJobRepository } from "../../database/job-repository.js";
+import type { RabbitMqClient } from "../../queue/rabbitmq-client.js";
+import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
+import type { AdminSupabaseClient } from "../../supabase/admin.js";
 
 export type ExecutorContext = {
   jobService: JobService;
-  pgmq: PgmqClient;
+  jobRepository: NativeJobRepository;
+  dataRepository: NativeDataRepository;
+  rabbitMq: RabbitMqClient;
+  objectStorage: TosObjectStorage;
   getAdminClient: () => AdminSupabaseClient;
   env: ServerEnv;
-  /** PGMQ queue name for the current job (set per-message by the worker). */
-  queue: string;
-  /** PGMQ message id for the current job (set per-message by the worker). */
-  msgId: number;
-  /**
-   * Best-effort VT renewal — extends visibility timeout so the message
-   * stays invisible while the executor is still working.
-   * Never throws; logs on failure.
-   */
-  renewVt: (vtSeconds: number) => Promise<void>;
 };
 
 export type JobExecutor = (

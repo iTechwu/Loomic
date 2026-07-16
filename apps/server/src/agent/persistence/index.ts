@@ -1,8 +1,8 @@
 import type { BaseCheckpointSaver, BaseStore } from "@langchain/langgraph-checkpoint";
 
 import type { ServerEnv } from "../../config/env.js";
-import { createSupabaseCheckpointer } from "./supabase-checkpointer.js";
-import { createSupabaseStore } from "./supabase-store.js";
+import { createPostgresCheckpointer } from "./postgres-checkpointer.js";
+import { createPostgresStore } from "./postgres-store.js";
 
 export type AgentPersistence = {
   checkpointer: BaseCheckpointSaver;
@@ -14,27 +14,27 @@ export type AgentPersistenceService = {
 };
 
 export function createAgentPersistenceService(
-  env: Pick<ServerEnv, "supabaseDbUrl">,
+  env: Pick<ServerEnv, "databaseUrl">,
   overrides?: {
-    createCheckpointer?: typeof createSupabaseCheckpointer;
-    createStore?: typeof createSupabaseStore;
+    createCheckpointer?: typeof createPostgresCheckpointer;
+    createStore?: typeof createPostgresStore;
   },
 ): AgentPersistenceService {
   let pendingPersistence: Promise<AgentPersistence> | null = null;
 
   return {
     async getPersistence() {
-      if (!env.supabaseDbUrl) {
+      if (!env.databaseUrl) {
         return null;
       }
 
       if (!pendingPersistence) {
         pendingPersistence = Promise.all([
-          (overrides?.createCheckpointer ?? createSupabaseCheckpointer)({
-            connectionString: env.supabaseDbUrl,
+          (overrides?.createCheckpointer ?? createPostgresCheckpointer)({
+            connectionString: env.databaseUrl,
           }),
-          (overrides?.createStore ?? createSupabaseStore)({
-            connectionString: env.supabaseDbUrl,
+          (overrides?.createStore ?? createPostgresStore)({
+            connectionString: env.databaseUrl,
           }),
         ])
           .then(([checkpointer, store]) => ({ checkpointer, store }))

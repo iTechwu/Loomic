@@ -1,20 +1,13 @@
-// @credits-system — Direct generation routes with credit deduction and tier checks
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import {
   applicationErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
-  type ImageQualityLevel,
-  type VideoResolution,
 } from "@lovart.dofe/shared";
 
 import { generateImage } from "../generation/image-generation.js";
 import { resolveImageProviderName } from "../generation/providers/registry.js";
-import type { CreditService } from "../features/credits/credit-service.js";
-import { CreditServiceError } from "../features/credits/credit-service.js";
-import type { TierGuard } from "../features/credits/tier-guard.js";
-import { TierGuardError } from "../features/credits/tier-guard.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import { JobServiceError } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
@@ -41,9 +34,7 @@ export async function registerGenerateRoutes(
   app: FastifyInstance,
   options: {
     auth: RequestAuthenticator;
-    creditService?: CreditService;
     jobService?: JobService;
-    tierGuard?: TierGuard;
     uploadService: UploadService;
     viewerService: ViewerService;
   },
@@ -78,28 +69,6 @@ export async function registerGenerateRoutes(
     const model = payload.model ?? "black-forest-labs/flux-kontext-pro";
 
     try {
-      // ── Tier guard + credit checks ──
-      const viewer = await options.viewerService.ensureViewer(user);
-      let creditsCost = 0;
-
-      if (options.creditService && options.tierGuard) {
-        const sub = await options.creditService.getSubscription(viewer.workspace.id);
-        const quality: ImageQualityLevel = payload.quality ?? "hd";
-        options.tierGuard.checkModelAccess(sub.plan, model);
-        // Throws TierGuardError (resolution_not_allowed) if plan doesn't allow this quality
-        options.tierGuard.checkResolution(sub.plan, quality);
-        await options.tierGuard.checkConcurrency(viewer.workspace.id, sub.plan);
-        creditsCost = options.tierGuard.calculateCreditCost(model, "image_generation", { quality });
-
-        // Deduct credits before generation
-        if (creditsCost > 0) {
-          await options.creditService.deductCredits(
-            viewer.workspace.id, user.id, creditsCost, undefined,
-            `Direct image generation: ${model}`,
-          );
-        }
-      }
-
       const providerName = resolveImageProviderName(model);
       const result = await generateImage(providerName, {
         prompt: payload.prompt,
@@ -126,22 +95,6 @@ export async function registerGenerateRoutes(
         height: result.height,
       });
     } catch (error) {
-      // Handle tier/credit errors
-      if (error instanceof TierGuardError) {
-        return reply.code(error.statusCode).send(
-          applicationErrorResponseSchema.parse({
-            error: { code: error.code, message: error.message },
-          }),
-        );
-      }
-      if (error instanceof CreditServiceError) {
-        return reply.code(error.statusCode).send(
-          applicationErrorResponseSchema.parse({
-            error: { code: error.code, message: error.message },
-          }),
-        );
-      }
-
       const message =
         error instanceof Error ? error.message : "Image generation failed.";
 
@@ -209,32 +162,8 @@ export async function registerGenerateRoutes(
     const model = payload.model ?? "google-official/veo-3.1-generate-preview";
 
     try {
-      // ── Tier guard + credit checks ──
       const viewer = await options.viewerService.ensureViewer(user);
       const workspaceId = viewer.workspace.id;
-      let creditsCost = 0;
-
-      if (options.creditService && options.tierGuard) {
-        const sub = await options.creditService.getSubscription(workspaceId);
-        options.tierGuard.checkModelAccess(sub.plan, model);
-        if (payload.resolution) {
-          options.tierGuard.checkVideoResolution(
-            sub.plan,
-            payload.resolution as VideoResolution,
-          );
-        }
-        await options.tierGuard.checkConcurrency(workspaceId, sub.plan);
-        creditsCost = options.tierGuard.calculateCreditCost(
-          model,
-          "video_generation",
-          {
-            ...(payload.duration != null ? { duration: payload.duration } : {}),
-            ...(payload.resolution
-              ? { resolution: payload.resolution as VideoResolution }
-              : {}),
-          },
-        );
-      }
 
       // ── Create job ──
       const job = await options.jobService.createJob(user, {
@@ -253,23 +182,6 @@ export async function registerGenerateRoutes(
             : {}),
         },
       });
-
-      // ── Deduct credits BEFORE generation ──
-      if (options.creditService && creditsCost > 0) {
-        try {
-          const txId = await options.creditService.deductCredits(
-            workspaceId,
-            user.id,
-            creditsCost,
-            job.id,
-            `Direct video generation: ${model}`,
-          );
-          await options.jobService.setCreditsInfo(job.id, creditsCost, txId);
-        } catch (deductError) {
-          await options.jobService.cancelJob(user, job.id).catch(() => {});
-          throw deductError;
-        }
-      }
 
       // ── Poll until terminal state ──
       const POLL_INTERVAL = 3_000;
@@ -303,20 +215,6 @@ export async function registerGenerateRoutes(
         durationSeconds: result.duration_seconds,
       });
     } catch (error) {
-      if (error instanceof TierGuardError) {
-        return reply.code(error.statusCode).send(
-          applicationErrorResponseSchema.parse({
-            error: { code: error.code, message: error.message },
-          }),
-        );
-      }
-      if (error instanceof CreditServiceError) {
-        return reply.code(error.statusCode).send(
-          applicationErrorResponseSchema.parse({
-            error: { code: error.code, message: error.message },
-          }),
-        );
-      }
       if (error instanceof JobServiceError) {
         return reply.code(error.statusCode).send(
           applicationErrorResponseSchema.parse({

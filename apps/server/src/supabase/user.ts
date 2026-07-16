@@ -12,6 +12,8 @@ export type AuthenticatedUser = {
   accessToken: string;
   email: string;
   id: string;
+  /** SSO tenant is the financial owner; fallback is the personal tenant UUID. */
+  tenantId: string;
   userMetadata: Record<string, unknown>;
 };
 
@@ -97,8 +99,15 @@ export function createSupabaseRequestAuthenticator(
           });
 
           const userId = payload.sub;
+          const metadata = isRecord(payload.user_metadata)
+            ? (payload.user_metadata as Record<string, unknown>)
+            : {};
           const email =
-            typeof payload.email === "string" ? payload.email : null;
+            typeof metadata.sso_email === "string"
+              ? metadata.sso_email
+              : typeof payload.email === "string"
+                ? payload.email
+                : null;
 
           if (!userId || !email) return null;
 
@@ -106,9 +115,8 @@ export function createSupabaseRequestAuthenticator(
             accessToken,
             email,
             id: userId,
-            userMetadata: isRecord(payload.user_metadata)
-              ? (payload.user_metadata as Record<string, unknown>)
-              : {},
+            tenantId: resolveTenantId(metadata, payload.tenant_id, payload.tenantId, userId),
+            userMetadata: metadata,
           };
 
           setCachedAuth(accessToken, user);
@@ -125,14 +133,19 @@ export function createSupabaseRequestAuthenticator(
         const { data, error } = await client.auth.getUser();
 
         if (error || !data.user || !data.user.email) return null;
+        const metadata = isRecord(data.user.user_metadata)
+          ? data.user.user_metadata
+          : {};
 
         const user: AuthenticatedUser = {
           accessToken,
-          email: data.user.email,
+          email:
+            typeof metadata.sso_email === "string"
+              ? metadata.sso_email
+              : data.user.email,
           id: data.user.id,
-          userMetadata: isRecord(data.user.user_metadata)
-            ? data.user.user_metadata
-            : {},
+          tenantId: resolveTenantId(metadata, undefined, undefined, data.user.id),
+          userMetadata: metadata,
         };
 
         setCachedAuth(accessToken, user);
@@ -186,4 +199,20 @@ function readBearerToken(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveTenantId(
+  metadata: Record<string, unknown>,
+  claimSnake: unknown,
+  claimCamel: unknown,
+  personalTenantId: string,
+): string {
+  for (const value of [claimSnake, claimCamel, metadata.tenant_id, metadata.tenantId]) {
+    if (typeof value === "string" && isUuid(value)) return value;
+  }
+  return personalTenantId;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
