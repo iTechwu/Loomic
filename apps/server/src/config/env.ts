@@ -52,12 +52,6 @@ export type ServerEnv = {
   ssoJwksUri?: string;
   ssoRedirectUri?: string;
   ssoServiceName?: string;
-  supabaseAnonKey?: string;
-  supabaseDbUrl?: string;
-  supabaseJwtSecret?: string;
-  supabaseProjectId?: string;
-  supabaseServiceRoleKey?: string;
-  supabaseUrl?: string;
   tos?: TosConfig;
   version: string;
   volcesApiKey?: string;
@@ -86,21 +80,6 @@ export function loadServerEnv(
   const databaseUrl =
     overrides.databaseUrl ?? normalizeOptionalString(source.DATABASE_URL);
   const tos = overrides.tos ?? parseTosConfig(source);
-  const supabaseUrl =
-    overrides.supabaseUrl ?? normalizeOptionalString(source.SUPABASE_URL);
-  const supabaseAnonKey =
-    overrides.supabaseAnonKey ??
-    normalizeOptionalString(source.SUPABASE_ANON_KEY);
-  const supabaseDbUrl =
-    overrides.supabaseDbUrl ?? normalizeOptionalString(source.SUPABASE_DB_URL);
-  const supabaseJwtSecret =
-    overrides.supabaseJwtSecret ?? normalizeOptionalString(source.SUPABASE_JWT_SECRET);
-  const supabaseServiceRoleKey =
-    overrides.supabaseServiceRoleKey ??
-    normalizeOptionalString(source.SUPABASE_SERVICE_ROLE_KEY);
-  const supabaseProjectId =
-    overrides.supabaseProjectId ??
-    normalizeOptionalString(source.SUPABASE_PROJECT_ID);
   const ssoApiUrl =
     overrides.ssoApiUrl ?? normalizeOptionalString(source.SSO_API_URL);
   const ssoClientId =
@@ -193,12 +172,6 @@ export function loadServerEnv(
     ...(openAIApiBase ? { openAIApiBase } : {}),
     ...(openAIApiKey ? { openAIApiKey } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
-    ...(supabaseUrl ? { supabaseUrl } : {}),
-    ...(supabaseAnonKey ? { supabaseAnonKey } : {}),
-    ...(supabaseDbUrl ? { supabaseDbUrl } : {}),
-    ...(supabaseJwtSecret ? { supabaseJwtSecret } : {}),
-    ...(supabaseServiceRoleKey ? { supabaseServiceRoleKey } : {}),
-    ...(supabaseProjectId ? { supabaseProjectId } : {}),
     ...(tos ? { tos } : {}),
     ...(ssoApiUrl ? { ssoApiUrl } : {}),
     ...(ssoClientId ? { ssoClientId } : {}),

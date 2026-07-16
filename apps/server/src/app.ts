@@ -77,16 +77,13 @@ import { registerViewerRoutes } from "./http/viewer.js";
 import { CanvasEventBuffer } from "./ws/event-buffer.js";
 import { ConnectionManager } from "./ws/connection-manager.js";
 import { registerWsRoute } from "./ws/handler.js";
-import { createAdminSupabaseClient } from "./supabase/admin.js";
 import { createDatabasePool } from "./database/pool.js";
 import { createNativeDataRepository } from "./database/native-data-repository.js";
+import { createNativeSkillRepository } from "./database/skill-repository.js";
+import { createSsoIdentityRepository } from "./database/sso-identity-repository.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
-import {
-  createSupabaseRequestAuthenticator,
-  createUserSupabaseClientFactory,
-  type RequestAuthenticator,
-} from "./supabase/user.js";
+import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./supabase/user.js";
 
 export type BuildAppOptions = {
   agentFactory?: LovartDofeAgentFactory;
@@ -134,20 +131,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       viewerService,
     });
   });
-  const auth = options.auth ?? createSupabaseRequestAuthenticator(env);
-  const createUserClient = createUserSupabaseClientFactory(env);
-  let adminClient:
-    | ReturnType<typeof createAdminSupabaseClient>
-    | undefined;
-  const getAdminClient = () => {
-    adminClient ??= createAdminSupabaseClient(env);
-    return adminClient;
-  };
   if (!env.databaseUrl || !env.tos) {
     throw new Error("DATABASE_URL and complete TOS_* configuration are required for the native metadata data plane.");
   }
   const databasePool = createDatabasePool(env.databaseUrl);
+  const identities = createSsoIdentityRepository(databasePool);
+  const auth = options.auth ?? createSsoRequestAuthenticator(env, identities);
   const dataRepository = createNativeDataRepository(databasePool);
+  const skillRepository = createNativeSkillRepository(databasePool);
   const chatRepository = createNativeChatRepository(databasePool);
   const settingsRepository = createNativeSettingsRepository(databasePool);
   const objectStorage = createConfiguredTosObjectStorage(env.tos);
@@ -158,7 +149,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     options.projectService ??
     createProjectService({ repository: dataRepository, storage: objectStorage, viewerService });
   const brandKitService =
-    options.brandKitService ?? createBrandKitService({ createUserClient });
+    options.brandKitService ?? createBrandKitService({ pool: databasePool, storage: objectStorage });
   const canvasService =
     options.canvasService ?? createCanvasService({ repository: dataRepository, storage: objectStorage });
   const threadService =
@@ -193,11 +184,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     agentPersistenceService,
     ...(options.agentFactory ? { agentFactory: options.agentFactory } : {}),
     agentRunMetadataService,
+    brandKitService,
     canvasElementWriter,
     dataRepository,
     databasePool,
     connectionManager,
-    createUserClient,
     ...(options.agentModel ? { model: options.agentModel } : {}),
     ...(options.mockEventDelayMs === undefined
       ? {}
@@ -238,7 +229,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
-  void registerOidcAuthRoutes(app, { env, getAdminClient });
+  void registerOidcAuthRoutes(app, { env, identities });
   void registerFontsRoutes(app, { env });
   void registerImageProxyRoute(app);
   void registerRunRoutes(app, agentRuns, {
@@ -290,8 +281,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   if (jobService) {
     void registerJobRoutes(app, { auth, jobService, viewerService });
   }
-  void registerSkillRoutes(app, { auth, createUserClient, viewerService });
-  void registerMarketplaceRoutes(app, { auth, createUserClient, viewerService });
+  void registerSkillRoutes(app, { auth, repository: skillRepository, viewerService });
+  void registerMarketplaceRoutes(app, { auth, repository: skillRepository, viewerService });
 
   return app;
 }

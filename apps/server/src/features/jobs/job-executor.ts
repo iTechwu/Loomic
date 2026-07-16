@@ -6,7 +6,6 @@ import type { NativeDataRepository } from "../../database/native-data-repository
 import type { NativeJobRepository } from "../../database/job-repository.js";
 import type { RabbitMqClient } from "../../queue/rabbitmq-client.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
-import type { AdminSupabaseClient } from "../../supabase/admin.js";
 
 export type ExecutorContext = {
   jobService: JobService;
@@ -14,7 +13,6 @@ export type ExecutorContext = {
   dataRepository: NativeDataRepository;
   rabbitMq: RabbitMqClient;
   objectStorage: TosObjectStorage;
-  getAdminClient: () => AdminSupabaseClient;
   env: ServerEnv;
 };
 

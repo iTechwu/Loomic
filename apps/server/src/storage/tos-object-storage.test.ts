@@ -17,8 +17,11 @@ const config: TosConfig = {
 describe("createTosObjectStorage", () => {
   it("writes through the internal endpoint and issues reads through the public bucket domain", async () => {
     const client = {
+      copyObject: vi.fn().mockResolvedValue({ data: { ETag: "etag-copy" } }),
       deleteObject: vi.fn().mockResolvedValue({}),
-      getPreSignedUrl: vi.fn().mockReturnValue("https://signed.example.test/asset"),
+      getPreSignedUrl: vi
+        .fn()
+        .mockReturnValue("https://signed.example.test/asset"),
       putObject: vi.fn().mockResolvedValue({ headers: { etag: "etag-1" } }),
     };
     const storage = createTosObjectStorage(config, client);
@@ -29,6 +32,10 @@ describe("createTosObjectStorage", () => {
       key: "workspaces/workspace-1/assets/asset.png",
     });
     const url = storage.createReadUrl(object.key, 900);
+    const copy = await storage.copy(
+      object.key,
+      "workspaces/workspace-1/assets/copy.png",
+    );
 
     expect(client.putObject).toHaveBeenCalledWith({
       body: Buffer.from("asset"),
@@ -45,6 +52,13 @@ describe("createTosObjectStorage", () => {
       method: "GET",
     });
     expect(object.etag).toBe("etag-1");
+    expect(client.copyObject).toHaveBeenCalledWith({
+      bucket: "lovart-assets",
+      key: "workspaces/workspace-1/assets/copy.png",
+      srcBucket: "lovart-assets",
+      srcKey: "workspaces/workspace-1/assets/asset.png",
+    });
+    expect(copy.etag).toBe("etag-copy");
     expect(url).toBe("https://signed.example.test/asset");
   });
 });

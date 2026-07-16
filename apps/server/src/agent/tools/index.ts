@@ -2,6 +2,9 @@ import type { StructuredTool } from "@langchain/core/tools";
 import type { BackendFactory, BackendProtocol } from "deepagents";
 
 import type { ConnectionManager } from "../../ws/connection-manager.js";
+import type { NativeDataRepository } from "../../database/native-data-repository.js";
+import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
+import type { BrandKitService } from "../../features/brand-kit/brand-kit-service.js";
 import { createBrandKitTool } from "./brand-kit.js";
 import { createInspectCanvasTool } from "./inspect-canvas.js";
 import { createManipulateCanvasTool } from "./manipulate-canvas.js";
@@ -54,7 +57,9 @@ export { createManipulateCanvasTool } from "./manipulate-canvas.js";
 export function createMainAgentTools(
   backend: BackendProtocol | BackendFactory,
   deps: {
-    createUserClient: (accessToken: string) => any;
+    brandKitService: BrandKitService;
+    dataRepository: NativeDataRepository;
+    objectStorage: TosObjectStorage;
     brandKitId?: string | null;
     connectionManager?: ConnectionManager;
     persistImage?: PersistImageFn;
@@ -65,8 +70,8 @@ export function createMainAgentTools(
 ) {
   const tools: StructuredTool[] = [
     createProjectSearchTool(backend),
-    createInspectCanvasTool(deps),
-    createManipulateCanvasTool(deps),
+    createInspectCanvasTool({ dataRepository: deps.dataRepository }),
+    createManipulateCanvasTool({ dataRepository: deps.dataRepository }),
     createImageGenerateTool({
       ...(deps.persistImage ? { persistImage: deps.persistImage } : {}),
       ...(deps.submitImageJob ? { submitImageJob: deps.submitImageJob } : {}),
@@ -75,7 +80,8 @@ export function createMainAgentTools(
       ...(deps.submitVideoJob ? { submitVideoJob: deps.submitVideoJob } : {}),
     }),
     createPersistSandboxFileTool({
-      createUserClient: deps.createUserClient,
+      dataRepository: deps.dataRepository,
+      storage: deps.objectStorage,
       ...(deps.sandboxDir ? { sandboxDir: deps.sandboxDir } : {}),
     }),
     // execute 工具由 deepagents FilesystemMiddleware 自动注入，
@@ -83,13 +89,20 @@ export function createMainAgentTools(
     // 不需要在这里手动注册。
   ];
   if (deps.brandKitId) {
-    tools.push(createBrandKitTool(deps, deps.brandKitId));
+    tools.push(
+      createBrandKitTool(
+        { brandKitService: deps.brandKitService },
+        deps.brandKitId,
+      ),
+    );
   }
   if (deps.connectionManager) {
-    tools.push(createScreenshotCanvasTool({
-      connectionManager: deps.connectionManager,
-      ...(deps.persistImage ? { persistImage: deps.persistImage } : {}),
-    }));
+    tools.push(
+      createScreenshotCanvasTool({
+        connectionManager: deps.connectionManager,
+        ...(deps.persistImage ? { persistImage: deps.persistImage } : {}),
+      }),
+    );
   }
   return tools;
 }

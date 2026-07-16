@@ -16,7 +16,6 @@ import { createRabbitMqClient } from "./queue/rabbitmq-client.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createJobService } from "./features/jobs/job-service.js";
 import { getExecutor, type ExecutorContext } from "./features/jobs/job-executor.js";
-import { createAdminSupabaseClient } from "./supabase/admin.js";
 import { registerAllProviders } from "./generation/providers/register-all.js";
 import "./features/jobs/executors/image-generation.js";
 import "./features/jobs/executors/video-generation.js";
@@ -35,8 +34,6 @@ async function main() {
   const rabbitMq = createRabbitMqClient(env.rabbitMqUrl);
   const objectStorage = createConfiguredTosObjectStorage(env.tos);
   const jobService = createJobService({ repository: jobRepository, rabbitMq });
-  let adminClient: ReturnType<typeof createAdminSupabaseClient> | undefined;
-  const getAdminClient = () => (adminClient ??= createAdminSupabaseClient(env));
   const tag = `[worker:${env.workerId ?? randomUUID().slice(0, 8)}]`;
   let stopping = false;
 
@@ -54,7 +51,7 @@ async function main() {
     const prefetch = queue === "image_generation_jobs" ? env.workerImageConcurrency ?? 3 : env.workerVideoConcurrency ?? 2;
     await rabbitMq.consume(queue, async ({ payload }) => {
       if (stopping) return;
-      await processMessage(queue, payload as Record<string, unknown>, { dataRepository, env, getAdminClient, jobRepository, jobService, objectStorage, rabbitMq }, tag);
+      await processMessage(queue, payload as Record<string, unknown>, { dataRepository, env, jobRepository, jobService, objectStorage, rabbitMq }, tag);
     }, { prefetch });
   }));
   console.log(`${tag} started`, { queues: QUEUES });

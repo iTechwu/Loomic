@@ -106,9 +106,8 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
                                           └────────┬────────┘
                                                    │
                                           ┌────────▼────────┐
-                                          │    Supabase      │
-                                          │  PostgreSQL      │
-                                          │  Auth / Storage  │
+                                          │   PostgreSQL     │
+                                          │   SSO / TOS      │
                                           └─────────────────┘
 ```
 
@@ -117,7 +116,7 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
 | **Frontend** | Next.js 15 + React 19 + Tailwind CSS 4 | Canvas UI, chat panel, workspace |
 | **API Server** | Fastify 5 + LangGraph | Agent runtime, WebSocket, REST API |
 | **Worker** | Node.js poll-based consumer | Async image/video generation jobs |
-| **Database** | Supabase (PostgreSQL) | Data, auth, storage, job queue (PGMQ) |
+| **Data plane** | PostgreSQL + Volcengine TOS | Product metadata, LangGraph state, and private assets |
 | **Canvas** | Excalidraw 0.18 | Infinite canvas rendering |
 | **AI** | LangChain + LangGraph | Agent orchestration, tool calling |
 | **Queue** | PGMQ | Reliable async job processing |
@@ -136,10 +135,10 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
 | LLM Providers | OpenAI, Google Gemini, Google Vertex AI |
 | Image Generation | Imagen, DALL-E, Replicate (13+ models) |
 | Video Generation | Google Veo 3.x, Replicate (Kling, Sora, Seedance, etc.) |
-| Database | PostgreSQL (Supabase) |
-| Auth | Supabase Auth (Magic Link + OAuth) |
-| Storage | Supabase Storage (S3-compatible) |
-| Queue | PGMQ (PostgreSQL native) |
+| Database | Native PostgreSQL |
+| Auth | DoFe SSO / OpenID Connect |
+| Storage | Volcengine TOS |
+| Queue | RabbitMQ |
 | Payments | LemonSqueezy |
 | Linting | Biome |
 | Testing | Vitest |
@@ -152,8 +151,8 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
 
 - **Node.js** >= 20
 - **pnpm** >= 10 (`npm install -g pnpm`)
-- **Supabase CLI** (`brew install supabase/tap/supabase`)
-- A [Supabase](https://supabase.com) project (free tier works)
+- PostgreSQL 15+ and a Volcengine TOS bucket
+- DoFe SSO / OpenID Connect client credentials
 - At least one AI API key (Google or OpenAI)
 
 ### 1. Clone & Install
@@ -164,16 +163,15 @@ cd lovart.dofe
 pnpm install
 ```
 
-### 2. Set Up Supabase
+### 2. Set Up PostgreSQL
 
-Create a Supabase project at [supabase.com](https://supabase.com), then apply migrations:
+Create the product database and apply the server-owned migrations:
 
 ```bash
-supabase link --project-ref YOUR_PROJECT_REF
-supabase db push
+DATABASE_URL=postgresql://... pnpm --filter @lovart.dofe/server db:migrate
 ```
 
-This creates all required tables, RLS policies, storage buckets, and the PGMQ job queue.
+This creates product metadata, SSO subject mappings, skills, brand kits, chat state, and LangGraph persistence tables. Configure TOS separately for binary assets.
 
 ### 3. Configure Environment
 
@@ -184,14 +182,16 @@ cp .env.example .env.local
 Edit `.env.local` with your credentials:
 
 ```bash
-# ── Required: Supabase ──────────────────────────────────────
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SUPABASE_DB_URL=postgresql://postgres:pw@db.your-project.supabase.co:5432/postgres
-SUPABASE_PROJECT_ID=your-project-ref
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+# ── Required: native data plane ──────────────────────────────
+DATABASE_URL=postgresql://dofe:pw@postgres:5432/lovart_dofe
+TOS_ACCESS_KEY=your-tos-access-key
+TOS_SECRET_KEY=your-tos-secret-key
+TOS_REGION=your-tos-region
+TOS_ENDPOINT=https://tos.example.com
+TOS_INTERNAL_ENDPOINT=https://tos-internal.example.com
+TOS_BUCKET=lovart-dofe
+TOS_BUCKET_DOMAIN=https://assets.example.com
+TOS_INTERNAL_BUCKET_DOMAIN=https://assets-internal.example.com
 
 # ── Required: DoFe SSO / OIDC ───────────────────────────────
 # The browser redirects to SSO; keep the client and internal secrets server-only.
@@ -382,13 +382,10 @@ lovart.dofe/
 
 | Variable | Description |
 |----------|-------------|
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only) |
-| `SUPABASE_DB_URL` | PostgreSQL connection string (for PGMQ) |
-| `SUPABASE_PROJECT_ID` | Supabase project reference ID |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL (exposed to frontend) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (exposed to frontend) |
+| `DATABASE_URL` | Native PostgreSQL connection string |
+| `TOS_*` | Server-only Volcengine TOS credentials and bucket endpoints |
+| `SSO_ISSUER`, `SSO_CLIENT_ID`, `JWKS_URI` | SSO token verification configuration |
+| `SSO_CLIENT_SECRET`, `SSO_INTERNAL_API_URL` | Server-only OIDC exchange configuration |
 
 ### AI Providers (at least one required)
 

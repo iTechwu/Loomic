@@ -1,104 +1,175 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-
 import {
   applicationErrorResponseSchema,
   marketplaceInstallRequestSchema,
   skillDetailResponseSchema,
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
-
+import type { NativeSkillRepository } from "../database/skill-repository.js";
+import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import {
-  searchMarketplace,
   getMarketplaceDetail,
   installFromMarketplace,
   MarketplaceError,
+  searchMarketplace,
 } from "../features/skills/marketplace-service.js";
+import type { RequestAuthenticator } from "../supabase/user.js";
 
-import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
-import type {
-  RequestAuthenticator,
-  UserSupabaseClient,
-} from "../supabase/user.js";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const untypedFrom = (client: UserSupabaseClient, table: string) => (client as any).from(table);
-
-// ---------------------------------------------------------------------------
-// Skill row mappers (duplicated from skills.ts to avoid circular imports)
-// ---------------------------------------------------------------------------
-
-type SkillRow = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  author: string;
-  version: string;
-  license: string | null;
-  category: string;
-  icon_name: string | null;
-  source: string;
-  skill_content: string;
-  metadata: Record<string, unknown> | null;
-  is_featured: boolean;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-  source_url: string | null;
-  package_name: string | null;
-};
-
-type SkillFileRow = {
-  id: string;
-  skill_id: string;
-  file_path: string;
-  content: string;
-  mime_type: string;
-  created_at: string;
-  updated_at: string;
-};
-
-function mapSkillRow(row: SkillRow) {
+export async function registerMarketplaceRoutes(
+  app: FastifyInstance,
+  options: {
+    auth: RequestAuthenticator;
+    repository: NativeSkillRepository;
+    viewerService: ViewerService;
+  },
+) {
+  app.get("/api/skills/marketplace/search", async (request, reply) => {
+    if (!(await options.auth.authenticate(request))) return unauth(reply);
+    try {
+      const {
+        q = "",
+        page = "1",
+        limit = "20",
+      } = request.query as Record<string, string>;
+      return reply.send(
+        await searchMarketplace(q, Number(page), Number(limit)),
+      );
+    } catch (error) {
+      return marketplaceError(
+        request,
+        reply,
+        error,
+        "marketplace_search_failed",
+        "Marketplace search failed.",
+      );
+    }
+  });
+  app.get("/api/skills/marketplace/detail", async (request, reply) => {
+    if (!(await options.auth.authenticate(request))) return unauth(reply);
+    const { name } = request.query as { name?: string };
+    if (!name)
+      return fail(
+        reply,
+        "marketplace_detail_failed",
+        "Package name is required.",
+        400,
+      );
+    try {
+      return reply.send(await getMarketplaceDetail(name));
+    } catch (error) {
+      return marketplaceError(
+        request,
+        reply,
+        error,
+        "marketplace_detail_failed",
+        "Failed to fetch package detail.",
+      );
+    }
+  });
+  app.post("/api/skills/marketplace/install", async (request, reply) => {
+    const user = await options.auth.authenticate(request);
+    if (!user) return unauth(reply);
+    try {
+      const { packageName } = marketplaceInstallRequestSchema.parse(
+        request.body,
+      );
+      const viewer = await options.viewerService.ensureViewer(user);
+      const { imported, packageName: resolvedPackageName } =
+        await installFromMarketplace(packageName);
+      const skill = await options.repository.create({
+        author: imported.manifest.author ?? "unknown",
+        category: "custom",
+        createdBy: user.id,
+        description: imported.manifest.description,
+        files: imported.files.map((f) => ({
+          content: f.content,
+          filePath: f.filePath,
+          mimeType: f.mimeType,
+        })),
+        license: imported.manifest.license ?? null,
+        metadata: {
+          ...(imported.manifest.metadata ?? {}),
+          source_url: `https://www.npmjs.com/package/${packageName}`,
+          package_name: resolvedPackageName,
+        },
+        name: imported.manifest.name,
+        slug: slug(imported.manifest.name),
+        source: "marketplace",
+        skillContent: imported.skillContent,
+        version: imported.manifest.version ?? "1.0",
+      });
+      await options.repository.install({
+        enabled: true,
+        installedBy: user.id,
+        skillId: String(skill.id),
+        userId: user.id,
+        workspaceId: viewer.workspace.id,
+      });
+      request.log.info(
+        { packageName, skillId: skill.id },
+        "marketplace_skill_installed",
+      );
+      return reply
+        .code(201)
+        .send(
+          skillDetailResponseSchema.parse({
+            skill: {
+              ...detail(skill),
+              files: (await options.repository.files(String(skill.id))).map(
+                file,
+              ),
+            },
+          }),
+        );
+    } catch (error) {
+      return marketplaceError(
+        request,
+        reply,
+        error,
+        "marketplace_install_failed",
+        "Failed to install marketplace skill.",
+      );
+    }
+  });
+}
+function iso(v: unknown) {
+  return v instanceof Date
+    ? v.toISOString()
+    : new Date(String(v)).toISOString();
+}
+function detail(row: any) {
   return {
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    description: row.description,
-    author: row.author,
-    version: row.version,
-    category: row.category,
-    iconName: row.icon_name,
-    source: row.source,
-    isFeatured: row.is_featured,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: String(row.id),
+    name: String(row.name),
+    slug: String(row.slug),
+    description: String(row.description),
+    author: String(row.author),
+    version: String(row.version),
+    category: String(row.category),
+    iconName: row.icon_name ?? null,
+    source: String(row.source),
+    isFeatured: Boolean(row.is_featured),
+    metadata: row.metadata ?? {},
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+    license: row.license ?? null,
+    skillContent: String(row.skill_content),
+    createdBy: row.created_by ?? null,
+    sourceUrl: row.metadata?.source_url ?? null,
+    packageName: row.metadata?.package_name ?? null,
   };
 }
-
-function mapSkillDetailRow(row: SkillRow) {
+function file(row: any) {
   return {
-    ...mapSkillRow(row),
-    license: row.license,
-    skillContent: row.skill_content,
-    createdBy: row.created_by,
-    sourceUrl: row.source_url ?? null,
-    packageName: row.package_name ?? null,
+    id: String(row.id),
+    filePath: String(row.file_path),
+    content: String(row.content),
+    mimeType: String(row.mime_type),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
   };
 }
-
-function mapSkillFileRow(row: SkillFileRow) {
-  return {
-    id: row.id,
-    filePath: row.file_path,
-    content: row.content,
-    mimeType: row.mime_type,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function generateSlug(name: string): string {
+function slug(name: string) {
   return name
     .toLowerCase()
     .trim()
@@ -106,173 +177,46 @@ function generateSlug(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 100);
 }
-
-// ---------------------------------------------------------------------------
-// Route registration
-// ---------------------------------------------------------------------------
-
-export async function registerMarketplaceRoutes(
-  app: FastifyInstance,
-  options: {
-    auth: RequestAuthenticator;
-    createUserClient: (accessToken: string) => UserSupabaseClient;
-    viewerService: ViewerService;
-  },
-) {
-  // GET /api/skills/marketplace/search — search skills.sh via npm registry
-  app.get("/api/skills/marketplace/search", async (request, reply) => {
-    try {
-      const user = await options.auth.authenticate(request);
-      if (!user) return sendUnauthenticated(reply);
-
-      const { q = "", page = "1", limit = "20" } = request.query as Record<string, string>;
-      const result = await searchMarketplace(q, parseInt(page, 10), parseInt(limit, 10));
-      return reply.code(200).send(result);
-    } catch (error) {
-      if (error instanceof MarketplaceError) {
-        return sendError(reply, "marketplace_search_failed", error.message, 502);
-      }
-      request.log.error({ err: error }, "marketplace search error");
-      return sendError(reply, "marketplace_search_failed", "Marketplace search failed.");
-    }
-  });
-
-  // GET /api/skills/marketplace/detail — get package detail from npm registry
-  app.get("/api/skills/marketplace/detail", async (request, reply) => {
-    try {
-      const user = await options.auth.authenticate(request);
-      if (!user) return sendUnauthenticated(reply);
-
-      const { name } = request.query as { name?: string };
-      if (!name) {
-        return reply.code(400).send(
-          applicationErrorResponseSchema.parse({
-            error: { code: "marketplace_detail_failed", message: "Package name is required (use ?name=package-name)" },
-          }),
-        );
-      }
-      const detail = await getMarketplaceDetail(name);
-      return reply.code(200).send(detail);
-    } catch (error) {
-      if (error instanceof MarketplaceError) {
-        const status = error.code === "package_not_found" ? 404 : 502;
-        return sendError(reply, "marketplace_detail_failed", error.message, status);
-      }
-      request.log.error({ err: error }, "marketplace detail error");
-      return sendError(reply, "marketplace_detail_failed", "Failed to fetch package detail.");
-    }
-  });
-
-  // POST /api/skills/marketplace/install — install a skill from skills.sh
-  app.post("/api/skills/marketplace/install", async (request, reply) => {
-    try {
-      const user = await options.auth.authenticate(request);
-      if (!user) return sendUnauthenticated(reply);
-
-      const { packageName } = marketplaceInstallRequestSchema.parse(request.body);
-      const viewer = await options.viewerService.ensureViewer(user);
-      const workspaceId = viewer.workspace.id;
-      const client = options.createUserClient(user.accessToken);
-
-      // Download and parse from npm registry
-      const { imported, packageName: pkgName } = await installFromMarketplace(packageName);
-      const slug = generateSlug(imported.manifest.name);
-
-      // Insert skill
-      const { data: skillData, error: skillError } = await untypedFrom(client, "skills")
-        .insert({
-          name: imported.manifest.name,
-          slug,
-          description: imported.manifest.description,
-          author: imported.manifest.author ?? "unknown",
-          version: imported.manifest.version ?? "1.0",
-          license: imported.manifest.license ?? null,
-          category: "custom",
-          source: "user",
-          skill_content: imported.skillContent,
-          metadata: {
-            ...(imported.manifest.metadata ?? {}),
-            source_url: `https://www.npmjs.com/package/${packageName}`,
-            package_name: pkgName,
-          },
-          created_by: user.id,
-        })
-        .select("*")
-        .single();
-
-      if (skillError) {
-        request.log.error({ err: skillError }, "marketplace install DB insert failed");
-        if (skillError.code === "23505") {
-          return sendError(reply, "marketplace_install_failed", "This skill is already installed.", 409);
-        }
-        return sendError(reply, "marketplace_install_failed", "Failed to save marketplace skill.");
-      }
-
-      // Insert files
-      if (imported.files.length > 0 && skillData?.id) {
-        const fileRows = imported.files.map((f) => ({
-          skill_id: skillData.id,
-          file_path: f.filePath,
-          content: f.content,
-          mime_type: f.mimeType,
-        }));
-        const { error: fileError } = await untypedFrom(client, "skill_files").insert(fileRows);
-        if (fileError) {
-          request.log.error({ err: fileError }, "marketplace install file insert failed (non-fatal)");
-        }
-      }
-
-      // Auto-install to workspace
-      if (skillData?.id) {
-        await untypedFrom(client, "workspace_skills").upsert(
-          { workspace_id: workspaceId, skill_id: skillData.id, enabled: true, installed_by: user.id },
-          { onConflict: "workspace_id,skill_id" },
-        );
-      }
-
-      // Return full skill detail with files
-      const { data: fileData } = await untypedFrom(client, "skill_files")
-        .select("*")
-        .eq("skill_id", skillData.id)
-        .order("file_path", { ascending: true });
-
-      const skill = {
-        ...mapSkillDetailRow(skillData),
-        files: (fileData ?? []).map(mapSkillFileRow),
-      };
-
-      return reply.code(201).send(skillDetailResponseSchema.parse({ skill }));
-    } catch (error) {
-      if (error instanceof MarketplaceError) {
-        return sendError(reply, "marketplace_install_failed", error.message, 502);
-      }
-      request.log.error({ err: error }, "marketplace install error");
-      return sendError(reply, "marketplace_install_failed", "Failed to install marketplace skill.");
-    }
-  });
+function unauth(reply: FastifyReply) {
+  return reply
+    .code(401)
+    .send(
+      unauthenticatedErrorResponseSchema.parse({
+        error: {
+          code: "unauthorized",
+          message: "Missing or invalid bearer token.",
+        },
+      }),
+    );
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function sendUnauthenticated(reply: FastifyReply) {
-  return reply.code(401).send(
-    unauthenticatedErrorResponseSchema.parse({
-      error: { code: "unauthorized", message: "Missing or invalid bearer token." },
-    }),
-  );
-}
-
-function sendError(
+function fail(
   reply: FastifyReply,
   code: string,
   message: string,
-  statusCode = 500,
+  status = 500,
 ) {
-  return reply.code(statusCode).send(
-    applicationErrorResponseSchema.parse({
-      error: { code, message },
-    }),
-  );
+  return reply
+    .code(status)
+    .send(applicationErrorResponseSchema.parse({ error: { code, message } }));
+}
+function marketplaceError(
+  request: any,
+  reply: FastifyReply,
+  error: unknown,
+  code: string,
+  message: string,
+) {
+  if (error instanceof Error && error.name === "ZodError")
+    return reply
+      .code(400)
+      .send({ issues: (error as any).issues, message: "Invalid request body" });
+  if (error instanceof MarketplaceError)
+    return fail(
+      reply,
+      code,
+      error.message,
+      error.code === "package_not_found" ? 404 : 502,
+    );
+  request.log.error({ err: error }, code);
+  return fail(reply, code, message);
 }

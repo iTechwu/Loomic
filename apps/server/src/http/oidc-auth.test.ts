@@ -41,7 +41,7 @@ describe("OIDC auth routes", () => {
   it("returns a diagnosable error when SSO is not configured", async () => {
     const { ssoClientSecret: _unused, ...env } = configuredEnv;
     const app = createTestApp(env);
-    await registerOidcAuthRoutes(app, { env, getAdminClient: () => null as never });
+    await registerOidcAuthRoutes(app, { env, identities: { resolve: async () => "00000000-0000-4000-8000-000000000001" } });
 
     const response = await app.inject({ method: "GET", url: "/api/auth/oidc/start" });
     expect(response.statusCode).toBe(503);
@@ -50,7 +50,7 @@ describe("OIDC auth routes", () => {
 
   it("starts a PKCE authorization request with refresh-capable SSO scopes", async () => {
     const app = createTestApp(configuredEnv);
-    await registerOidcAuthRoutes(app, { env: configuredEnv, getAdminClient: () => null as never });
+    await registerOidcAuthRoutes(app, { env: configuredEnv, identities: { resolve: async () => "00000000-0000-4000-8000-000000000001" } });
 
     const response = await app.inject({ method: "GET", url: "/api/auth/oidc/start?returnTo=%2Fpricing" });
     expect(response.statusCode).toBe(302);

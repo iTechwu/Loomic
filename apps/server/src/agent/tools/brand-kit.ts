@@ -1,61 +1,33 @@
 import { tool } from "langchain";
 import { z } from "zod";
+import type { BrandKitService } from "../../features/brand-kit/brand-kit-service.js";
 
 const brandKitSchema = z.object({});
 
 export function createBrandKitTool(
-  deps: { createUserClient: (accessToken: string) => any },
+  deps: { brandKitService: BrandKitService },
   brandKitId: string,
 ) {
   return tool(
     async (_input, config) => {
-      const accessToken = (config as any)?.configurable?.access_token;
-      if (!accessToken) {
-        return JSON.stringify({ error: "No access token available" });
+      const userId = (config as any)?.configurable?.user_id;
+      if (typeof userId !== "string") {
+        return JSON.stringify({ error: "No authenticated user context" });
       }
-
-      const client = deps.createUserClient(accessToken);
-
-      // Fetch kit
-      const { data: kit } = await client
-        .from("brand_kits")
-        .select("id, name, guidance_text")
-        .eq("id", brandKitId)
-        .maybeSingle();
-
-      if (!kit) {
-        return JSON.stringify({ error: "Brand kit not found" });
-      }
-
-      // Fetch assets
-      const { data: assets } = await client
-        .from("brand_kit_assets")
-        .select("asset_type, display_name, role, text_content, file_url, metadata")
-        .eq("kit_id", brandKitId)
-        .order("sort_order", { ascending: true });
-
-      const safeAssets = assets ?? [];
-
-      // Resolve signed URLs for file-based assets (logo/image)
-      const fileAssets = safeAssets.filter((a: any) => a.file_url);
-      if (fileAssets.length > 0) {
-        const paths = fileAssets.map((a: any) => a.file_url as string);
-        const { data: signedData } = await client.storage
-          .from("brand-kit-assets")
-          .createSignedUrls(paths, 3600);
-
-        if (signedData) {
-          const urlByPath = new Map(
-            signedData
-              .filter((e: any) => e.signedUrl && e.path)
-              .map((e: any) => [e.path, e.signedUrl]),
-          );
-          for (const asset of fileAssets) {
-            const url = urlByPath.get(asset.file_url);
-            if (url) asset.file_url = url;
-          }
-        }
-      }
+      const kit = await deps.brandKitService
+        .getKit(
+          {
+            id: userId,
+            accessToken: "",
+            email: "",
+            tenantId: userId,
+            userMetadata: {},
+          },
+          brandKitId,
+        )
+        .catch(() => null);
+      if (!kit) return JSON.stringify({ error: "Brand kit not found" });
+      const safeAssets = kit.assets;
 
       const result = {
         kit_name: kit.name,

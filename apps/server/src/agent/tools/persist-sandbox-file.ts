@@ -1,9 +1,11 @@
 import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { tool } from "@langchain/core/tools";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { NativeDataRepository } from "../../database/native-data-repository.js";
+import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 
 const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
@@ -30,22 +32,23 @@ const persistSandboxFileSchema = z.object({
 });
 
 export type PersistSandboxFileDeps = {
-  createUserClient: (accessToken: string) => SupabaseClient;
+  dataRepository: NativeDataRepository;
+  storage: TosObjectStorage;
   sandboxDir?: string;
 };
 
 export function createPersistSandboxFileTool(deps: PersistSandboxFileDeps) {
   return tool(
     async (input, config) => {
-      const accessToken = (config as any)?.configurable?.access_token as
+      const userId = (config as any)?.configurable?.user_id as
         | string
         | undefined;
       const canvasId = (config as any)?.configurable?.canvas_id as
         | string
         | undefined;
 
-      if (!accessToken) {
-        return "Error: No access token available. Cannot upload file.";
+      if (!userId) {
+        return "Error: No authenticated user context. Cannot upload file.";
       }
 
       // Path traversal guard: restrict reads to sandbox directory.
@@ -71,52 +74,50 @@ export function createPersistSandboxFileTool(deps: PersistSandboxFileDeps) {
         const ext = extname(input.filePath).toLowerCase();
         const mimeType = MIME_MAP[ext] ?? "application/octet-stream";
         const safeTitle = input.title
-          ? input.title.replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, "_").slice(0, 100)
+          ? input.title
+              .replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, "_")
+              .slice(0, 100)
           : null;
         const fileName = safeTitle
           ? `${safeTitle}${ext}`
           : basename(input.filePath);
 
-        const client = deps.createUserClient(accessToken);
-
-        // Resolve workspace ID from canvas for Storage RLS compliance.
-        // RLS requires: storage.foldername(name)[1] = workspace_id
-        let workspaceId: string | null = null;
-        if (canvasId) {
-          const { data: canvas } = await client
-            .from("canvases")
-            .select("project:projects(workspace_id)")
-            .eq("id", canvasId)
-            .single();
-          workspaceId = (canvas?.project as any)?.workspace_id ?? null;
-        }
-
-        const storagePath = workspaceId
-          ? `${workspaceId}/generated/${Date.now()}-${fileName}`
-          : `uploads/${Date.now()}-${fileName}`;
-        const { data, error } = await client.storage
-          .from("project-assets")
-          .upload(storagePath, fileBuffer, {
-            contentType: mimeType,
-            upsert: false,
-          });
-
-        if (error) {
-          return `Error uploading file: ${error.message}`;
-        }
-
-        const signedResult = await client.storage
-          .from("project-assets")
-          .createSignedUrl(data.path, 3600);
-
-        if (signedResult.error || !signedResult.data) {
-          return `Error creating signed URL: ${signedResult.error?.message ?? "unknown"}`;
+        const canvas = canvasId
+          ? await deps.dataRepository.findCanvas(userId, canvasId)
+          : null;
+        const project = canvas
+          ? await deps.dataRepository.findProject(userId, canvas.project_id)
+          : null;
+        const workspace = project
+          ? { id: project.workspace_id }
+          : await deps.dataRepository.findPersonalWorkspace(userId);
+        if (!workspace)
+          return "Error: No accessible workspace available for this file.";
+        const storagePath = `generated/${workspace.id}/${Date.now()}-${randomUUID()}-${fileName}`;
+        const uploaded = await deps.storage.put({
+          body: fileBuffer,
+          contentType: mimeType,
+          key: storagePath,
+        });
+        const asset = await deps.dataRepository.createAsset({
+          bucket: "project-assets",
+          byteSize: fileBuffer.length,
+          createdBy: userId,
+          etag: uploaded.etag,
+          mimeType,
+          objectPath: storagePath,
+          ...(project ? { projectId: project.id } : {}),
+          workspaceId: workspace.id,
+        });
+        if (!asset) {
+          await deps.storage.delete(storagePath).catch(() => undefined);
+          return "Error: Failed to persist file metadata.";
         }
 
         return JSON.stringify({
           summary: `File uploaded successfully: ${fileName}`,
-          url: signedResult.data.signedUrl,
-          path: data.path,
+          url: deps.storage.createReadUrl(storagePath, 3600),
+          path: storagePath,
           mimeType,
           size: fileBuffer.length,
         });

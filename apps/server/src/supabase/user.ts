@@ -1,12 +1,8 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { FastifyRequest } from "fastify";
-import { importJWK, jwtVerify } from "jose";
-
-import type { Database } from "@lovart.dofe/shared";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { ServerEnv } from "../config/env.js";
-
-export type UserSupabaseClient = SupabaseClient<Database>;
+import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
 
 export type AuthenticatedUser = {
   accessToken: string;
@@ -22,8 +18,6 @@ export type RequestAuthenticator = {
     request: Pick<FastifyRequest, "headers">,
   ): Promise<AuthenticatedUser | null>;
 };
-
-// --- In-memory auth cache (keyed by token, TTL 5 min) ---
 
 const AUTH_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -52,132 +46,43 @@ function setCachedAuth(token: string, user: AuthenticatedUser): void {
   }
 }
 
-// --- Authenticator factory ---
-
-// Parse JWK JSON string into a CryptoKey at startup (async init)
-let jwtPublicKeyPromise: Promise<Awaited<ReturnType<typeof importJWK>> | Uint8Array> | null = null;
-
-function initJwtKey(
-  env: Pick<ServerEnv, "supabaseJwtSecret">,
-): Promise<Awaited<ReturnType<typeof importJWK>> | Uint8Array> | null {
-  if (!env.supabaseJwtSecret) return null;
-
-  try {
-    const jwk = JSON.parse(env.supabaseJwtSecret);
-    return importJWK(jwk, jwk.alg ?? "ES256");
-  } catch {
-    // Not a JWK JSON — treat as HMAC symmetric secret
-    return Promise.resolve(new TextEncoder().encode(env.supabaseJwtSecret));
-  }
-}
-
-export function createSupabaseRequestAuthenticator(
-  env: Pick<ServerEnv, "supabaseAnonKey" | "supabaseJwtSecret" | "supabaseUrl">,
+/** Validates only SSO-issued bearer tokens; no Supabase Auth fallback exists. */
+export function createSsoRequestAuthenticator(
+  env: Pick<ServerEnv, "ssoClientId" | "ssoIssuer" | "ssoJwksUri">,
+  identities: SsoIdentityRepository,
 ): RequestAuthenticator {
-  jwtPublicKeyPromise = initJwtKey(env);
-
-  // Fallback: remote verification when JWT key is not configured
-  const createUserClient = jwtPublicKeyPromise
-    ? null
-    : createUserSupabaseClientFactory(env);
+  const jwks = env.ssoJwksUri ? createRemoteJWKSet(new URL(env.ssoJwksUri)) : null;
 
   return {
     async authenticate(request) {
       const accessToken = readBearerToken(request.headers.authorization);
-      if (!accessToken) return null;
-
-      // 1. Check cache first
+      if (!accessToken || !jwks || !env.ssoIssuer || !env.ssoClientId) return null;
       const cached = getCachedAuth(accessToken);
       if (cached) return cached;
-
-      // 2. Local JWT verification (preferred)
-      if (jwtPublicKeyPromise) {
-        try {
-          const key = await jwtPublicKeyPromise;
-          const { payload } = await jwtVerify(accessToken, key, {
-            audience: "authenticated",
-          });
-
-          const userId = payload.sub;
-          const metadata = isRecord(payload.user_metadata)
-            ? (payload.user_metadata as Record<string, unknown>)
-            : {};
-          const email =
-            typeof metadata.sso_email === "string"
-              ? metadata.sso_email
-              : typeof payload.email === "string"
-                ? payload.email
-                : null;
-
-          if (!userId || !email) return null;
-
-          const user: AuthenticatedUser = {
-            accessToken,
-            email,
-            id: userId,
-            tenantId: resolveTenantId(metadata, payload.tenant_id, payload.tenantId, userId),
-            userMetadata: metadata,
-          };
-
-          setCachedAuth(accessToken, user);
-          return user;
-        } catch {
-          // Invalid / expired token
-          return null;
-        }
-      }
-
-      // 3. Fallback: remote auth.getUser()
-      if (createUserClient) {
-        const client = createUserClient(accessToken);
-        const { data, error } = await client.auth.getUser();
-
-        if (error || !data.user || !data.user.email) return null;
-        const metadata = isRecord(data.user.user_metadata)
-          ? data.user.user_metadata
-          : {};
-
+      try {
+        const { payload } = await jwtVerify(accessToken, jwks, {
+          audience: env.ssoClientId,
+          issuer: env.ssoIssuer,
+        });
+        if (typeof payload.sub !== "string" || !isUuid(payload.sub) || typeof payload.email !== "string") return null;
+        const metadata = isRecord(payload.user_metadata) ? payload.user_metadata : {
+          ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+          ...(typeof payload.picture === "string" ? { avatar_url: payload.picture } : {}),
+        };
+        const userId = await identities.resolve({ email: payload.email, ssoUserId: payload.sub });
         const user: AuthenticatedUser = {
           accessToken,
-          email:
-            typeof metadata.sso_email === "string"
-              ? metadata.sso_email
-              : data.user.email,
-          id: data.user.id,
-          tenantId: resolveTenantId(metadata, undefined, undefined, data.user.id),
+          email: payload.email,
+          id: userId,
+          tenantId: resolveTenantId(metadata, payload.tenant_id, payload.tenantId, userId),
           userMetadata: metadata,
         };
-
         setCachedAuth(accessToken, user);
         return user;
+      } catch {
+        return null;
       }
-
-      return null;
     },
-  };
-}
-
-export function createUserSupabaseClientFactory(
-  env: Pick<ServerEnv, "supabaseAnonKey" | "supabaseUrl">,
-) {
-  return (accessToken: string): UserSupabaseClient => {
-    if (!env.supabaseUrl || !env.supabaseAnonKey) {
-      throw new Error(
-        "SUPABASE_URL and SUPABASE_ANON_KEY are required for user-scoped Supabase access.",
-      );
-    }
-
-    return createClient<Database>(env.supabaseUrl, env.supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-      global: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    });
   };
 }
 

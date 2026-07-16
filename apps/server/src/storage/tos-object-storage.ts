@@ -2,6 +2,12 @@ import type { TosConfig } from "./tos-config.js";
 import { TosClient } from "@volcengine/tos-sdk";
 
 type TosSdkClient = {
+  copyObject(input: {
+    bucket: string;
+    key: string;
+    srcBucket: string;
+    srcKey: string;
+  }): Promise<{ data?: { ETag?: string } }>;
   deleteObject(input: { bucket: string; key: string }): Promise<unknown>;
   getPreSignedUrl(input: {
     alternativeEndpoint: string;
@@ -20,6 +26,10 @@ type TosSdkClient = {
 };
 
 export type TosObjectStorage = {
+  copy(
+    sourceKey: string,
+    targetKey: string,
+  ): Promise<{ etag: string | null; key: string }>;
   createReadUrl(key: string, expiresInSeconds: number): string;
   delete(key: string): Promise<void>;
   put(input: {
@@ -38,6 +48,15 @@ export function createTosObjectStorage(
   client: TosSdkClient,
 ): TosObjectStorage {
   return {
+    async copy(sourceKey, targetKey) {
+      const response = await client.copyObject({
+        bucket: config.bucket,
+        key: targetKey,
+        srcBucket: config.bucket,
+        srcKey: sourceKey,
+      });
+      return { etag: response.data?.ETag ?? null, key: targetKey };
+    },
     createReadUrl(key, expiresInSeconds) {
       return client.getPreSignedUrl({
         alternativeEndpoint: config.bucketDomain,
