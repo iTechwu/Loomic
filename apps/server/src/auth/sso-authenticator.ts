@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { ServerEnv } from "../config/env.js";
 import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
+import { ssoProfileEmail } from "../sso-identity-email.js";
 
 export type AuthenticatedUser = {
   accessToken: string;
@@ -51,12 +52,15 @@ export function createSsoRequestAuthenticator(
   env: Pick<ServerEnv, "ssoClientId" | "ssoIssuer" | "ssoJwksUri">,
   identities: SsoIdentityRepository,
 ): RequestAuthenticator {
-  const jwks = env.ssoJwksUri ? createRemoteJWKSet(new URL(env.ssoJwksUri)) : null;
+  const jwks = env.ssoJwksUri
+    ? createRemoteJWKSet(new URL(env.ssoJwksUri))
+    : null;
 
   return {
     async authenticate(request) {
       const accessToken = readBearerToken(request.headers.authorization);
-      if (!accessToken || !jwks || !env.ssoIssuer || !env.ssoClientId) return null;
+      if (!accessToken || !jwks || !env.ssoIssuer || !env.ssoClientId)
+        return null;
       const cached = getCachedAuth(accessToken);
       if (cached) return cached;
       try {
@@ -64,17 +68,34 @@ export function createSsoRequestAuthenticator(
           audience: env.ssoClientId,
           issuer: env.ssoIssuer,
         });
-        if (typeof payload.sub !== "string" || !isUuid(payload.sub) || typeof payload.email !== "string") return null;
-        const metadata = isRecord(payload.user_metadata) ? payload.user_metadata : {
-          ...(typeof payload.name === "string" ? { name: payload.name } : {}),
-          ...(typeof payload.picture === "string" ? { avatar_url: payload.picture } : {}),
-        };
-        const userId = await identities.resolve({ email: payload.email, ssoUserId: payload.sub });
+        if (typeof payload.sub !== "string" || !isUuid(payload.sub))
+          return null;
+        const sourceEmail =
+          typeof payload.email === "string" ? payload.email : undefined;
+        const metadata = isRecord(payload.user_metadata)
+          ? payload.user_metadata
+          : {
+              ...(typeof payload.name === "string"
+                ? { name: payload.name }
+                : {}),
+              ...(typeof payload.picture === "string"
+                ? { avatar_url: payload.picture }
+                : {}),
+            };
+        const userId = await identities.resolve({
+          ...(sourceEmail ? { email: sourceEmail } : {}),
+          ssoUserId: payload.sub,
+        });
         const user: AuthenticatedUser = {
           accessToken,
-          email: payload.email,
+          email: ssoProfileEmail(payload.sub, sourceEmail),
           id: userId,
-          tenantId: resolveTenantId(metadata, payload.tenant_id, payload.tenantId, userId),
+          tenantId: resolveTenantId(
+            metadata,
+            payload.tenant_id,
+            payload.tenantId,
+            userId,
+          ),
           userMetadata: metadata,
         };
         setCachedAuth(accessToken, user);
@@ -112,12 +133,19 @@ function resolveTenantId(
   claimCamel: unknown,
   personalTenantId: string,
 ): string {
-  for (const value of [claimSnake, claimCamel, metadata.tenant_id, metadata.tenantId]) {
+  for (const value of [
+    claimSnake,
+    claimCamel,
+    metadata.tenant_id,
+    metadata.tenantId,
+  ]) {
     if (typeof value === "string" && isUuid(value)) return value;
   }
   return personalTenantId;
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }

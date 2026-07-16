@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ServerEnv } from "../config/env.js";
+import { ssoProfileEmail } from "../sso-identity-email.js";
 import { chooseDataUserId, registerOidcAuthRoutes } from "./oidc-auth.js";
 
 const configuredEnv: ServerEnv = {
@@ -32,31 +33,66 @@ function createTestApp(env: ServerEnv) {
 }
 
 describe("OIDC auth routes", () => {
+  it("creates a stable local profile email for an SSO subject without email", () => {
+    const subject = "00000000-0000-4000-8000-000000000001";
+
+    expect(ssoProfileEmail(subject)).toBe(
+      "sso-00000000-0000-4000-8000-000000000001@dofe.invalid",
+    );
+    expect(ssoProfileEmail(subject, " maker@example.com ")).toBe(
+      "maker@example.com",
+    );
+  });
+
   it("preserves a mapped or uniquely matched legacy data user", () => {
     expect(chooseDataUserId("sso-user", "mapped-user", [])).toBe("mapped-user");
-    expect(chooseDataUserId("sso-user", null, ["legacy-user"])).toBe("legacy-user");
-    expect(chooseDataUserId("sso-user", null, ["legacy-a", "legacy-b"])).toBe("sso-user");
+    expect(chooseDataUserId("sso-user", null, ["legacy-user"])).toBe(
+      "legacy-user",
+    );
+    expect(chooseDataUserId("sso-user", null, ["legacy-a", "legacy-b"])).toBe(
+      "sso-user",
+    );
   });
 
   it("returns a diagnosable error when SSO is not configured", async () => {
     const { ssoClientSecret: _unused, ...env } = configuredEnv;
     const app = createTestApp(env);
-    await registerOidcAuthRoutes(app, { env, identities: { resolve: async () => "00000000-0000-4000-8000-000000000001" } });
+    await registerOidcAuthRoutes(app, {
+      env,
+      identities: {
+        resolve: async () => "00000000-0000-4000-8000-000000000001",
+      },
+    });
 
-    const response = await app.inject({ method: "GET", url: "/api/auth/oidc/start" });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/auth/oidc/start",
+    });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: "sso_not_configured" });
   });
 
   it("starts a PKCE authorization request with refresh-capable SSO scopes", async () => {
     const app = createTestApp(configuredEnv);
-    await registerOidcAuthRoutes(app, { env: configuredEnv, identities: { resolve: async () => "00000000-0000-4000-8000-000000000001" } });
+    await registerOidcAuthRoutes(app, {
+      env: configuredEnv,
+      identities: {
+        resolve: async () => "00000000-0000-4000-8000-000000000001",
+      },
+    });
 
-    const response = await app.inject({ method: "GET", url: "/api/auth/oidc/start?returnTo=%2Fpricing" });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/auth/oidc/start?returnTo=%2Fpricing",
+    });
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toContain("scope=openid+profile+email+offline_access");
+    expect(response.headers.location).toContain(
+      "scope=openid+profile+email+offline_access",
+    );
     expect(response.headers.location).toContain("code_challenge_method=S256");
-    expect(response.headers.location).toContain("redirect_uri=https%3A%2F%2Flovart.example.test%2Fauth%2Fcallback");
+    expect(response.headers.location).toContain(
+      "redirect_uri=https%3A%2F%2Flovart.example.test%2Fauth%2Fcallback",
+    );
     expect(response.headers["set-cookie"]).toContain("lovart_oidc_pkce=");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
     expect(response.headers["set-cookie"]).toContain("Secure");

@@ -1,7 +1,8 @@
+import { ssoProfileEmail } from "../sso-identity-email.js";
 import type { DatabasePool } from "./pool.js";
 
 export type SsoIdentityRepository = {
-  resolve(input: { email: string; ssoUserId: string }): Promise<string>;
+  resolve(input: { email?: string; ssoUserId: string }): Promise<string>;
 };
 
 /**
@@ -20,14 +21,20 @@ export function createSsoIdentityRepository(
           "select data_user_id from sso_user_mappings where sso_user_id = $1",
           [ssoUserId],
         );
-        if (existing.rowCount) return existing.rows[0]!.data_user_id;
+        if (existing.rowCount && existing.rows[0]) {
+          return existing.rows[0].data_user_id;
+        }
 
-        const candidates = await client.query<{ id: string }>(
-          "select id from profiles where lower(email) = lower($1) limit 2",
-          [email],
-        );
+        const candidates = email
+          ? await client.query<{ id: string }>(
+              "select id from profiles where lower(email) = lower($1) limit 2",
+              [email],
+            )
+          : { rowCount: 0, rows: [] as { id: string }[] };
         const dataUserId =
-          candidates.rowCount === 1 ? candidates.rows[0]!.id : ssoUserId;
+          candidates.rowCount === 1 && candidates.rows[0]
+            ? candidates.rows[0].id
+            : ssoUserId;
         await client.query(
           `insert into sso_user_mappings (sso_user_id, data_user_id, mapping_source, matched_email)
            values ($1, $2, $3, $4)
@@ -36,7 +43,7 @@ export function createSsoIdentityRepository(
             ssoUserId,
             dataUserId,
             dataUserId === ssoUserId ? "new_sso_user" : "legacy_email_match",
-            email,
+            ssoProfileEmail(ssoUserId, email),
           ],
         );
         console.info("[sso-identity] resolved subject", {

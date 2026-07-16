@@ -21,9 +21,15 @@ describe("HomeDiscoveryGallery", () => {
     );
 
     expect(screen.getByText("灵感发现")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "The ART & Cultural Arts Center" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Vintage Car Poster" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cat Tarot Cards" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "The ART & Cultural Arts Center" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Vintage Car Poster" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cat Tarot Cards" }),
+    ).toBeInTheDocument();
   });
 
   it("filters cards when a category tab is selected", async () => {
@@ -36,8 +42,12 @@ describe("HomeDiscoveryGallery", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "品牌设计" }));
 
-    expect(screen.getByRole("button", { name: "The ART & Cultural Arts Center" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Vintage Car Poster" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "The ART & Cultural Arts Center" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Vintage Car Poster" }),
+    ).not.toBeInTheDocument();
   });
 
   it("emits the internal lovart.dofe seed payload when a card is clicked", async () => {
@@ -55,11 +65,11 @@ describe("HomeDiscoveryGallery", () => {
     );
 
     expect(onCaseSelect).toHaveBeenCalledWith({
-      authorAvatarUrl: "https://assets.dofe.ai/home-seeds/discovery/avatars/branding-design.svg",
+      authorAvatarUrl: "/apple-touch-icon.png",
       authorName: "Studio Arken",
       categoryKey: "branding-design",
       categoryLabel: "品牌设计",
-      coverImageUrl: expect.stringContaining("assets.dofe.ai"),
+      coverImageUrl: "/images/showcase/showcase-1.jpg",
       id: "ji5ey5l",
       likeCount: 7,
       prompt:

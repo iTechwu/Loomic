@@ -4,6 +4,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { ServerEnv } from "../config/env.js";
 import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
+import { ssoProfileEmail } from "../sso-identity-email.js";
 
 const PKCE_COOKIE = "lovart_oidc_pkce";
 const REFRESH_COOKIE = "lovart_oidc_refresh";
@@ -28,7 +29,7 @@ type SsoTokenResponse = {
 
 type SsoIdentity = {
   avatarUrl?: string;
-  email: string;
+  email?: string;
   id: string;
   name?: string;
 };
@@ -319,9 +320,9 @@ async function resolveIdentity(
       );
     }
     const email = typeof payload.email === "string" ? payload.email : undefined;
-    if (typeof payload.sub === "string" && email) {
+    if (typeof payload.sub === "string") {
       return {
-        email,
+        ...(email ? { email } : {}),
         id: payload.sub,
         ...(typeof payload.picture === "string"
           ? { avatarUrl: payload.picture }
@@ -344,11 +345,11 @@ async function resolveIdentity(
   );
   if (!response.ok) throw new Error(`SSO userinfo returned ${response.status}`);
   const userinfo = (await response.json()) as Record<string, unknown>;
-  if (typeof userinfo.sub !== "string" || typeof userinfo.email !== "string") {
-    throw new Error("SSO userinfo did not contain sub and email");
+  if (typeof userinfo.sub !== "string") {
+    throw new Error("SSO userinfo did not contain sub");
   }
   return {
-    email: userinfo.email,
+    ...(typeof userinfo.email === "string" ? { email: userinfo.email } : {}),
     id: userinfo.sub,
     ...(typeof userinfo.picture === "string"
       ? { avatarUrl: userinfo.picture }
@@ -366,8 +367,9 @@ async function createDataSession(
     throw new Error("SSO subject must be a UUID for the current data schema");
   if (!tokens.access_token)
     throw new Error("SSO token response did not contain an access token");
+  const email = ssoProfileEmail(identity.id, identity.email);
   const dataUserId = await identities.resolve({
-    email: identity.email,
+    ...(identity.email ? { email: identity.email } : {}),
     ssoUserId: identity.id,
   });
 
@@ -375,7 +377,7 @@ async function createDataSession(
     accessToken: tokens.access_token,
     expiresAt: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 300),
     user: {
-      email: identity.email,
+      email,
       id: dataUserId,
       userMetadata: {
         ...(identity.avatarUrl ? { avatar_url: identity.avatarUrl } : {}),
