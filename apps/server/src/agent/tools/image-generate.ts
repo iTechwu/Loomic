@@ -192,7 +192,7 @@ export async function runImageGenerate(
       : { ...input, inputImages: [] };
   }
 
-  // Job mode: submit to PGMQ and wait for worker to complete
+  // Job mode: submit to RabbitMQ and wait for the worker to complete.
   if (submitImageJob) {
     try {
       lap("job_submit", { model: input.model });

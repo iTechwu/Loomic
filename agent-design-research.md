@@ -769,7 +769,7 @@ adaptDeepAgentStream() → StreamEvent → WS → Frontend
 | **deepagents 框架** | 结构化输出的 sub-agent，schema-driven | 对应 OpenAI Structured Output + Anthropic 的 Orchestrator-Worker |
 | **Sub-agent 模式** | image_generate / video_generate 独立 prompt+tools | 对应 LangChain Supervisor + OpenAI Agents as Tools |
 | **闭包注入** | submitImageJob / persistImage 通过闭包而非工具参数传递敏感数据 | 对应 OpenAI "减轻模型负担" |
-| **PGMQ 任务队列** | PostgreSQL 原生消息队列处理异步图片生成 | 对应 LangGraph Background Runs |
+| **RabbitMQ 任务队列** | 消息队列处理异步图片和视频生成 | 对应 LangGraph Background Runs |
 | **Per-canvas Backend Namespace** | 每个 canvas 隔离的 workspace/memories | 对应 LangGraph Store 命名空间隔离 |
 | **Stream Adapter** | LangChain Event → 自定义 StreamEvent + artifact 提取 | 对应 LangGraph Stream 端点 |
 | **Sub-agent Artifact 抑制** | 内部工具 artifact 被抑制，由父级重新发射 | 独特设计，避免前端 artifact 重复 |
@@ -1075,4 +1075,4 @@ tools/
 
 ---
 
-> **核心结论**：Loomic 的 Agent 架构在核心编排模式（Supervisor + Sub-agent）、工具设计（canvas 操作）和异步处理（PGMQ）方面已经建立了良好的基础。最大的提升空间在于**提示词工程的精细化**（Few-Shot Examples、Think Tool、错误处理指导）和**自动验证环节**（Reflection Loop）——这些都是低成本高回报的改进。中长期应关注 Guardrails 体系和系统化评估 pipeline 的建设。
+> **核心结论**：Loomic 的 Agent 架构在核心编排模式（Supervisor + Sub-agent）、工具设计（canvas 操作）和异步处理（RabbitMQ）方面已经建立了良好的基础。最大的提升空间在于**提示词工程的精细化**（Few-Shot Examples、Think Tool、错误处理指导）和**自动验证环节**（Reflection Loop）——这些都是低成本高回报的改进。中长期应关注 Guardrails 体系和系统化评估 pipeline 的建设。

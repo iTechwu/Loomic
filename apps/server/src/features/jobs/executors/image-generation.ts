@@ -7,7 +7,7 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   const t0 = Date.now();
 
   // Read the full job row including payload from the database.
-  // The PGMQ message only contains { job_id, job_type, workspace_id },
+  // The RabbitMQ message only contains { job_id, job_type, workspace_id },
   // so we must fetch prompt/model/aspect_ratio from background_jobs.payload.
   const jobRow = await ctx.jobRepository.find(jobId);
 

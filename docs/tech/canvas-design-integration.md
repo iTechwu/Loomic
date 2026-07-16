@@ -4,16 +4,21 @@
 
 ### Prerequisites
 
-- Python 3.x installed locally
-- `pip install pillow reportlab`
-- Font files in `skills/canvas-design/canvas-fonts/`
+- Node.js 22 and the workspace dependencies installed with `pnpm install`
+- `DATABASE_URL` and the complete `TOS_*` configuration, because every agent run
+  persists workspace state and generated files through the native data plane
+- Python 3 with Pillow and ReportLab only when exercising the canvas-design skill
+
+The production image installs Python, Pillow, and ReportLab. Local development must
+provide those executables when a skill invokes them.
 
 ### Environment Variables
 
 ```bash
-# .env.local additions
-LOVART_DOFE_SANDBOX_ROOT=/tmp/lovart-dofe-sandbox-dev
-LOVART_DOFE_SKILLS_ROOT=./skills
+# .env.local
+# The server process runs from apps/server, so this resolves to the repository skill root.
+LOVART_DOFE_SKILLS_ROOT=../../skills
+LOVART_DOFE_AGENT_BACKEND_MODE=state
 ```
 
 ### Verification Steps
@@ -22,31 +27,31 @@ LOVART_DOFE_SKILLS_ROOT=./skills
 2. Open a project in the web UI
 3. Send message: "帮我生成一张极简主义风格的海报"
 4. Verify:
-   - Agent activates canvas-design skill (check server logs for `[SkillsMiddleware]`)
+   - Agent loads the enabled workspace skill (check the agent-run logs)
    - Agent calls `execute` tool with Python code
-   - Generated PNG appears in sandbox tmpdir
-   - Agent calls `persist_sandbox_file` to upload
-   - User receives downloadable URL
-   - Sandbox tmpdir cleaned up after run
+   - Generated PNG appears in the agent sandbox
+   - Agent calls `persist_sandbox_file`, which writes the object to TOS and metadata to PostgreSQL
+   - User receives a short-lived TOS read URL
+   - The sandbox directory is removed after the run
 
 ### Production Deployment
 
-The Dockerfile handles everything:
-- Python + Pillow + reportlab installed in image
-- Skills + fonts copied to `/opt/lovart-dofe/skills/`
-- Default env vars work out of the box
+The Dockerfile installs Python, Pillow, and ReportLab and copies `skills/` to
+`/opt/lovart-dofe/skills/`. Set `LOVART_DOFE_SKILLS_ROOT=/opt/lovart-dofe/skills`
+in the deployment environment; credentials and endpoints remain deployment-managed.
 
 ### Troubleshooting
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| `execute` tool not available | Backend not sandbox | Check `LOVART_DOFE_AGENT_BACKEND_MODE=state` and backend factory returns LocalShellBackend |
-| Fonts not found | Wrong FONT_DIR | Check `LOVART_DOFE_SKILLS_ROOT` env var |
-| Sandbox dir fills up | Cleanup failed | Check runtime.ts finally block; add cron cleanup as safety net |
+| `execute` tool not available | Agent backend is not configured for the state runtime | Check `LOVART_DOFE_AGENT_BACKEND_MODE=state` and agent startup logs |
+| Fonts not found | Skills root does not match the process environment | Check `LOVART_DOFE_SKILLS_ROOT` |
+| Sandbox directory remains | Run cleanup was interrupted | Inspect the agent-run error logs and the runtime cleanup path |
 | Python not found | Not in Docker image | Rebuild Docker image |
-| Skill not discovered | Skills path misconfigured | Check `/skills/` route in CompositeBackend |
+| Skill not discovered | The skill is not installed or enabled for the workspace | Check the skills API and workspace skill state |
 
 ### Adding New Skills
 
-Place new skills in `skills/<skill-name>/SKILL.md`. They are automatically
-discovered by SkillsMiddleware on next agent run. No code changes needed.
+Place source-controlled skills in `skills/<skill-name>/SKILL.md`. Marketplace
+skills are stored in PostgreSQL (`skills`, `skill_files`, and `workspace_skills`)
+and become available only after installation and enablement for a workspace.

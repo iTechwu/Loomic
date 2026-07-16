@@ -97,7 +97,7 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
 │   Frontend  │                           │  + LangGraph    │
 │  (Vercel)   │                           │  Agent (Railway) │
 └─────────────┘                           └────────┬────────┘
-                                                   │ PGMQ
+                                                   │ RabbitMQ
                                           ┌────────▼────────┐
                                           │    Worker(s)     │
                                           │  Image / Video   │
@@ -115,11 +115,14 @@ lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 A
 |-----------|------|------|
 | **Frontend** | Next.js 15 + React 19 + Tailwind CSS 4 | Canvas UI, chat panel, workspace |
 | **API Server** | Fastify 5 + LangGraph | Agent runtime, WebSocket, REST API |
-| **Worker** | Node.js poll-based consumer | Async image/video generation jobs |
+| **Worker** | Node.js RabbitMQ consumer | Async image/video generation jobs |
 | **Data plane** | PostgreSQL + Volcengine TOS | Product metadata, LangGraph state, and private assets |
 | **Canvas** | Excalidraw 0.18 | Infinite canvas rendering |
 | **AI** | LangChain + LangGraph | Agent orchestration, tool calling |
-| **Queue** | PGMQ | Reliable async job processing |
+| **Queue** | RabbitMQ | Image and video generation job delivery |
+
+For the request lifecycle, persistence boundaries, and operational invariants,
+see [Runtime and Data Plane](docs/architecture/runtime-and-data-plane.md).
 
 ---
 
@@ -192,6 +195,10 @@ TOS_INTERNAL_ENDPOINT=https://tos-internal.example.com
 TOS_BUCKET=lovart-dofe
 TOS_BUCKET_DOMAIN=https://assets.example.com
 TOS_INTERNAL_BUCKET_DOMAIN=https://assets-internal.example.com
+
+# Required by the background worker; the API can start without it, but will not
+# expose asynchronous image/video job routes.
+RABBITMQ_URL=amqp://dofe:pw@rabbitmq:5672/lovart_dofe
 
 # ── Required: DoFe SSO / OIDC ───────────────────────────────
 # The browser redirects to SSO; keep the client and internal secrets server-only.
@@ -283,7 +290,9 @@ pnpm --filter @lovart.dofe/server db:migrate
 
 ## ⚡ Worker Scaling
 
-Each worker polls PGMQ and processes jobs concurrently. PGMQ guarantees exactly-once delivery.
+Each worker consumes image and video jobs from RabbitMQ. Job state, attempts, retries,
+and dead-letter status are recorded in PostgreSQL; delivery is therefore at-least-once
+and executors must remain idempotent for a job ID.
 
 ```bash
 # Local: start multiple workers
@@ -293,10 +302,8 @@ pnpm --filter @lovart.dofe/server dev:workers:3   # 3 workers (9 concurrent jobs
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKER_CONCURRENCY` | `3` | Jobs per worker instance |
 | `WORKER_IMAGE_CONCURRENCY` | `3` | Image generation slots |
 | `WORKER_VIDEO_CONCURRENCY` | `2` | Video generation slots |
-| `WORKER_POLL_INTERVAL_MS` | `2000` | Queue poll interval (ms) |
 | `WORKER_ID` | random | Worker instance identifier |
 
 On Railway, scale by adding more worker service replicas.
@@ -324,14 +331,14 @@ lovart.dofe/
 │       │   ├── features/       #   Domain services
 │       │   │   ├── credits/    #     Credit system & tier guard
 │       │   │   ├── payments/   #     LemonSqueezy integration
-│       │   │   ├── jobs/       #     PGMQ job queue & executors
+│       │   │   ├── jobs/       #     RabbitMQ job orchestration & executors
 │       │   │   ├── canvas/     #     Canvas CRUD
 │       │   │   ├── chat/       #     Chat threads & messages
 │       │   │   └── brand-kit/  #     Brand kit management
 │       │   ├── http/           #   REST route handlers
 │       │   ├── ws/             #   WebSocket handlers
 │       │   ├── config/         #   Environment config loader
-│       │   └── queue/          #   PGMQ client
+│       │   └── queue/          #   RabbitMQ client
 │       └── Dockerfile          #   Multi-stage Docker build
 │
 ├── packages/
@@ -363,6 +370,7 @@ lovart.dofe/
 | `TOS_*` | Server-only Volcengine TOS credentials and bucket endpoints |
 | `SSO_ISSUER`, `SSO_CLIENT_ID`, `JWKS_URI` | SSO token verification configuration |
 | `SSO_CLIENT_SECRET`, `SSO_INTERNAL_API_URL` | Server-only OIDC exchange configuration |
+| `RABBITMQ_URL` | Required by the worker and enables asynchronous generation routes on the API |
 
 ### AI Providers (at least one required)
 

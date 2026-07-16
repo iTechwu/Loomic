@@ -167,7 +167,7 @@ export async function runVideoGenerate(
     input = { ...input, inputImages: validImages.length > 0 ? validImages : undefined };
   }
 
-  // Job mode: submit to PGMQ and wait for worker
+  // Job mode: submit to RabbitMQ and wait for the worker.
   if (submitVideoJob) {
     try {
       lap("job_submit", { model: input.model });

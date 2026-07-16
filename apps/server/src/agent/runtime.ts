@@ -411,7 +411,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
         return;
       }
 
-      // Build submitImageJob / submitVideoJob closures for async jobs via PGMQ
+      // Build submitImageJob / submitVideoJob closures for async jobs via RabbitMQ.
       let submitImageJob: SubmitImageJobFn | undefined;
       let submitVideoJob: SubmitVideoJobFn | undefined;
       if (options.jobService && run.userId) {

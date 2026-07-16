@@ -6,7 +6,7 @@
 const PROVIDER_PATTERN =
   /google|vertex|openai|replicate|langchain|gaxios|undici|fetch failed/i;
 const DB_PATTERN =
-  /postgres|pgmq|database|relation|column|constraint/i;
+  /postgres|database|relation|column|constraint/i;
 const AUTH_PATTERN =
   /jwt|token|unauthorized|forbidden|credential|service.account/i;
 const INFRA_PATTERN =
