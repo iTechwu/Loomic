@@ -240,11 +240,11 @@ This starts all services simultaneously:
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Web | http://localhost:3000 | Next.js frontend |
-| API Server | http://localhost:3001 | Fastify API + WebSocket |
+| Web | http://localhost:3005 | Next.js frontend |
+| API Server | http://localhost:3105 | Fastify API + WebSocket |
 | Worker | — | Background job processor |
 
-Open http://localhost:3000 and start creating!
+Open http://localhost:3005 and start creating!
 
 ---
 
@@ -266,7 +266,7 @@ The backend runs as two services from a single Docker image, differentiated by `
 **API Service:**
 ```bash
 SERVICE_MODE=api
-LOVART_DOFE_SERVER_PORT=3001
+LOVART_DOFE_SERVER_PORT=3105
 ```
 
 **Worker Service:**
@@ -395,8 +395,8 @@ lovart.dofe/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOVART_DOFE_SERVER_PORT` | `3001` | API server port |
-| `LOVART_DOFE_WEB_ORIGIN` | `http://localhost:3000` | Frontend origin (CORS) |
+| `LOVART_DOFE_SERVER_PORT` | `3105` | API server port |
+| `LOVART_DOFE_WEB_ORIGIN` | `http://localhost:3005` | Frontend origin (CORS) |
 | `LOVART_DOFE_AGENT_BACKEND_MODE` | `state` | Agent persistence (`state` or `filesystem`) |
 | `LOVART_DOFE_SKILLS_ROOT` | `../../skills` | Path to skills directory |
 | `WORKER_CONCURRENCY` | `3` | Jobs per worker |

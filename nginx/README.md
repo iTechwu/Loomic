@@ -1,6 +1,7 @@
 # Local HTTPS
 
-This configuration serves the static web export at `https://lovart.local.dofe.ai` and proxies the Fastify API, including WebSocket upgrades, through `https://lovart.local.dofe.ai/api/`.
+This development configuration proxies Next.js at `https://lovart.local.dofe.ai` to
+`127.0.0.1:3005` and Fastify, including WebSocket upgrades, to `127.0.0.1:3105`.
 
 1. Add this hostname to `/etc/hosts`:
 
@@ -15,17 +16,18 @@ This configuration serves the static web export at `https://lovart.local.dofe.ai
    mkcert -cert-file nginx/certs/lovart.local.dofe.ai.pem -key-file nginx/certs/lovart.local.dofe.ai-key.pem lovart.local.dofe.ai
    ```
 
-3. Build the frontend and set the application origins:
+3. Set the application origins and start the development services:
 
    ```bash
-   pnpm --filter @lovart.dofe/web build
+   pnpm dev
    ```
 
    ```dotenv
    # apps/web/.env.local
    NEXT_PUBLIC_SERVER_BASE_URL=https://lovart.local.dofe.ai
 
-   # apps/server/.env.local
+   # .env.local
+   LOVART_DOFE_SERVER_PORT=3105
    LOVART_DOFE_WEB_ORIGIN=https://lovart.local.dofe.ai
    ```
 

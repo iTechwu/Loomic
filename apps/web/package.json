@@ -37,7 +37,7 @@
   },
   "scripts": {
     "build": "next build",
-    "dev": "next dev -p 3000",
+    "dev": "next dev -p 3005",
     "test": "vitest run test",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit"
   }

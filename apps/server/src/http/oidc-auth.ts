@@ -114,6 +114,7 @@ export async function registerOidcAuthRoutes(
         httpOnly: true,
         maxAge: PKCE_MAX_AGE_SECONDS,
         path: "/api/auth/oidc/exchange",
+        sameSite: "None",
         secure: isSecureCookieRequired(options.env.webOrigin),
       },
     );
@@ -134,6 +135,7 @@ export async function registerOidcAuthRoutes(
       PKCE_COOKIE,
       "/api/auth/oidc/exchange",
       options.env.webOrigin,
+      "None",
     );
 
     if (!code || !pkce || !constantTimeEqual(state, pkce.state)) {
@@ -462,6 +464,7 @@ function setCookie(
     httpOnly: boolean;
     maxAge: number;
     path: string;
+    sameSite?: "Lax" | "None";
     secure: boolean;
   },
 ) {
@@ -469,7 +472,7 @@ function setCookie(
     `${name}=${value}`,
     `Max-Age=${options.maxAge}`,
     `Path=${options.path}`,
-    "SameSite=Lax",
+    `SameSite=${options.sameSite ?? "Lax"}`,
   ];
   if (options.httpOnly) parts.push("HttpOnly");
   if (options.secure) parts.push("Secure");
@@ -481,11 +484,13 @@ function clearCookie(
   name: string,
   path: string,
   webOrigin: string,
+  sameSite: "Lax" | "None" = "Lax",
 ) {
   setCookie(reply, name, "", {
     httpOnly: true,
     maxAge: 0,
     path,
+    sameSite,
     secure: isSecureCookieRequired(webOrigin),
   });
 }

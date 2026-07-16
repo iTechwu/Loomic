@@ -144,7 +144,7 @@ LEMONSQUEEZY_VARIANT_BUSINESS_YEARLY=你的ID
 1. 打开 [app.lemonsqueezy.com/settings/webhooks](https://app.lemonsqueezy.com/settings/webhooks)
 2. 编辑之前创建的 webhook（secret = `your-webhook-secret`）
 3. 更新 Callback URL：
-   - 本地测试：先运行 `ngrok http 3001`，然后填 `https://xxx.ngrok.io/api/payments/webhook`
+   - 本地测试：先运行 `ngrok http 3105`，然后填 `https://xxx.ngrok.io/api/payments/webhook`
    - 生产环境：`https://your-domain.com/api/payments/webhook`
 4. 确保勾选了以下事件：
    - ✅ `subscription_created`
@@ -160,7 +160,7 @@ LEMONSQUEEZY_VARIANT_BUSINESS_YEARLY=你的ID
 pnpm dev
 ```
 
-1. 打开 http://localhost:3000/pricing
+1. 打开 http://localhost:3005/pricing
 2. 点击任意付费套餐的按钮
 3. 弹出 Lemon Squeezy checkout 弹窗
 4. 使用测试卡号：`4242 4242 4242 4242`，有效期随意填未来日期，CVC 随意填 3 位数

@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+/**
+ * JSON-safe values persisted in PostgreSQL jsonb columns and exchanged across
+ * workspace boundaries. Keep this shared so Server repositories do not widen
+ * persisted canvas content to `unknown`.
+ */
+export type Json =
+  | boolean
+  | null
+  | number
+  | string
+  | Json[]
+  | { [key: string]: Json };
+
 import { toolArtifactSchema } from "./artifacts.js";
 import { brandKitAssetTypeSchema } from "./brand-kit-contracts.js";
 

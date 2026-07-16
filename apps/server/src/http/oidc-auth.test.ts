@@ -60,5 +60,6 @@ describe("OIDC auth routes", () => {
     expect(response.headers["set-cookie"]).toContain("lovart_oidc_pkce=");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
     expect(response.headers["set-cookie"]).toContain("Secure");
+    expect(response.headers["set-cookie"]).toContain("SameSite=None");
   });
 });

@@ -51,7 +51,7 @@ WORKDIR /app/apps/server
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
 
-EXPOSE 3001
+EXPOSE 3105
 
 # Python runtime for sandbox code execution (canvas-design skill)
 RUN apt-get update && \

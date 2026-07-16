@@ -1,4 +1,4 @@
-const defaultServerBaseUrl = "http://localhost:3001";
+const defaultServerBaseUrl = "http://localhost:3105";
 
 export function getServerBaseUrl() {
   // Must access process.env.NEXT_PUBLIC_* directly — webpack DefinePlugin

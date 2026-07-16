@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
+import type { Json } from "./index.js";
 
 import {
   errorCodeValues,
@@ -11,7 +12,19 @@ import {
 } from "./index.js";
 import * as sharedExports from "./index.js";
 
+const canvasJsonContract: Json = {
+  appState: { gridSize: 20 },
+  elements: [{ id: "element-1", x: 0, y: 0 }],
+  files: {},
+};
+
 describe("@lovart.dofe/shared contracts", () => {
+  it("exports a JSON-safe canvas content type", () => {
+    expect(canvasJsonContract).toMatchObject({
+      elements: [{ id: "element-1" }],
+    });
+  });
+
   it("shares the health response schema for server and web", () => {
     const parsed = healthResponseSchema.parse({
       ok: true,

@@ -19,7 +19,7 @@ describe("@lovart.dofe/web env helpers", () => {
   it("keeps getServerBaseUrl compatible with the default fallback", () => {
     vi.stubEnv("NEXT_PUBLIC_SERVER_BASE_URL", "");
 
-    expect(getServerBaseUrl()).toBe("http://localhost:3001");
+    expect(getServerBaseUrl()).toBe("http://localhost:3105");
   });
 
   it("reads getServerBaseUrl from process env when configured", () => {
