@@ -1,0 +1,12 @@
+.git
+.next
+coverage
+node_modules
+**/node_modules
+**/.next
+**/coverage
+**/*.log
+.env
+.env.*
+!.env.example
+!.env.local.example
