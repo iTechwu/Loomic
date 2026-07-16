@@ -33,8 +33,8 @@ COPY packages/shared/ packages/shared/
 COPY packages/config/ packages/config/
 COPY apps/server/ apps/server/
 
-# Build @loomic/shared (server depends on it)
-RUN pnpm --filter @loomic/shared build
+# Build @lovart.dofe/shared (server depends on it)
+RUN pnpm --filter @lovart.dofe/shared build
 
 # ── Stage 3: Production image ─────────────────────────────────────
 FROM node:22-slim AS production
@@ -59,8 +59,8 @@ RUN apt-get update && \
     pip3 install --no-cache-dir --break-system-packages pillow reportlab && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy skills (fonts + SKILL.md) to /opt/loomic/skills/
-COPY skills/ /opt/loomic/skills/
+# Copy skills (fonts + SKILL.md) to /opt/lovart-dofe/skills/
+COPY skills/ /opt/lovart-dofe/skills/
 
 # SERVICE_MODE: "api" (default) or "worker"
 ENV SERVICE_MODE=api

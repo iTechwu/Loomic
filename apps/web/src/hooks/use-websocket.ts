@@ -7,7 +7,7 @@ import type {
   WsCommandAck,
   WsRpcRequest,
   RunCreateRequest,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 import { getServerBaseUrl } from "../lib/env";
 
 type EventCallback = (event: StreamEvent) => void;

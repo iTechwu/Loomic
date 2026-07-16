@@ -40,7 +40,7 @@ describe("HomeDiscoveryGallery", () => {
     expect(screen.queryByRole("button", { name: "Vintage Car Poster" })).not.toBeInTheDocument();
   });
 
-  it("emits the internal Loomic seed payload when a card is clicked", async () => {
+  it("emits the internal lovart.dofe seed payload when a card is clicked", async () => {
     const onCaseSelect = vi.fn();
 
     render(

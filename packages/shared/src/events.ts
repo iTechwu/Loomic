@@ -9,7 +9,7 @@ import {
   timestampSchema,
   toolCallIdSchema,
 } from "./contracts.js";
-import { loomicErrorSchema } from "./errors.js";
+import { lovartDofeErrorSchema } from "./errors.js";
 
 export { imageArtifactSchema, videoArtifactSchema, placementSchema, toolArtifactSchema } from "./artifacts.js";
 export type { ImageArtifact, VideoArtifact, Placement, ToolArtifact } from "./artifacts.js";
@@ -65,7 +65,7 @@ export const runCanceledEventSchema = z.object({
 export const runFailedEventSchema = z.object({
   type: z.literal("run.failed"),
   runId: runIdSchema,
-  error: loomicErrorSchema,
+  error: lovartDofeErrorSchema,
   timestamp: timestampSchema,
 });
 

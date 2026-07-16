@@ -156,7 +156,7 @@ describe("ChatWorkbench", () => {
       type: "message.delta",
       runId: "run_123",
       messageId: "message_123",
-      delta: "Hello from Loomic",
+      delta: "Hello from lovart.dofe",
       timestamp: "2026-03-23T12:00:01.000Z",
     });
     stream.emitMessage({
@@ -179,7 +179,7 @@ describe("ChatWorkbench", () => {
       name: /assistant response/i,
     });
     expect(
-      await within(assistantResponse).findByText(/Hello from Loomic/i),
+      await within(assistantResponse).findByText(/Hello from lovart\.dofe/i),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(/completed/i),

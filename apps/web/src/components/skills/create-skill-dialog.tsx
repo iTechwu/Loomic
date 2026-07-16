@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { FileText, Plus, X } from "lucide-react";
 
-import type { SkillCategory } from "@loomic/shared";
+import type { SkillCategory } from "@lovart.dofe/shared";
 
 import { Button } from "@/components/ui/button";
 import {

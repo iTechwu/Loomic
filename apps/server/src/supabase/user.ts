@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { FastifyRequest } from "fastify";
 import { importJWK, jwtVerify } from "jose";
 
-import type { Database } from "@loomic/shared";
+import type { Database } from "@lovart.dofe/shared";
 
 import type { ServerEnv } from "../config/env.js";
 

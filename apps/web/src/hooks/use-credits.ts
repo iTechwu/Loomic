@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CreditBalanceResponse } from "@loomic/shared";
+import type { CreditBalanceResponse } from "@lovart.dofe/shared";
 import { useAuth } from "@/lib/auth-context";
 import { fetchCredits, claimDailyCredits } from "@/lib/credits-api";
 

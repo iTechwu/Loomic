@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Loomic Logo SVG (reused from loading-screen)
+// lovart.dofe logo SVG (reused from loading-screen)
 // ---------------------------------------------------------------------------
 
-function LoomicLogo({ className }: { className?: string }) {
+function LovartDofeLogo({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 100 100"
@@ -150,8 +150,8 @@ export function FloatingNav() {
             href="/"
             className="flex items-center gap-2 shrink-0 group"
           >
-            <LoomicLogo className="size-6 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
-            <span className="font-bold text-lg tracking-tight">Loomic</span>
+            <LovartDofeLogo className="size-6 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+            <span className="font-bold text-lg tracking-tight">lovart.dofe</span>
           </Link>
 
           {/* Desktop Nav Links with underline animation */}

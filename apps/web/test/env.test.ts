@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getServerBaseUrl, loadWebEnv } from "../src/lib/env";
 
-describe("@loomic/web env helpers", () => {
+describe("@lovart.dofe/web env helpers", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });

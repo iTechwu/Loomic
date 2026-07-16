@@ -4,7 +4,7 @@ import { generateImage } from "../../../generation/image-generation.js";
 import { resolveImageProviderName } from "../../../generation/providers/registry.js";
 import { applyWatermark } from "../../credits/watermark.js";
 
-import type { SubscriptionPlan } from "@loomic/shared";
+import type { SubscriptionPlan } from "@lovart.dofe/shared";
 
 registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorContext) => {
   const t0 = Date.now();

@@ -5,7 +5,7 @@ import type {
   ImageQualityLevel,
   SubscriptionPlan,
   VideoResolution,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 import {
   canAccessModel,
   canUseResolution,
@@ -13,7 +13,7 @@ import {
   getImageCreditCost,
   getVideoCreditCost,
   PLAN_CONFIGS,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { AdminSupabaseClient } from "../../supabase/admin.js";
 

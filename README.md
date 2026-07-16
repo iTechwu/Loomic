@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="apps/web/public/logo.svg" alt="Loomic Logo" width="80" />
+  <img src="apps/web/public/logo.svg" alt="lovart.dofe Logo" width="80" />
 </p>
 
 <h1 align="center">
-  Loomic
+  lovart.dofe
 </h1>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img width="900" src="docs/images/base-image.png" alt="Loomic" />
+  <img width="900" src="docs/images/base-image.png" alt="lovart.dofe" />
 </p>
 
 <p align="center">
@@ -29,23 +29,23 @@
 </p>
 
 <p align="center">
-  <img width="900" src="docs/images/home-image.png" alt="Loomic Workspace" />
+  <img width="900" src="docs/images/home-image.png" alt="lovart.dofe Workspace" />
 </p>
 
 ---
 
-## 💡 Loomic 是什么
+## 💡 lovart.dofe 是什么
 
 CapCut 刚推出了 Video Studio——基于画布的 AI 视频制作空间，Lovart 做的是 AI 设计 Agent，Canva 也在往 AI 方向猛推。这类产品的共同点：闭源、数据不在你手里、定价你说了不算。
 
-Loomic 做的是同一件事，但完全开源。你在无限画布上跟 AI 对话，它直接生成图片、视频，摆好位置，调好样式。不需要时间轴，不需要模板，不需要学 prompt 工程。说"把左边那张换成暖色调"，AI 就懂了。
+lovart.dofe 做的是同一件事，但完全开源。你在无限画布上跟 AI 对话，它直接生成图片、视频，摆好位置，调好样式。不需要时间轴，不需要模板，不需要学 prompt 工程。说"把左边那张换成暖色调"，AI 就懂了。
 
 从构思、角色设定、故事板、场景生成、细节打磨到导出——整个创作流程在一个画布上完成。底层是 LangGraph 驱动的 Agent，接了 Google Gemini / Vertex AI / OpenAI / Replicate 十几个模型（包括 Veo 3.1、Kling、Seedance、Sora 等），图片视频都能生。
 
 开源，可以自己部署，数据全在你手里。
 
 <p align="center">
-  <img width="900" src="docs/images/canvas-image.png" alt="Loomic Canvas" />
+  <img width="900" src="docs/images/canvas-image.png" alt="lovart.dofe Canvas" />
 </p>
 
 ---
@@ -159,8 +159,8 @@ Loomic 做的是同一件事，但完全开源。你在无限画布上跟 AI 对
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/fancyboi999/Loomic.git
-cd Loomic
+git clone <your-repository-url>
+cd lovart.dofe
 pnpm install
 ```
 
@@ -193,8 +193,19 @@ SUPABASE_PROJECT_ID=your-project-ref
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
+# ── Required: DoFe SSO / OIDC ───────────────────────────────
+# The browser redirects to SSO; keep the client and internal secrets server-only.
+SSO_API_URL=https://sso.ixicai.cn/api
+SSO_INTERNAL_API_URL=https://sso.ixicai.cn/api
+SSO_ISSUER=https://sso.ixicai.cn/api
+SSO_CLIENT_ID=lovart-dofe-ai-local
+SSO_CLIENT_SECRET=your-client-secret
+INTERNAL_API_SECRET=your-internal-secret
+SSO_REDIRECT_URI=https://lovart.local.dofe.ai/auth/callback
+JWKS_URI=https://sso.ixicai.cn/api/.well-known/jwks.json
+
 # ── Required: At least one AI provider ──────────────────────
-LOOMIC_AGENT_MODEL=google:gemini-2.5-flash     # or openai:gpt-4o
+LOVART_DOFE_AGENT_MODEL=google:gemini-2.5-flash     # or openai:gpt-4o
 GOOGLE_API_KEY=your-google-api-key             # for Gemini + Imagen + Veo
 # OPENAI_API_KEY=your-openai-key               # alternative: OpenAI provider
 
@@ -205,6 +216,11 @@ GOOGLE_API_KEY=your-google-api-key             # for Gemini + Imagen + Veo
 # GOOGLE_VERTEX_VIDEO_LOCATION=us-central1      # us-central1 for video
 # GOOGLE_APPLICATION_CREDENTIALS=               # path to SA JSON
 ```
+
+The configured `lovart-dofe-ai-local` client currently allows `openid profile email`.
+The app redirects through SSO again after a browser reload or short-lived data-session
+expiry; an active SSO session returns directly to the requested workspace. Enable
+`offline_access` for this client only when persistent refresh-token sessions are required.
 
 > **Note**: See [Environment Variables Reference](#environment-variables-reference) for the full list.
 
@@ -220,10 +236,10 @@ pnpm seed
 
 | Email | Password | Plan | Credits |
 |-------|----------|------|---------|
-| `free@test.loomic.com` | `opensourceloomic` | Free | 50 |
-| `starter@test.loomic.com` | `opensourceloomic` | Starter | 1,200 |
-| `pro@test.loomic.com` | `opensourceloomic` | Pro | 5,000 |
-| `ultra@test.loomic.com` | `opensourceloomic` | Ultra | 15,000 |
+| `free@test.lovart-dofe.com` | `opensourcelovart-dofe` | Free | 50 |
+| `starter@test.lovart-dofe.com` | `opensourcelovart-dofe` | Starter | 1,200 |
+| `pro@test.lovart-dofe.com` | `opensourcelovart-dofe` | Pro | 5,000 |
+| `ultra@test.lovart-dofe.com` | `opensourcelovart-dofe` | Ultra | 15,000 |
 
 > These accounts are created in YOUR Supabase instance.
 
@@ -251,7 +267,7 @@ Open http://localhost:3000 and start creating!
 
 ```bash
 # Connect your repo to Vercel, then set:
-# Build Command:   pnpm --filter @loomic/shared build && pnpm --filter @loomic/web build
+# Build Command:   pnpm --filter @lovart.dofe/shared build && pnpm --filter @lovart.dofe/web build
 # Output Directory: apps/web/out
 # Environment Variables: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SERVER_BASE_URL
 ```
@@ -263,7 +279,7 @@ The backend runs as two services from a single Docker image, differentiated by `
 **API Service:**
 ```bash
 SERVICE_MODE=api
-LOOMIC_SERVER_PORT=3001
+LOVART_DOFE_SERVER_PORT=3001
 ```
 
 **Worker Service:**
@@ -294,8 +310,8 @@ Each worker polls PGMQ and processes jobs concurrently. PGMQ guarantees exactly-
 
 ```bash
 # Local: start multiple workers
-pnpm --filter @loomic/server dev:workers:2   # 2 workers (6 concurrent jobs)
-pnpm --filter @loomic/server dev:workers:3   # 3 workers (9 concurrent jobs)
+pnpm --filter @lovart.dofe/server dev:workers:2   # 2 workers (6 concurrent jobs)
+pnpm --filter @lovart.dofe/server dev:workers:3   # 3 workers (9 concurrent jobs)
 ```
 
 | Variable | Default | Description |
@@ -313,7 +329,7 @@ On Railway, scale by adding more worker service replicas.
 ## 📂 Project Structure
 
 ```
-Loomic/
+lovart.dofe/
 ├── apps/
 │   ├── web/                    # Next.js 15 frontend
 │   │   ├── src/
@@ -379,7 +395,7 @@ Loomic/
 
 | Variable | Description |
 |----------|-------------|
-| `LOOMIC_AGENT_MODEL` | Agent LLM model (e.g., `google:gemini-2.5-flash`) |
+| `LOVART_DOFE_AGENT_MODEL` | Agent LLM model (e.g., `google:gemini-2.5-flash`) |
 | `GOOGLE_API_KEY` | Google AI API key (Gemini + Imagen + Veo) |
 | `OPENAI_API_KEY` | OpenAI API key (GPT + DALL-E) |
 | `OPENAI_API_BASE` | Custom OpenAI-compatible endpoint |
@@ -408,10 +424,10 @@ Loomic/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOOMIC_SERVER_PORT` | `3001` | API server port |
-| `LOOMIC_WEB_ORIGIN` | `http://localhost:3000` | Frontend origin (CORS) |
-| `LOOMIC_AGENT_BACKEND_MODE` | `state` | Agent persistence (`state` or `filesystem`) |
-| `LOOMIC_SKILLS_ROOT` | `../../skills` | Path to skills directory |
+| `LOVART_DOFE_SERVER_PORT` | `3001` | API server port |
+| `LOVART_DOFE_WEB_ORIGIN` | `http://localhost:3000` | Frontend origin (CORS) |
+| `LOVART_DOFE_AGENT_BACKEND_MODE` | `state` | Agent persistence (`state` or `filesystem`) |
+| `LOVART_DOFE_SKILLS_ROOT` | `../../skills` | Path to skills directory |
 | `WORKER_CONCURRENCY` | `3` | Jobs per worker |
 | `WORKER_IMAGE_CONCURRENCY` | `3` | Image generation slots |
 | `WORKER_VIDEO_CONCURRENCY` | `2` | Video generation slots |

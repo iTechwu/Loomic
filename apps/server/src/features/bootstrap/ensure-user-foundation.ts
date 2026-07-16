@@ -2,7 +2,7 @@ import {
   type Json,
   type ViewerResponse,
   viewerResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { AdminSupabaseClient } from "../../supabase/admin.js";
 import type { AuthenticatedUser } from "../../supabase/user.js";

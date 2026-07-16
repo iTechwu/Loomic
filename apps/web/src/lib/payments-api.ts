@@ -1,5 +1,5 @@
 // @credits-system — Frontend API client for payments: checkout, subscription, cancellation, plan change
-import type { BillingPeriod, SubscriptionPlan } from "@loomic/shared";
+import type { BillingPeriod, SubscriptionPlan } from "@lovart.dofe/shared";
 
 import { getServerBaseUrl } from "./env";
 import { ApiAuthError, ApiApplicationError } from "./server-api";

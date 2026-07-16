@@ -6,7 +6,7 @@ import {
   runCreateRequestSchema,
   runCreateResponseSchema,
   unauthenticatedErrorResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { AgentRunService } from "../agent/runtime.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";

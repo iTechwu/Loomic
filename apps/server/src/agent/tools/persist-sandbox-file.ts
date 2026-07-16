@@ -21,7 +21,7 @@ const persistSandboxFileSchema = z.object({
   filePath: z
     .string()
     .describe(
-      "Absolute path to the file in the sandbox directory (e.g., /tmp/loomic-sandbox/<runId>/output.png)",
+      "Absolute path to the file in the sandbox directory (e.g., /tmp/lovart-dofe-sandbox/<runId>/output.png)",
     ),
   title: z
     .string()

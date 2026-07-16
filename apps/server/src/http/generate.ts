@@ -7,7 +7,7 @@ import {
   unauthenticatedErrorResponseSchema,
   type ImageQualityLevel,
   type VideoResolution,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import { generateImage } from "../generation/image-generation.js";
 import { resolveImageProviderName } from "../generation/providers/registry.js";

@@ -25,7 +25,7 @@ import type {
   JobResponse,
   MarketplaceSearchResponse,
   MarketplaceDetail,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import { getServerBaseUrl } from "./env";
 import { dedupeRequest } from "./dedupe-request";

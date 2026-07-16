@@ -1,4 +1,4 @@
-import type { Database } from "@loomic/shared";
+import type { Database } from "@lovart.dofe/shared";
 
 import type { HomeExampleCategory, InputMention } from "./home-example-seeds";
 import { homeExampleSeedCategories } from "./home-example-seeds";

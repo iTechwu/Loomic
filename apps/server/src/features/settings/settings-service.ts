@@ -1,4 +1,4 @@
-import type { WorkspaceSettings } from "@loomic/shared";
+import type { WorkspaceSettings } from "@lovart.dofe/shared";
 
 import type { AuthenticatedUser, UserSupabaseClient } from "../../supabase/user.js";
 

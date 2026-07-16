@@ -1,6 +1,6 @@
 "use client";
 
-import type { ImageGenerationPreference, ProjectSummary, VideoGenerationPreference } from "@loomic/shared";
+import type { ImageGenerationPreference, ProjectSummary, VideoGenerationPreference } from "@lovart.dofe/shared";
 import type { ReadyAttachment } from "@/hooks/use-image-attachments";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -13,7 +13,7 @@ import { DeleteProjectDialog } from "@/components/delete-project-dialog";
 import { HomeExampleBrowser } from "@/components/home-example-browser";
 import { HomePrompt, type HomePromptHandle } from "@/components/home-prompt";
 import { LoadingScreen } from "@/components/loading-screen";
-import { LoomicLogo } from "@/components/icons/loomic-logo";
+import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
 import { HomeProjectsSkeleton } from "@/components/skeletons/home-skeleton";
 import { useCreateProject } from "@/hooks/use-create-project";
 import { useDeleteProject } from "@/hooks/use-delete-project";
@@ -232,9 +232,9 @@ export default function HomePage() {
           custom={0}
           className="mb-3 flex items-center gap-2 md:mb-4"
         >
-          <LoomicLogo className="size-7 text-foreground md:size-8" />
+          <LovartDofeLogo className="size-7 text-foreground md:size-8" />
           <span className="text-lg font-semibold text-foreground md:text-xl">
-            Loomic
+            lovart.dofe
           </span>
         </motion.div>
 

@@ -14,7 +14,7 @@ import type {
   RunCreateResponse,
   StreamEvent,
   VideoGenerationPreference,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { ServerEnv } from "../config/env.js";
 import { createPipelineLogger } from "../ws/logger.js";
@@ -29,13 +29,13 @@ import type { SubmitImageJobFn } from "./tools/image-generate.js";
 import type { SubmitVideoJobFn } from "./tools/video-generate.js";
 import type { CreditService } from "../features/credits/credit-service.js";
 import { TierGuardError, type TierGuard } from "../features/credits/tier-guard.js";
-import { getPlanConfig, type BillingErrorCode, type ImageQualityLevel } from "@loomic/shared";
+import { getPlanConfig, type BillingErrorCode, type ImageQualityLevel } from "@lovart.dofe/shared";
 import { createAgentBackend } from "./backends/index.js";
 import {
-  type LoomicAgent,
-  type LoomicAgentFactory,
+  type LovartDofeAgent,
+  type LovartDofeAgentFactory,
   createDefaultModelSpecifier,
-  createLoomicDeepAgent,
+  createLovartDofeDeepAgent,
 } from "./deep-agent.js";
 import type { AgentPersistenceService } from "./persistence/index.js";
 import { adaptDeepAgentStream } from "./stream-adapter.js";
@@ -248,7 +248,7 @@ type RuntimeRunRecord = RunCreateRequest & {
 
 type CreateAgentRuntimeOptions = {
   agentPersistenceService?: AgentPersistenceService;
-  agentFactory?: LoomicAgentFactory;
+  agentFactory?: LovartDofeAgentFactory;
   agentRunMetadataService?: AgentRunMetadataService;
   connectionManager?: ConnectionManager;
   createUserClient?: (accessToken: string) => unknown;
@@ -272,10 +272,10 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
     options.runIdFactory ??
     (() => randomUUID());
 
-  const resolvedAgentFactory: LoomicAgentFactory =
+  const resolvedAgentFactory: LovartDofeAgentFactory =
     options.agentFactory ??
     ((agentOptions) =>
-      createLoomicDeepAgent({
+      createLovartDofeDeepAgent({
         ...agentOptions,
         ...(options.createUserClient
           ? { createUserClient: options.createUserClient }
@@ -865,7 +865,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
       );
 
       try {
-      let agent: LoomicAgent;
+      let agent: LovartDofeAgent;
       try {
         const resolvedModel = run.modelOverride
           ? (run.modelOverride.includes(":")

@@ -1,4 +1,4 @@
-export const configPackageName = "@loomic/config" as const;
+export const configPackageName = "@lovart.dofe/config" as const;
 
 export const configPackageDescription =
-  "Shared configuration entrypoint for the Loomic monorepo." as const;
+  "Shared configuration entrypoint for the lovart.dofe monorepo." as const;

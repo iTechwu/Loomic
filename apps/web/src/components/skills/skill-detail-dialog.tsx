@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
-import type { SkillDetail, SkillFileEntry, SkillSource } from "@loomic/shared";
+import type { SkillDetail, SkillFileEntry, SkillSource } from "@lovart.dofe/shared";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

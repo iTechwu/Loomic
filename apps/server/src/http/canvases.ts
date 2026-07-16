@@ -6,7 +6,7 @@ import {
   canvasSaveRequestSchema,
   canvasSaveResponseSchema,
   unauthenticatedErrorResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import {
   CanvasServiceError,

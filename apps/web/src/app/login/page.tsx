@@ -9,9 +9,9 @@ import { LoadingScreen } from "../../components/loading-screen";
 import { useAuth } from "../../lib/auth-context";
 
 const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
-  auth_callback_missing_code: "The sign-in link is incomplete. Request a new one and try again.",
-  auth_exchange_failed: "This sign-in link could not be verified. Request a new one and try again.",
-  viewer_bootstrap_failed: "Your account was verified, but we could not open your workspace. Please try again.",
+  auth_callback_invalid: "The sign-in response is incomplete. Please try again.",
+  auth_exchange_failed: "DoFe could not verify this sign-in. Please try again.",
+  viewer_bootstrap_failed: "Your identity was verified, but we could not prepare the workspace. Please try again.",
   auth_callback_timeout: "Sign-in took too long to complete. Please try again.",
 };
 
@@ -20,6 +20,10 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackError = searchParams.get("error");
+  const redirect = searchParams.get("redirect");
+  const returnTo = redirect && redirect.startsWith("/") && !redirect.startsWith("//") && !redirect.startsWith("/\\")
+    ? redirect
+    : "/home";
   const initialErrorMessage = callbackError
     ? CALLBACK_ERROR_MESSAGES[callbackError] ??
       "Could not complete sign-in. Please try again."
@@ -38,12 +42,12 @@ function LoginPageContent() {
       title="Welcome back"
       description="Sign in to continue where your workspace left off."
       features={[
-        "Use password, magic link, or Google sign-in",
-        "Keep your canvas and workspace state in one place",
-        "Move from idea to delivery without switching tools",
+        "One DoFe account across connected workspaces",
+        "Your canvas and workspace stay associated with the same identity",
+        "Sign in once when your DoFe session is already active",
       ]}
     >
-      <LoginForm initialErrorMessage={initialErrorMessage} />
+      <LoginForm initialErrorMessage={initialErrorMessage} returnTo={returnTo} />
     </AuthShell>
   );
 }

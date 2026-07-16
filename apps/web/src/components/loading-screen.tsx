@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Full-screen loading screen with animated Loomic logo.
+ * Full-screen loading screen with animated lovart.dofe logo.
  * - Body blob: gentle float + breathing
  * - Star eye: slow rotation (sparkle)
  * - Smile: stroke draw-in animation

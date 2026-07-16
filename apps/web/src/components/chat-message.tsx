@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import React, { useMemo } from "react";
 
-import type { ContentBlock, ToolArtifact, ToolBlock } from "@loomic/shared";
+import type { ContentBlock, ToolArtifact, ToolBlock } from "@lovart.dofe/shared";
 import { ImagePill } from "./chat/image-lightbox";
 import { MarkdownRenderer } from "./chat/markdown-renderer";
 import { MentionPill } from "./chat/mention-pill";
@@ -13,7 +13,7 @@ import { ToolBlockView } from "./chat/tool-block-view";
 // Re-export types for backward compatibility with existing consumers
 export type { ContentBlock, ToolArtifact };
 
-/** @deprecated Use ToolBlock from @loomic/shared instead */
+/** @deprecated Use ToolBlock from @lovart.dofe/shared instead */
 export type ToolActivity = ToolBlock;
 
 /* ------------------------------------------------------------------ */

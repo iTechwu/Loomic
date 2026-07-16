@@ -23,7 +23,7 @@ import { createUserSupabaseClientFactory } from "./supabase/user.js";
 import "./features/jobs/executors/image-generation.js";
 import "./features/jobs/executors/video-generation.js";
 
-import type { BackgroundJobType } from "@loomic/shared";
+import type { BackgroundJobType } from "@lovart.dofe/shared";
 
 // Register all image/video providers via shared helper (keeps parity with app.ts)
 import { registerAllProviders } from "./generation/providers/register-all.js";

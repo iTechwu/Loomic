@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ChatSessionSummary, ContentBlock } from "@loomic/shared";
-import type { ChatMessage as ChatMessageData } from "@loomic/shared";
+import type { ChatSessionSummary, ContentBlock } from "@lovart.dofe/shared";
+import type { ChatMessage as ChatMessageData } from "@lovart.dofe/shared";
 import {
   createSession,
   deleteSession as deleteSessionApi,

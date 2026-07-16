@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { ImageGenerationPreference } from "@loomic/shared";
+import type { ImageGenerationPreference } from "@lovart.dofe/shared";
 
-const STORAGE_KEY = "loomic:image-model-preference";
+const STORAGE_KEY = "lovart.dofe:image-model-preference";
 const DEFAULT_MODEL = "google/nano-banana-2";
 
 export type ImageModelPreference = ImageGenerationPreference;

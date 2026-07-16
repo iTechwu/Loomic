@@ -1,6 +1,6 @@
 "use client";
 
-import type { BrandKitAsset } from "@loomic/shared";
+import type { BrandKitAsset } from "@lovart.dofe/shared";
 import { Plus, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 

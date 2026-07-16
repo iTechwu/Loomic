@@ -4,7 +4,7 @@ import type {
   BrandKitSummary,
   BrandKitDetail,
   BrandKitAssetType,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BrandKitSkeleton } from "../skeletons/brand-kit-skeleton";

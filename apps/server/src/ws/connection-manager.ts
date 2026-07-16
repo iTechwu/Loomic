@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
-import type { StreamEvent } from "@loomic/shared";
+import type { StreamEvent } from "@lovart.dofe/shared";
 
 type PendingRPC = {
   resolve: (value: any) => void;

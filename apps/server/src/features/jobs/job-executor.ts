@@ -1,4 +1,4 @@
-import type { BackgroundJobType } from "@loomic/shared";
+import type { BackgroundJobType } from "@lovart.dofe/shared";
 
 import type { JobService } from "./job-service.js";
 import type { PgmqClient } from "../../queue/pgmq-client.js";

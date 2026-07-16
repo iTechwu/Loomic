@@ -5,7 +5,7 @@ import {
   assetSignedUrlResponseSchema,
   unauthenticatedErrorResponseSchema,
   uploadResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import {
   UploadServiceError,

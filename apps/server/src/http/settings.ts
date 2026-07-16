@@ -5,7 +5,7 @@ import {
   unauthenticatedErrorResponseSchema,
   workspaceSettingsResponseSchema,
   workspaceSettingsUpdateRequestSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import {

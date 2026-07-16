@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { healthResponseSchema } from "@loomic/shared";
+import { healthResponseSchema } from "@lovart.dofe/shared";
 
 import type { ServerEnv } from "../config/env.js";
 
@@ -11,7 +11,7 @@ export async function registerHealthRoutes(
   app.get("/api/health", async (_request, reply) => {
     const payload = healthResponseSchema.parse({
       ok: true,
-      service: "loomic-server",
+      service: "lovart-dofe-server",
       version: env.version,
     });
 

@@ -9,7 +9,7 @@ import {
   unauthenticatedErrorResponseSchema,
   viewerResponseSchema,
   type SubscriptionPlan,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import {
   BootstrapError,

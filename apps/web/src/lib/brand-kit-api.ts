@@ -6,7 +6,7 @@ import type {
   BrandKitAssetCreateRequest,
   BrandKitAssetUpdateRequest,
   BrandKitAssetResponse,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import { getServerBaseUrl } from "./env";
 import { ApiAuthError, ApiApplicationError } from "./server-api";

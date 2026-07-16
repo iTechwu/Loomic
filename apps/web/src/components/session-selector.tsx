@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChatSessionSummary } from "@loomic/shared";
+import type { ChatSessionSummary } from "@lovart.dofe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type SessionSelectorProps = {

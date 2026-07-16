@@ -1,68 +1,70 @@
 "use client";
 
-import type { Session, User } from "@supabase/supabase-js";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { getSupabaseBrowserClient } from "./supabase-browser";
+import { refreshSsoSession, signOutFromSso, type SsoSession } from "./sso-auth";
+
+export type AuthUser = SsoSession["user"];
 
 interface AuthContextValue {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  session: SsoSession | null;
   loading: boolean;
+  completeSignIn: (session: SsoSession) => void;
+  refreshSession: () => Promise<SsoSession | null>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<SsoSession | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshTimer = useRef<number | null>(null);
 
-  useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function signOut() {
-    const supabase = getSupabaseBrowserClient();
-    await supabase.auth.signOut();
-    setSession(null);
-    setUser(null);
+  function applySession(nextSession: SsoSession | null) {
+    setSession(nextSession);
+    setUser(nextSession?.user ?? null);
   }
 
-  return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  async function refreshSession(): Promise<SsoSession | null> {
+    const nextSession = await refreshSsoSession();
+    applySession(nextSession);
+    return nextSession;
+  }
+
+  useEffect(() => {
+    void refreshSession().finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+    if (!session?.expires_at) return;
+
+    // Renew early when this SSO client is permitted to issue refresh tokens.
+    const delay = Math.max(5_000, session.expires_at * 1_000 - Date.now() - 60_000);
+    refreshTimer.current = window.setTimeout(() => void refreshSession(), delay);
+    return () => {
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+    };
+  }, [session?.expires_at]);
+
+  function completeSignIn(nextSession: SsoSession) {
+    applySession(nextSession);
+  }
+
+  async function signOut() {
+    const logoutUrl = await signOutFromSso();
+    applySession(null);
+    if (logoutUrl) window.location.assign(logoutUrl);
+  }
+
+  return <AuthContext.Provider value={{ user, session, loading, completeSignIn, refreshSession, signOut }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }

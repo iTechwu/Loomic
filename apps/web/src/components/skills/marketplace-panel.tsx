@@ -12,7 +12,7 @@ import {
   User,
 } from "lucide-react";
 
-import type { MarketplaceDetail, MarketplaceSkill } from "@loomic/shared";
+import type { MarketplaceDetail, MarketplaceSkill } from "@lovart.dofe/shared";
 
 import { Button } from "@/components/ui/button";
 import {

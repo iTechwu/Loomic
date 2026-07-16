@@ -14,7 +14,7 @@ import type { AgentBackendResult } from "./index.js";
 
 type AgentBackendEnv = Pick<ServerEnv, "agentFilesRoot" | "skillsRoot">;
 
-const DEFAULT_DEV_SANDBOX_ROOT = "/tmp/loomic-sandbox-dev";
+const DEFAULT_DEV_SANDBOX_ROOT = "/tmp/lovart-dofe-sandbox-dev";
 
 /**
  * Create a development backend with local sandbox execution.
@@ -33,7 +33,7 @@ export function createDevelopmentBackend(
 ): AgentBackendResult {
   if (!env.agentFilesRoot) {
     throw new Error(
-      "LOOMIC_AGENT_FILES_ROOT must be set when filesystem backend mode is enabled.",
+      "LOVART_DOFE_AGENT_FILES_ROOT must be set when filesystem backend mode is enabled.",
     );
   }
 

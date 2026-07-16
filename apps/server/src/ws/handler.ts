@@ -6,7 +6,7 @@ import {
   type RunCreateRequest,
   wsCommandSchema,
   wsRpcResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 import type { AgentRunService } from "../agent/runtime.js";
 import type { AgentRunMetadataService } from "../features/agent-runs/agent-run-service.js";
 import type { ThreadService } from "../features/chat/thread-service.js";
@@ -19,7 +19,7 @@ import type {
 import type { ConnectionManager } from "./connection-manager.js";
 import type { CanvasEventBuffer } from "./event-buffer.js";
 import type { ChatService } from "../features/chat/chat-service.js";
-import type { ContentBlock, ToolBlock } from "@loomic/shared";
+import type { ContentBlock, ToolBlock } from "@lovart.dofe/shared";
 import { createPipelineLogger } from "./logger.js";
 
 type RegisterWsOptions = {

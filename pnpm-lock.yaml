@@ -60,7 +60,7 @@ importers:
       '@langchain/openai':
         specifier: ^1.3.0
         version: 1.3.0(@langchain/core@1.1.35(openai@6.32.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(ws@8.20.0)
-      '@loomic/shared':
+      '@lovart.dofe/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@supabase/supabase-js':
@@ -103,7 +103,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@loomic/config':
+      '@lovart.dofe/config':
         specifier: workspace:*
         version: link:../../packages/config
       '@types/js-yaml':
@@ -142,7 +142,7 @@ importers:
       '@excalidraw/excalidraw':
         specifier: ^0.18.0
         version: 0.18.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@loomic/shared':
+      '@lovart.dofe/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@supabase/supabase-js':
@@ -188,10 +188,10 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
     devDependencies:
-      '@loomic/config':
+      '@lovart.dofe/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@loomic/ui':
+      '@lovart.dofe/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/postcss':
@@ -235,7 +235,7 @@ importers:
 
   packages/ui:
     devDependencies:
-      '@loomic/config':
+      '@lovart.dofe/config':
         specifier: workspace:*
         version: link:../config
 

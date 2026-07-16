@@ -10,7 +10,7 @@ import {
   unauthenticatedErrorResponseSchema,
   workspaceSkillListResponseSchema,
   workspaceSkillToggleRequestSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import { importSkillFromUrl, SkillImportError } from "../features/skills/skill-import-service.js";
 

@@ -1,17 +1,14 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
 
 import { LoadingScreen } from "../../../components/loading-screen";
-import {
-  ApiApplicationError,
-  ApiAuthError,
-  fetchViewer,
-} from "../../../lib/server-api";
-import { getSupabaseBrowserClient } from "../../../lib/supabase-browser";
+import { useAuth } from "../../../lib/auth-context";
+import { fetchViewer } from "../../../lib/server-api";
+import { exchangeSsoCode } from "../../../lib/sso-auth";
 
-const CALLBACK_TIMEOUT_MS = 5_000;
+const CALLBACK_TIMEOUT_MS = 10_000;
 
 function loginErrorUrl(error: string): string {
   return `/login?${new URLSearchParams({ error }).toString()}`;
@@ -20,6 +17,7 @@ function loginErrorUrl(error: string): string {
 function AuthCallbackPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { completeSignIn } = useAuth();
   const started = useRef(false);
 
   useEffect(() => {
@@ -27,19 +25,11 @@ function AuthCallbackPageContent() {
     started.current = true;
 
     const code = searchParams.get("code");
+    const state = searchParams.get("state");
     const providerError = searchParams.get("error");
+    if (providerError) return router.replace(loginErrorUrl(providerError));
+    if (!code || !state) return router.replace(loginErrorUrl("auth_callback_invalid"));
 
-    if (providerError) {
-      router.replace(loginErrorUrl(providerError));
-      return;
-    }
-
-    if (!code) {
-      router.replace(loginErrorUrl("auth_callback_missing_code"));
-      return;
-    }
-
-    const supabase = getSupabaseBrowserClient();
     let cancelled = false;
     const timeoutId = window.setTimeout(() => {
       cancelled = true;
@@ -47,57 +37,37 @@ function AuthCallbackPageContent() {
     }, CALLBACK_TIMEOUT_MS);
 
     void (async () => {
+      let result: Awaited<ReturnType<typeof exchangeSsoCode>>;
       try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (cancelled) return;
-
-        if (error || !data.session?.access_token) {
-          router.replace(loginErrorUrl("auth_exchange_failed"));
-          return;
-        }
-
-        try {
-          await fetchViewer(data.session.access_token);
-        } catch (viewerError) {
-          if (
-            viewerError instanceof ApiAuthError ||
-            viewerError instanceof ApiApplicationError ||
-            viewerError instanceof Error
-          ) {
-            router.replace(loginErrorUrl("viewer_bootstrap_failed"));
-            return;
-          }
-
-          router.replace(loginErrorUrl("viewer_bootstrap_failed"));
-          return;
-        }
-
-        if (!cancelled) {
-          router.replace("/home");
-        }
+        result = await exchangeSsoCode(code, state);
       } catch {
-        if (!cancelled) {
-          router.replace(loginErrorUrl("auth_exchange_failed"));
-        }
-      } finally {
-        clearTimeout(timeoutId);
+        if (!cancelled) router.replace(loginErrorUrl("auth_exchange_failed"));
+        return;
       }
-    })();
+
+      if (cancelled) return;
+      try {
+        await fetchViewer(result.session.access_token);
+      } catch {
+        if (!cancelled) router.replace(loginErrorUrl("viewer_bootstrap_failed"));
+        return;
+      }
+
+      if (!cancelled) {
+        completeSignIn(result.session);
+        router.replace(result.returnTo);
+      }
+    })().finally(() => clearTimeout(timeoutId));
 
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [router, searchParams]);
+  }, [completeSignIn, router, searchParams]);
 
   return <LoadingScreen />;
 }
 
 export default function AuthCallbackPage() {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <AuthCallbackPageContent />
-    </Suspense>
-  );
+  return <Suspense fallback={<LoadingScreen />}><AuthCallbackPageContent /></Suspense>;
 }

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { type ModelInfo, modelListResponseSchema } from "@loomic/shared";
+import { type ModelInfo, modelListResponseSchema } from "@lovart.dofe/shared";
 import type { ServerEnv } from "../config/env.js";
 
 const OPENAI_MODELS: ModelInfo[] = [

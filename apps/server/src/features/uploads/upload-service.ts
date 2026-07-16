@@ -1,4 +1,4 @@
-import type { AssetBucket, AssetObject } from "@loomic/shared";
+import type { AssetBucket, AssetObject } from "@lovart.dofe/shared";
 
 import type {
   AuthenticatedUser,

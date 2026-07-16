@@ -25,7 +25,7 @@ try {
     port: env.port,
   });
 
-  console.log(`@loomic/server listening on http://${host}:${env.port}`);
+  console.log(`@lovart.dofe/server listening on http://${host}:${env.port}`);
 } catch (error) {
   app.log.error(error);
   process.exitCode = 1;

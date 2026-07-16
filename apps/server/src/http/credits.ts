@@ -9,7 +9,7 @@ import {
   setPlanRequestSchema,
   applicationErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import {
   CreditServiceError,

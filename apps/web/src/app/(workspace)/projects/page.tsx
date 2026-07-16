@@ -1,6 +1,6 @@
 "use client";
 
-import type { WorkspaceSummary, ProjectSummary } from "@loomic/shared";
+import type { WorkspaceSummary, ProjectSummary } from "@lovart.dofe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 

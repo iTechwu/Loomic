@@ -22,12 +22,12 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Create a workspace account"
-      description="Register with email and password, then come back to the same canvas from any device."
+      title="Create a DoFe account"
+      description="Continue to the central DoFe account service to register and manage your identity."
       features={[
-        "Create a dedicated account with email and password",
-        "Return to your workspace after confirming your email",
-        "Use the same workspace layout as signed-in users",
+        "One identity for DoFe workspaces",
+        "Centralized account security and recovery",
+        "Return to your workspace after authorization",
       ]}
     >
       <RegisterForm />

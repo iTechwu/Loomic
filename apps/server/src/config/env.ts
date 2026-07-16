@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
+
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
@@ -26,6 +28,7 @@ export type ServerEnv = {
   agentBackendMode: AgentBackendMode;
   agentFilesRoot?: string;
   agentModel: string;
+  databaseUrl?: string;
   googleApiKey?: string;
   googleApplicationCredentials?: string;
   googleFontsApiKey?: string;
@@ -36,12 +39,24 @@ export type ServerEnv = {
   openAIApiKey?: string;
   port: number;
   replicateApiToken?: string;
+  internalApiSecret?: string;
+  ssoApiUrl?: string;
+  ssoClientId?: string;
+  ssoClientSecret?: string;
+  ssoDiscoveryUrl?: string;
+  ssoIssuer?: string;
+  ssoInternalApiUrl?: string;
+  ssoInternalJwksUri?: string;
+  ssoJwksUri?: string;
+  ssoRedirectUri?: string;
+  ssoServiceName?: string;
   supabaseAnonKey?: string;
   supabaseDbUrl?: string;
   supabaseJwtSecret?: string;
   supabaseProjectId?: string;
   supabaseServiceRoleKey?: string;
   supabaseUrl?: string;
+  tos?: TosConfig;
   version: string;
   volcesApiKey?: string;
   volcesBaseUrl?: string;
@@ -72,11 +87,14 @@ export function loadServerEnv(
 ): ServerEnv {
   const agentFilesRoot =
     overrides.agentFilesRoot ??
-    parseAgentFilesRoot(source.LOOMIC_AGENT_FILES_ROOT);
+    parseAgentFilesRoot(source.LOVART_DOFE_AGENT_FILES_ROOT);
   const openAIApiBase =
     overrides.openAIApiBase ?? normalizeOptionalString(source.OPENAI_API_BASE);
   const openAIApiKey =
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
+  const databaseUrl =
+    overrides.databaseUrl ?? normalizeOptionalString(source.DATABASE_URL);
+  const tos = overrides.tos ?? parseTosConfig(source);
   const supabaseUrl =
     overrides.supabaseUrl ?? normalizeOptionalString(source.SUPABASE_URL);
   const supabaseAnonKey =
@@ -92,6 +110,28 @@ export function loadServerEnv(
   const supabaseProjectId =
     overrides.supabaseProjectId ??
     normalizeOptionalString(source.SUPABASE_PROJECT_ID);
+  const ssoApiUrl =
+    overrides.ssoApiUrl ?? normalizeOptionalString(source.SSO_API_URL);
+  const ssoClientId =
+    overrides.ssoClientId ?? normalizeOptionalString(source.SSO_CLIENT_ID);
+  const ssoClientSecret =
+    overrides.ssoClientSecret ?? normalizeOptionalString(source.SSO_CLIENT_SECRET);
+  const ssoDiscoveryUrl =
+    overrides.ssoDiscoveryUrl ?? normalizeOptionalString(source.SSO_DISCOVERY_URL);
+  const ssoIssuer =
+    overrides.ssoIssuer ?? normalizeOptionalString(source.SSO_ISSUER);
+  const ssoInternalApiUrl =
+    overrides.ssoInternalApiUrl ?? normalizeOptionalString(source.SSO_INTERNAL_API_URL);
+  const ssoJwksUri =
+    overrides.ssoJwksUri ?? normalizeOptionalString(source.JWKS_URI);
+  const ssoInternalJwksUri =
+    overrides.ssoInternalJwksUri ?? normalizeOptionalString(source.INTERNAL_JWKS_URI);
+  const ssoRedirectUri =
+    overrides.ssoRedirectUri ?? normalizeOptionalString(source.SSO_REDIRECT_URI);
+  const ssoServiceName =
+    overrides.ssoServiceName ?? normalizeOptionalString(source.SSO_SERVICE_NAME);
+  const internalApiSecret =
+    overrides.internalApiSecret ?? normalizeOptionalString(source.INTERNAL_API_SECRET);
   const googleApiKey =
     overrides.googleApiKey ?? normalizeOptionalString(source.GOOGLE_API_KEY);
   const googleApplicationCredentials =
@@ -133,7 +173,7 @@ export function loadServerEnv(
   const lemonSqueezyVariantBusinessYearly =
     overrides.lemonSqueezyVariantBusinessYearly ?? normalizeOptionalString(source.LEMONSQUEEZY_VARIANT_BUSINESS_YEARLY);
   const skillsRoot =
-    overrides.skillsRoot ?? normalizeOptionalString(source.LOOMIC_SKILLS_ROOT);
+    overrides.skillsRoot ?? normalizeOptionalString(source.LOVART_DOFE_SKILLS_ROOT);
   const workerConcurrency = overrides.workerConcurrency ??
     (source.WORKER_CONCURRENCY
       ? parseInt(source.WORKER_CONCURRENCY, 10) : undefined);
@@ -153,38 +193,51 @@ export function loadServerEnv(
       ? parseInt(source.WORKER_MAX_BATCH_SIZE, 10) : undefined);
 
   // Resolve default agent model based on available provider keys.
-  // Explicit LOOMIC_AGENT_MODEL always takes precedence; otherwise fall back
+  // Explicit LOVART_DOFE_AGENT_MODEL always takes precedence; otherwise fall back
   // to Gemini 2.5 Flash when only Google/Vertex is configured.
   const explicitModel =
-    overrides.agentModel ?? parseAgentModel(source.LOOMIC_AGENT_MODEL);
+    overrides.agentModel ?? parseAgentModel(source.LOVART_DOFE_AGENT_MODEL);
   const resolvedAgentModel =
     explicitModel ??
     resolveDefaultAgentModel({
-      googleApiKey,
-      googleVertexProject,
-      openAIApiKey,
+      ...(googleApiKey ? { googleApiKey } : {}),
+      ...(googleVertexProject ? { googleVertexProject } : {}),
+      ...(openAIApiKey ? { openAIApiKey } : {}),
     });
 
   return {
     agentBackendMode:
       overrides.agentBackendMode ??
-      parseAgentBackendMode(source.LOOMIC_AGENT_BACKEND_MODE),
+      parseAgentBackendMode(source.LOVART_DOFE_AGENT_BACKEND_MODE),
     agentModel: resolvedAgentModel,
-    port: overrides.port ?? parsePort(source.LOOMIC_SERVER_PORT ?? source.PORT),
+    port: overrides.port ?? parsePort(source.LOVART_DOFE_SERVER_PORT ?? source.PORT),
     version: overrides.version ?? readServerVersion(),
     webOrigin:
-      overrides.webOrigin ?? source.LOOMIC_WEB_ORIGIN ?? DEFAULT_WEB_ORIGIN,
+      overrides.webOrigin ?? source.LOVART_DOFE_WEB_ORIGIN ?? DEFAULT_WEB_ORIGIN,
     ...(agentFilesRoot ? { agentFilesRoot } : {}),
     ...(googleApiKey ? { googleApiKey } : {}),
     ...(googleApplicationCredentials ? { googleApplicationCredentials } : {}),
     ...(openAIApiBase ? { openAIApiBase } : {}),
     ...(openAIApiKey ? { openAIApiKey } : {}),
+    ...(databaseUrl ? { databaseUrl } : {}),
     ...(supabaseUrl ? { supabaseUrl } : {}),
     ...(supabaseAnonKey ? { supabaseAnonKey } : {}),
     ...(supabaseDbUrl ? { supabaseDbUrl } : {}),
     ...(supabaseJwtSecret ? { supabaseJwtSecret } : {}),
     ...(supabaseServiceRoleKey ? { supabaseServiceRoleKey } : {}),
     ...(supabaseProjectId ? { supabaseProjectId } : {}),
+    ...(tos ? { tos } : {}),
+    ...(ssoApiUrl ? { ssoApiUrl } : {}),
+    ...(ssoClientId ? { ssoClientId } : {}),
+    ...(ssoClientSecret ? { ssoClientSecret } : {}),
+    ...(ssoDiscoveryUrl ? { ssoDiscoveryUrl } : {}),
+    ...(ssoIssuer ? { ssoIssuer } : {}),
+    ...(ssoInternalApiUrl ? { ssoInternalApiUrl } : {}),
+    ...(ssoJwksUri ? { ssoJwksUri } : {}),
+    ...(ssoInternalJwksUri ? { ssoInternalJwksUri } : {}),
+    ...(ssoRedirectUri ? { ssoRedirectUri } : {}),
+    ...(ssoServiceName ? { ssoServiceName } : {}),
+    ...(internalApiSecret ? { internalApiSecret } : {}),
     ...(googleFontsApiKey ? { googleFontsApiKey } : {}),
     ...(googleVertexProject ? { googleVertexProject } : {}),
     ...(googleVertexLocation ? { googleVertexLocation } : {}),
@@ -222,7 +275,7 @@ function parseAgentBackendMode(rawMode: string | undefined): AgentBackendMode {
     return rawMode;
   }
 
-  throw new Error(`Invalid LOOMIC_AGENT_BACKEND_MODE value: ${rawMode}`);
+  throw new Error(`Invalid LOVART_DOFE_AGENT_BACKEND_MODE value: ${rawMode}`);
 }
 
 function parseAgentFilesRoot(rawRoot: string | undefined) {
@@ -245,7 +298,7 @@ function parsePort(rawPort: string | undefined) {
 
   const port = Number.parseInt(rawPort, 10);
   if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(`Invalid LOOMIC_SERVER_PORT value: ${rawPort}`);
+    throw new Error(`Invalid LOVART_DOFE_SERVER_PORT value: ${rawPort}`);
   }
 
   return port;

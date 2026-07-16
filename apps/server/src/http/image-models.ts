@@ -6,7 +6,7 @@ import {
   getImageCreditCost,
   MODEL_MIN_TIER,
   type SubscriptionPlan,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { CreditService } from "../features/credits/credit-service.js";
 import { getAvailableImageModels } from "../generation/providers/registry.js";

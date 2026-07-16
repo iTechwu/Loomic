@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { ToolBlock } from "@loomic/shared";
+import type { ToolBlock } from "@lovart.dofe/shared";
 import { ChatImage } from "./image-lightbox";
 import {
   formatModelDisplayName,

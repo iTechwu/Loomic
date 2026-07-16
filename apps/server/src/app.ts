@@ -3,7 +3,7 @@ import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 
-import type { LoomicAgentFactory } from "./agent/deep-agent.js";
+import type { LovartDofeAgentFactory } from "./agent/deep-agent.js";
 import {
   createAgentPersistenceService,
   type AgentPersistenceService,
@@ -78,6 +78,7 @@ import { registerGenerateRoutes } from "./http/generate.js";
 import { registerHealthRoutes } from "./http/health.js";
 import { registerImageProxyRoute } from "./http/image-proxy.js";
 import { registerModelRoutes } from "./http/models.js";
+import { registerOidcAuthRoutes } from "./http/oidc-auth.js";
 import { registerImageModelRoutes } from "./http/image-models.js";
 import { registerVideoModelRoutes } from "./http/video-models.js";
 import { registerProjectRoutes } from "./http/projects.js";
@@ -98,7 +99,7 @@ import {
 } from "./supabase/user.js";
 
 export type BuildAppOptions = {
-  agentFactory?: LoomicAgentFactory;
+  agentFactory?: LovartDofeAgentFactory;
   agentModel?: BaseLanguageModel | string;
   agentPersistenceService?: AgentPersistenceService;
   agentRunMetadataService?: AgentRunMetadataService;
@@ -259,6 +260,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
+  void registerOidcAuthRoutes(app, { env, getAdminClient });
   void registerFontsRoutes(app, { env });
   void registerImageProxyRoute(app);
   void registerRunRoutes(app, agentRuns, {

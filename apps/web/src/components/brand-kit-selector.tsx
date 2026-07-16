@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
-import type { BrandKitSummary } from "@loomic/shared";
+import type { BrandKitSummary } from "@lovart.dofe/shared";
 import { fetchBrandKits } from "@/lib/brand-kit-api";
 import { updateProject } from "@/lib/server-api";
 

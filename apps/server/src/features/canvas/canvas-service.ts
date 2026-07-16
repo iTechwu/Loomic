@@ -1,4 +1,4 @@
-import type { CanvasContent, CanvasDetail, Json } from "@loomic/shared";
+import type { CanvasContent, CanvasDetail, Json } from "@lovart.dofe/shared";
 
 import type { AuthenticatedUser, UserSupabaseClient } from "../../supabase/user.js";
 

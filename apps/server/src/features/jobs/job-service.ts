@@ -3,7 +3,7 @@ import type {
   BackgroundJobStatus,
   BackgroundJobType,
   Json,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import type { PgmqClient } from "../../queue/pgmq-client.js";
 import type {

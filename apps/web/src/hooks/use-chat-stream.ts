@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 
-import type { StreamEvent, ToolBlock } from "@loomic/shared";
+import type { StreamEvent, ToolBlock } from "@lovart.dofe/shared";
 import type { Message } from "./use-chat-sessions";
 
 type MessageUpdater = (

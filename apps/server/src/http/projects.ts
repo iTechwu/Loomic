@@ -7,7 +7,7 @@ import {
   projectListResponseSchema,
   projectUpdateRequestSchema,
   unauthenticatedErrorResponseSchema,
-} from "@loomic/shared";
+} from "@lovart.dofe/shared";
 
 import {
   ProjectServiceError,
