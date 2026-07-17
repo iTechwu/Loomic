@@ -5,6 +5,10 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { ServerEnv } from "../config/env.js";
 import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
 import { ssoProfileEmail } from "../sso-identity-email.js";
+import {
+  type SsoTenantTeamContext,
+  fetchSsoTenantTeamContext,
+} from "../sso-tenant-context.js";
 
 const PKCE_COOKIE = "lovart_oidc_pkce";
 const REFRESH_COOKIE = "lovart_oidc_refresh";
@@ -38,6 +42,7 @@ type BrowserSession = {
   accessToken: string;
   expiresAt: number;
   returnTo?: string;
+  tenantContext?: SsoTenantTeamContext;
   user: {
     email: string;
     id: string;
@@ -53,7 +58,9 @@ export function chooseDataUserId(
 ): string {
   return (
     mappedDataUserId ??
-    (legacyCandidateIds.length === 1 ? legacyCandidateIds[0]! : ssoUserId)
+    (legacyCandidateIds.length === 1
+      ? (legacyCandidateIds[0] ?? ssoUserId)
+      : ssoUserId)
   );
 }
 
@@ -163,6 +170,7 @@ export async function registerOidcAuthRoutes(
         identity,
         tokens,
         options.identities,
+        config,
       );
 
       if (tokens.refresh_token) {
@@ -199,6 +207,7 @@ export async function registerOidcAuthRoutes(
         identity,
         tokens,
         options.identities,
+        config,
       );
       if (tokens.refresh_token) {
         setCookie(reply, REFRESH_COOKIE, tokens.refresh_token, {
@@ -260,6 +269,7 @@ function tryLoadOidcConfig(env: ServerEnv) {
     apiUrl: env.ssoApiUrl,
     clientId: env.ssoClientId,
     clientSecret: env.ssoClientSecret,
+    internalApiSecret: env.internalApiSecret,
     issuer: env.ssoIssuer,
     internalApiUrl: env.ssoInternalApiUrl ?? env.ssoApiUrl,
     jwksUri: env.ssoInternalJwksUri ?? env.ssoJwksUri,
@@ -362,16 +372,26 @@ async function createDataSession(
   identity: SsoIdentity,
   tokens: SsoTokenResponse,
   identities: SsoIdentityRepository,
+  config: OidcConfig,
 ): Promise<BrowserSession> {
   if (!isUuid(identity.id))
     throw new Error("SSO subject must be a UUID for the current data schema");
   if (!tokens.access_token)
     throw new Error("SSO token response did not contain an access token");
   const email = ssoProfileEmail(identity.id, identity.email);
-  const dataUserId = await identities.resolve({
-    ...(identity.email ? { email: identity.email } : {}),
-    ssoUserId: identity.id,
-  });
+  const [dataUserId, tenantContext] = await Promise.all([
+    identities.resolve({
+      ...(identity.email ? { email: identity.email } : {}),
+      ssoUserId: identity.id,
+    }),
+    fetchSsoTenantTeamContext({
+      internalApiUrl: config.internalApiUrl,
+      userId: identity.id,
+      ...(config.internalApiSecret
+        ? { internalApiSecret: config.internalApiSecret }
+        : {}),
+    }).catch(() => undefined),
+  ]);
 
   return {
     accessToken: tokens.access_token,
@@ -384,6 +404,7 @@ async function createDataSession(
         ...(identity.name ? { name: identity.name } : {}),
       },
     },
+    ...(tenantContext ? { tenantContext } : {}),
   };
 }
 

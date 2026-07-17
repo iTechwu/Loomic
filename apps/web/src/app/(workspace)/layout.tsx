@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 
-import { useAuth } from "@/lib/auth-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { PageTransition } from "@/components/page-transition";
+import { TenantTeamNav } from "@/components/tenant-team-nav";
+import { useAuth } from "@/lib/auth-context";
 
 export default function WorkspaceLayout({
   children,
@@ -41,6 +42,7 @@ export default function WorkspaceLayout({
         跳到主内容
       </a>
       <AppSidebar />
+      <TenantTeamNav />
       {/* pb-14 on mobile for the fixed bottom navigation bar, reset on md+ */}
       <main id="main" className="relative flex-1 overflow-auto pb-14 md:pb-0">
         <PageTransition>{children}</PageTransition>

@@ -1,9 +1,9 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { FloatingNav } from "@/components/landing/floating-nav";
 import { HeroSection } from "@/components/landing/hero-section";
 import { TrustBar } from "@/components/landing/trust-bar";
+import dynamic from "next/dynamic";
 
 // ---------------------------------------------------------------------------
 // Below-fold sections — lazy-loaded via next/dynamic to reduce initial bundle.
@@ -29,16 +29,7 @@ const ShowcaseGallery = dynamic(
 );
 
 const HowItWorks = dynamic(
-  () =>
-    import("@/components/landing/how-it-works").then((m) => m.HowItWorks),
-  { ssr: false },
-);
-
-const PricingPreview = dynamic(
-  () =>
-    import("@/components/landing/pricing-preview").then(
-      (m) => m.PricingPreview,
-    ),
+  () => import("@/components/landing/how-it-works").then((m) => m.HowItWorks),
   { ssr: false },
 );
 
@@ -49,9 +40,7 @@ const FinalCTA = dynamic(
 
 const LandingFooter = dynamic(
   () =>
-    import("@/components/landing/landing-footer").then(
-      (m) => m.LandingFooter,
-    ),
+    import("@/components/landing/landing-footer").then((m) => m.LandingFooter),
   { ssr: false },
 );
 
@@ -68,7 +57,6 @@ export default function LandingPage() {
         <FeatureShowcase />
         <ShowcaseGallery />
         <HowItWorks />
-        <PricingPreview />
         <FinalCTA />
       </main>
       <LandingFooter />
