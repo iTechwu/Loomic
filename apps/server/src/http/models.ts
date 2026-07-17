@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { type ModelInfo, modelListResponseSchema } from "@lovart.dofe/shared";
 import type { ServerEnv } from "../config/env.js";
+import { createDofeModelCatalog } from "../models/dofe-model-router.js";
 
 const OPENAI_MODELS: ModelInfo[] = [
   { id: "openai:az_sre/gpt-5.4", name: "GPT-5.4", provider: "openai" },
@@ -26,7 +27,27 @@ const GOOGLE_MODELS: ModelInfo[] = [
 ];
 
 export async function registerModelRoutes(app: FastifyInstance, env: ServerEnv) {
+  const dofeCatalog = createDofeModelCatalog(env);
+
   app.get("/api/models", async (_request, reply) => {
+    if (dofeCatalog) {
+      try {
+        const models = await dofeCatalog.listChatModels();
+        return reply.code(200).send(modelListResponseSchema.parse({
+          models: models.map((model) => ({
+            id: `dofe:${model.id}`,
+            name: model.id,
+            provider: "dofe",
+          })),
+        }));
+      } catch (error) {
+        app.log.error(error, "DoFe model router catalog is unavailable");
+        return reply.code(503).send({
+          error: "Model router catalog is temporarily unavailable.",
+        });
+      }
+    }
+
     const models: ModelInfo[] = [];
     if (env.openAIApiKey) models.push(...OPENAI_MODELS);
     if (env.googleApiKey || env.googleVertexProject) models.push(...GOOGLE_MODELS);

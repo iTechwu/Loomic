@@ -179,7 +179,13 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
                 <div key={provider} className="mt-2">
                   <div className="flex items-center gap-1.5 px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     <ProviderLogo provider={provider} />
-                    {provider === "openai" ? "OpenAI" : provider === "google" ? "Google" : provider}
+                    {provider === "openai"
+                      ? "OpenAI"
+                      : provider === "google"
+                        ? "Google"
+                        : provider === "dofe"
+                          ? "DoFe Model Router"
+                          : provider}
                   </div>
                   {providerModels.map((m) => (
                     <button

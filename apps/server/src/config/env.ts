@@ -5,6 +5,7 @@ import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "gpt-5.4";
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
@@ -13,8 +14,9 @@ export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
  * When Google/Vertex is configured but OpenAI is not, defaults to Gemini 2.5 Flash.
  */
 export function resolveDefaultAgentModel(
-  env: Pick<ServerEnv, "googleApiKey" | "googleVertexProject" | "openAIApiKey">,
+  env: Pick<ServerEnv, "dofeModelApiKey" | "googleApiKey" | "googleVertexProject" | "openAIApiKey">,
 ): string {
+  if (env.dofeModelApiKey) return DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL;
   const hasOpenAI = !!env.openAIApiKey;
   const hasGoogle = !!(env.googleApiKey || env.googleVertexProject);
 
@@ -29,6 +31,10 @@ export type ServerEnv = {
   agentFilesRoot?: string;
   agentModel: string;
   databaseUrl?: string;
+  /** DoFe Models gateway data-plane base URL, normalized to include /api. */
+  dofeModelBaseUrl?: string;
+  /** DoFe Models gateway API key. This stays server-side only. */
+  dofeModelApiKey?: string;
   googleApiKey?: string;
   googleApplicationCredentials?: string;
   googleFontsApiKey?: string;
@@ -77,6 +83,16 @@ export function loadServerEnv(
     overrides.openAIApiBase ?? normalizeOptionalString(source.OPENAI_API_BASE);
   const openAIApiKey =
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
+  const dofeModelBaseUrl =
+    overrides.dofeModelBaseUrl ?? normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
+  const dofeModelApiKey =
+    overrides.dofeModelApiKey ?? normalizeOptionalString(source.DOFE_MODEL_API_KEY);
+
+  if (!!dofeModelBaseUrl !== !!dofeModelApiKey) {
+    throw new Error(
+      "DOFE_MODEL_BASE_URL and DOFE_MODEL_API_KEY must be configured together.",
+    );
+  }
   const databaseUrl =
     overrides.databaseUrl ?? normalizeOptionalString(source.DATABASE_URL);
   const tos = overrides.tos ?? parseTosConfig(source);
@@ -152,6 +168,7 @@ export function loadServerEnv(
   const resolvedAgentModel =
     explicitModel ??
     resolveDefaultAgentModel({
+      ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
       ...(googleApiKey ? { googleApiKey } : {}),
       ...(googleVertexProject ? { googleVertexProject } : {}),
       ...(openAIApiKey ? { openAIApiKey } : {}),
@@ -171,6 +188,8 @@ export function loadServerEnv(
     ...(googleApplicationCredentials ? { googleApplicationCredentials } : {}),
     ...(openAIApiBase ? { openAIApiBase } : {}),
     ...(openAIApiKey ? { openAIApiKey } : {}),
+    ...(dofeModelBaseUrl ? { dofeModelBaseUrl } : {}),
+    ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(tos ? { tos } : {}),
     ...(ssoApiUrl ? { ssoApiUrl } : {}),
@@ -226,6 +245,33 @@ function parseAgentModel(rawModel: string | undefined) {
 function normalizeOptionalString(value: string | undefined) {
   const normalizedValue = value?.trim();
   return normalizedValue || undefined;
+}
+
+/**
+ * ixicai.cn serves the interactive application at the root and exposes its
+ * models data-plane beneath /api. Accepting either form prevents requests from
+ * being sent to the login application when an operator configures the root URL.
+ */
+export function normalizeDofeModelBaseUrl(value: string | undefined) {
+  const normalizedValue = normalizeOptionalString(value);
+  if (!normalizedValue) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(normalizedValue);
+  } catch {
+    throw new Error("DOFE_MODEL_BASE_URL must be an absolute http(s) URL.");
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("DOFE_MODEL_BASE_URL must use http or https.");
+  }
+
+  if (url.pathname === "" || url.pathname === "/") {
+    url.pathname = "/api";
+  }
+
+  return url.toString().replace(/\/$/, "");
 }
 
 function parsePort(rawPort: string | undefined) {

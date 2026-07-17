@@ -50,7 +50,9 @@ test("vitest workspace config exists for later package-level adoption", async ()
   assert.match(workspaceConfig, /tests\/\*\*\/\*\.test\.mjs/);
 });
 
-for (const appName of ["web", "server", "desktop"]) {
+// The active workspace has two deployable apps. Keep this list aligned with
+// pnpm-workspace.yaml rather than asserting a removed desktop package exists.
+for (const appName of ["web", "server"]) {
   test(`${appName} app scripts perform real validation instead of placeholder logs`, async () => {
     const manifest = await readJson(`apps/${appName}/package.json`);
 
