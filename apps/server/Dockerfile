@@ -1,8 +1,12 @@
 # ── Stage 1: Install dependencies ──────────────────────────────────
 ARG NODE_BASE_IMAGE=uhub.service.ucloud.cn/techwu/node:25-slim
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 FROM ${NODE_BASE_IMAGE} AS deps
+ARG NPM_REGISTRY
 
-RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+RUN npm config set registry "${NPM_REGISTRY}" \
+    && npm install --global pnpm@10.26.2 \
+    && pnpm config set registry "${NPM_REGISTRY}"
 
 WORKDIR /app
 
@@ -19,8 +23,11 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ── Stage 2: Build shared packages & prepare runtime ──────────────
 FROM ${NODE_BASE_IMAGE} AS builder
+ARG NPM_REGISTRY
 
-RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+RUN npm config set registry "${NPM_REGISTRY}" \
+    && npm install --global pnpm@10.26.2 \
+    && pnpm config set registry "${NPM_REGISTRY}"
 
 WORKDIR /app
 
