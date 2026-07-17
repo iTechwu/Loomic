@@ -1,5 +1,6 @@
 # ── Stage 1: Install dependencies ──────────────────────────────────
-FROM node:22-slim AS deps
+ARG NODE_BASE_IMAGE=uhub.service.ucloud.cn/techwu/node:25-slim
+FROM ${NODE_BASE_IMAGE} AS deps
 
 RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 
@@ -17,7 +18,7 @@ COPY packages/config/package.json packages/config/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ── Stage 2: Build shared packages & prepare runtime ──────────────
-FROM node:22-slim AS builder
+FROM ${NODE_BASE_IMAGE} AS builder
 
 RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 
@@ -37,7 +38,7 @@ COPY apps/server/ apps/server/
 RUN pnpm --filter @lovart.dofe/shared build
 
 # ── Stage 3: Production image ─────────────────────────────────────
-FROM node:22-slim AS production
+FROM ${NODE_BASE_IMAGE} AS production
 
 WORKDIR /app
 
