@@ -1,8 +1,13 @@
 # ── Stage 1: Install dependencies ──────────────────────────────────
-ARG NODE_BASE_IMAGE=uhub.service.ucloud.cn/techwu/node:25-slim
+# Match the maintained Node distribution used by models.dofe.ai.
+ARG NODE_BASE_IMAGE=uhub.service.ucloud.cn/techwu/node:25-alpine
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 FROM ${NODE_BASE_IMAGE} AS deps
+ARG NPM_REGISTRY
 
-RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+RUN npm config set registry ${NPM_REGISTRY} \
+    && npm install -g pnpm@10.28.2 \
+    && pnpm config set registry ${NPM_REGISTRY}
 
 WORKDIR /app
 
@@ -19,8 +24,11 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ── Stage 2: Build shared packages & prepare runtime ──────────────
 FROM ${NODE_BASE_IMAGE} AS builder
+ARG NPM_REGISTRY
 
-RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+RUN npm config set registry ${NPM_REGISTRY} \
+    && npm install -g pnpm@10.28.2 \
+    && pnpm config set registry ${NPM_REGISTRY}
 
 WORKDIR /app
 
@@ -54,11 +62,10 @@ ENV NODE_ENV=production
 
 EXPOSE 3105
 
-# Python runtime for sandbox code execution (canvas-design skill)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 python3-pip && \
-    pip3 install --no-cache-dir --break-system-packages pillow reportlab && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Python runtime for sandbox code execution (canvas-design skill).
+# Alpine replaces the former Debian apt-based installation.
+RUN apk add --no-cache python3 py3-pip \
+    && python3 -m pip install --no-cache-dir --break-system-packages pillow reportlab
 
 # Copy skills (fonts + SKILL.md) to /opt/lovart-dofe/skills/
 COPY skills/ /opt/lovart-dofe/skills/
