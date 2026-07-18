@@ -1,4 +1,7 @@
-import type { BaseCheckpointSaver, BaseStore } from "@langchain/langgraph-checkpoint";
+import type {
+  BaseCheckpointSaver,
+  BaseStore,
+} from "@langchain/langgraph-checkpoint";
 
 import type { ServerEnv } from "../../config/env.js";
 import { createPostgresCheckpointer } from "./postgres-checkpointer.js";
@@ -27,21 +30,25 @@ export function createAgentPersistenceService(
       if (!env.databaseUrl) {
         return null;
       }
+      const databaseUrl = env.databaseUrl;
 
       if (!pendingPersistence) {
-        pendingPersistence = Promise.all([
-          (overrides?.createCheckpointer ?? createPostgresCheckpointer)({
-            connectionString: env.databaseUrl,
-          }),
-          (overrides?.createStore ?? createPostgresStore)({
-            connectionString: env.databaseUrl,
-          }),
-        ])
-          .then(([checkpointer, store]) => ({ checkpointer, store }))
-          .catch((error) => {
-            pendingPersistence = null;
-            throw error;
+        pendingPersistence = (async () => {
+          // Both LangGraph adapters initialize the shared schema. Running their
+          // setup methods concurrently races on PostgreSQL's schema creation.
+          const checkpointer = await (
+            overrides?.createCheckpointer ?? createPostgresCheckpointer
+          )({
+            connectionString: databaseUrl,
           });
+          const store = await (overrides?.createStore ?? createPostgresStore)({
+            connectionString: databaseUrl,
+          });
+          return { checkpointer, store };
+        })().catch((error) => {
+          pendingPersistence = null;
+          throw error;
+        });
       }
 
       return pendingPersistence;

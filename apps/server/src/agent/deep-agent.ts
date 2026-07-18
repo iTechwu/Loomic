@@ -76,12 +76,10 @@ export function createLovartDofeDeepAgent(options: {
   const backendResult =
     options.backendResult ?? createAgentBackend(options.env, options.canvasId);
 
-  applyOpenAICompatEnv(options.env);
-
   const modelSpec = options.model ?? createDefaultModelSpecifier(options.env);
   const resolvedModel =
     typeof modelSpec === "string"
-      ? createStreamingChatModel(modelSpec)
+      ? createStreamingChatModel(modelSpec, options.env)
       : modelSpec;
 
   let systemPrompt = options.brandKitId
@@ -153,15 +151,41 @@ export function createLovartDofeDeepAgent(options: {
  * - `google` — uses ChatGoogleGenerativeAI (Google AI Studio, API Key) or
  *   ChatVertexAI (Vertex AI, service account) depending on available config.
  */
-function createStreamingChatModel(specifier: string): BaseLanguageModel {
+export function createStreamingChatModel(
+  specifier: string,
+  env: Pick<
+    ServerEnv,
+    | "dofeModelApiKey"
+    | "dofeModelBaseUrl"
+    | "googleApiKey"
+    | "googleVertexLocation"
+    | "googleVertexProject"
+    | "openAIApiBase"
+    | "openAIApiKey"
+  >,
+): BaseLanguageModel {
+  if (env.dofeModelApiKey && env.dofeModelBaseUrl) {
+    const modelName = toDofeRouterModelId(specifier);
+    const baseUrl = `${env.dofeModelBaseUrl}/v1`;
+    console.info("[model-router] agent_model_routed", {
+      model: modelName,
+      endpoint: baseUrl,
+    });
+    return new ChatOpenAI({
+      model: modelName,
+      apiKey: env.dofeModelApiKey,
+      configuration: { baseURL: baseUrl },
+      streaming: true,
+      streamUsage: false,
+    });
+  }
+
   const colonIdx = specifier.indexOf(":");
   let provider = colonIdx > 0 ? specifier.slice(0, colonIdx) : "openai";
   let modelName = colonIdx > 0 ? specifier.slice(colonIdx + 1) : specifier;
 
-  const hasGoogleApiKey = !!process.env.GOOGLE_API_KEY;
-  const hasVertexAI = !!(
-    process.env.GOOGLE_VERTEX_PROJECT && process.env.GOOGLE_VERTEX_LOCATION
-  );
+  const hasGoogleApiKey = !!env.googleApiKey;
+  const hasVertexAI = !!(env.googleVertexProject && env.googleVertexLocation);
   const hasGoogle = hasGoogleApiKey || hasVertexAI;
 
   // Provider availability fallback
@@ -172,7 +196,7 @@ function createStreamingChatModel(specifier: string): BaseLanguageModel {
     provider = "openai";
     modelName = DEFAULT_AGENT_MODEL;
   }
-  if (provider === "openai" && !process.env.OPENAI_API_KEY && hasGoogle) {
+  if (provider === "openai" && !env.openAIApiKey && hasGoogle) {
     console.warn(
       `[model] OpenAI unavailable (no OPENAI_API_KEY), falling back to Google for: ${specifier}`,
     );
@@ -184,8 +208,8 @@ function createStreamingChatModel(specifier: string): BaseLanguageModel {
     case "google":
       // Prefer Vertex AI (service account) when configured; fall back to Developer API key
       if (hasVertexAI) {
-        const vertexProject = process.env.GOOGLE_VERTEX_PROJECT!;
-        const vertexLocation = process.env.GOOGLE_VERTEX_LOCATION!;
+        const vertexProject = env.googleVertexProject!;
+        const vertexLocation = env.googleVertexLocation!;
         console.log(
           `[model] Using Vertex AI for: ${modelName} (project=${vertexProject}, location=${vertexLocation})`,
         );
@@ -198,7 +222,7 @@ function createStreamingChatModel(specifier: string): BaseLanguageModel {
       }
       return new ChatGoogleGenerativeAI({
         model: modelName,
-        apiKey: process.env.GOOGLE_API_KEY!,
+        apiKey: env.googleApiKey!,
         streaming: true,
         thinkingConfig: {
           includeThoughts: true,
@@ -209,6 +233,10 @@ function createStreamingChatModel(specifier: string): BaseLanguageModel {
     default:
       return new ChatOpenAI({
         model: modelName,
+        ...(env.openAIApiKey ? { apiKey: env.openAIApiKey } : {}),
+        ...(env.openAIApiBase
+          ? { configuration: { baseURL: env.openAIApiBase } }
+          : {}),
         streaming: true,
         streamUsage: false,
       });
@@ -219,15 +247,28 @@ function createStreamingChatModel(specifier: string): BaseLanguageModel {
 const GOOGLE_MODEL_PREFIXES = ["gemini-"];
 
 export function createDefaultModelSpecifier(
-  env: Pick<ServerEnv, "agentModel">,
+  env: Pick<ServerEnv, "agentModel" | "dofeModelApiKey" | "dofeModelBaseUrl">,
 ) {
   const model = env.agentModel;
+  if (env.dofeModelApiKey && env.dofeModelBaseUrl) {
+    return `dofe:${toDofeRouterModelId(model)}`;
+  }
   // Already has an explicit provider prefix — pass through as-is.
   if (model.includes(":")) return model;
   // Auto-detect Google models by name prefix.
   if (GOOGLE_MODEL_PREFIXES.some((p) => model.startsWith(p)))
     return `google:${model}`;
   return `openai:${model}`;
+}
+
+function toDofeRouterModelId(specifier: string): string {
+  const separator = specifier.indexOf(":");
+  if (separator <= 0) return specifier;
+  const provider = specifier.slice(0, separator);
+  if (["dofe", "openai", "google", "anthropic"].includes(provider)) {
+    return specifier.slice(separator + 1);
+  }
+  return specifier;
 }
 
 export function applyOpenAICompatEnv(

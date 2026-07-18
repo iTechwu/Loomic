@@ -5,6 +5,7 @@ import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "glm-5.2";
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
@@ -13,8 +14,12 @@ export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
  * When Google/Vertex is configured but OpenAI is not, defaults to Gemini 2.5 Flash.
  */
 export function resolveDefaultAgentModel(
-  env: Pick<ServerEnv, "googleApiKey" | "googleVertexProject" | "openAIApiKey">,
+  env: Pick<
+    ServerEnv,
+    "dofeModelApiKey" | "googleApiKey" | "googleVertexProject" | "openAIApiKey"
+  >,
 ): string {
+  if (env.dofeModelApiKey) return DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL;
   const hasOpenAI = !!env.openAIApiKey;
   const hasGoogle = !!(env.googleApiKey || env.googleVertexProject);
 
@@ -29,6 +34,8 @@ export type ServerEnv = {
   agentFilesRoot?: string;
   agentModel: string;
   databaseUrl?: string;
+  dofeModelApiKey?: string;
+  dofeModelBaseUrl?: string;
   googleApiKey?: string;
   googleApplicationCredentials?: string;
   googleFontsApiKey?: string;
@@ -77,6 +84,17 @@ export function loadServerEnv(
     overrides.openAIApiBase ?? normalizeOptionalString(source.OPENAI_API_BASE);
   const openAIApiKey =
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
+  const dofeModelBaseUrl =
+    overrides.dofeModelBaseUrl ??
+    normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
+  const dofeModelApiKey =
+    overrides.dofeModelApiKey ??
+    normalizeOptionalString(source.DOFE_MODEL_API_KEY);
+  if (!!dofeModelBaseUrl !== !!dofeModelApiKey) {
+    throw new Error(
+      "DOFE_MODEL_BASE_URL and DOFE_MODEL_API_KEY must be configured together.",
+    );
+  }
   const databaseUrl =
     overrides.databaseUrl ?? normalizeOptionalString(source.DATABASE_URL);
   const tos = overrides.tos ?? parseTosConfig(source);
@@ -85,37 +103,50 @@ export function loadServerEnv(
   const ssoClientId =
     overrides.ssoClientId ?? normalizeOptionalString(source.SSO_CLIENT_ID);
   const ssoClientSecret =
-    overrides.ssoClientSecret ?? normalizeOptionalString(source.SSO_CLIENT_SECRET);
+    overrides.ssoClientSecret ??
+    normalizeOptionalString(source.SSO_CLIENT_SECRET);
   const ssoDiscoveryUrl =
-    overrides.ssoDiscoveryUrl ?? normalizeOptionalString(source.SSO_DISCOVERY_URL);
+    overrides.ssoDiscoveryUrl ??
+    normalizeOptionalString(source.SSO_DISCOVERY_URL);
   const ssoIssuer =
     overrides.ssoIssuer ?? normalizeOptionalString(source.SSO_ISSUER);
   const ssoInternalApiUrl =
-    overrides.ssoInternalApiUrl ?? normalizeOptionalString(source.SSO_INTERNAL_API_URL);
+    overrides.ssoInternalApiUrl ??
+    normalizeOptionalString(source.SSO_INTERNAL_API_URL);
   const ssoJwksUri =
     overrides.ssoJwksUri ?? normalizeOptionalString(source.JWKS_URI);
   const ssoInternalJwksUri =
-    overrides.ssoInternalJwksUri ?? normalizeOptionalString(source.INTERNAL_JWKS_URI);
+    overrides.ssoInternalJwksUri ??
+    normalizeOptionalString(source.INTERNAL_JWKS_URI);
   const ssoRedirectUri =
-    overrides.ssoRedirectUri ?? normalizeOptionalString(source.SSO_REDIRECT_URI);
+    overrides.ssoRedirectUri ??
+    normalizeOptionalString(source.SSO_REDIRECT_URI);
   const ssoServiceName =
-    overrides.ssoServiceName ?? normalizeOptionalString(source.SSO_SERVICE_NAME);
+    overrides.ssoServiceName ??
+    normalizeOptionalString(source.SSO_SERVICE_NAME);
   const internalApiSecret =
-    overrides.internalApiSecret ?? normalizeOptionalString(source.INTERNAL_API_SECRET);
+    overrides.internalApiSecret ??
+    normalizeOptionalString(source.INTERNAL_API_SECRET);
   const googleApiKey =
     overrides.googleApiKey ?? normalizeOptionalString(source.GOOGLE_API_KEY);
   const googleApplicationCredentials =
-    overrides.googleApplicationCredentials ?? normalizeOptionalString(source.GOOGLE_APPLICATION_CREDENTIALS);
+    overrides.googleApplicationCredentials ??
+    normalizeOptionalString(source.GOOGLE_APPLICATION_CREDENTIALS);
   const googleFontsApiKey =
-    overrides.googleFontsApiKey ?? normalizeOptionalString(source.GOOGLE_FONTS_API_KEY);
+    overrides.googleFontsApiKey ??
+    normalizeOptionalString(source.GOOGLE_FONTS_API_KEY);
   const googleVertexProject =
-    overrides.googleVertexProject ?? normalizeOptionalString(source.GOOGLE_VERTEX_PROJECT);
+    overrides.googleVertexProject ??
+    normalizeOptionalString(source.GOOGLE_VERTEX_PROJECT);
   const googleVertexLocation =
-    overrides.googleVertexLocation ?? normalizeOptionalString(source.GOOGLE_VERTEX_LOCATION);
+    overrides.googleVertexLocation ??
+    normalizeOptionalString(source.GOOGLE_VERTEX_LOCATION);
   const googleVertexVideoLocation =
-    overrides.googleVertexVideoLocation ?? normalizeOptionalString(source.GOOGLE_VERTEX_VIDEO_LOCATION);
+    overrides.googleVertexVideoLocation ??
+    normalizeOptionalString(source.GOOGLE_VERTEX_VIDEO_LOCATION);
   const replicateApiToken =
-    overrides.replicateApiToken ?? normalizeOptionalString(source.REPLICATE_API_TOKEN);
+    overrides.replicateApiToken ??
+    normalizeOptionalString(source.REPLICATE_API_TOKEN);
   const rabbitMqUrl =
     overrides.rabbitMqUrl ?? normalizeOptionalString(source.RABBITMQ_URL);
   const redisUrl =
@@ -125,24 +156,35 @@ export function loadServerEnv(
   const volcesBaseUrl =
     overrides.volcesBaseUrl ?? normalizeOptionalString(source.VOLCES_BASE_URL);
   const skillsRoot =
-    overrides.skillsRoot ?? normalizeOptionalString(source.LOVART_DOFE_SKILLS_ROOT);
-  const workerConcurrency = overrides.workerConcurrency ??
+    overrides.skillsRoot ??
+    normalizeOptionalString(source.LOVART_DOFE_SKILLS_ROOT);
+  const workerConcurrency =
+    overrides.workerConcurrency ??
     (source.WORKER_CONCURRENCY
-      ? parseInt(source.WORKER_CONCURRENCY, 10) : undefined);
-  const workerImageConcurrency = overrides.workerImageConcurrency ??
+      ? parseInt(source.WORKER_CONCURRENCY, 10)
+      : undefined);
+  const workerImageConcurrency =
+    overrides.workerImageConcurrency ??
     (source.WORKER_IMAGE_CONCURRENCY
-      ? parseInt(source.WORKER_IMAGE_CONCURRENCY, 10) : undefined);
-  const workerVideoConcurrency = overrides.workerVideoConcurrency ??
+      ? parseInt(source.WORKER_IMAGE_CONCURRENCY, 10)
+      : undefined);
+  const workerVideoConcurrency =
+    overrides.workerVideoConcurrency ??
     (source.WORKER_VIDEO_CONCURRENCY
-      ? parseInt(source.WORKER_VIDEO_CONCURRENCY, 10) : undefined);
-  const workerId = overrides.workerId ??
-    normalizeOptionalString(source.WORKER_ID);
-  const workerPollIntervalMs = overrides.workerPollIntervalMs ??
+      ? parseInt(source.WORKER_VIDEO_CONCURRENCY, 10)
+      : undefined);
+  const workerId =
+    overrides.workerId ?? normalizeOptionalString(source.WORKER_ID);
+  const workerPollIntervalMs =
+    overrides.workerPollIntervalMs ??
     (source.WORKER_POLL_INTERVAL_MS
-      ? parseInt(source.WORKER_POLL_INTERVAL_MS, 10) : undefined);
-  const workerMaxBatchSize = overrides.workerMaxBatchSize ??
+      ? parseInt(source.WORKER_POLL_INTERVAL_MS, 10)
+      : undefined);
+  const workerMaxBatchSize =
+    overrides.workerMaxBatchSize ??
     (source.WORKER_MAX_BATCH_SIZE
-      ? parseInt(source.WORKER_MAX_BATCH_SIZE, 10) : undefined);
+      ? parseInt(source.WORKER_MAX_BATCH_SIZE, 10)
+      : undefined);
 
   // Resolve default agent model based on available provider keys.
   // Explicit LOVART_DOFE_AGENT_MODEL always takes precedence; otherwise fall back
@@ -152,6 +194,7 @@ export function loadServerEnv(
   const resolvedAgentModel =
     explicitModel ??
     resolveDefaultAgentModel({
+      ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
       ...(googleApiKey ? { googleApiKey } : {}),
       ...(googleVertexProject ? { googleVertexProject } : {}),
       ...(openAIApiKey ? { openAIApiKey } : {}),
@@ -162,15 +205,21 @@ export function loadServerEnv(
       overrides.agentBackendMode ??
       parseAgentBackendMode(source.LOVART_DOFE_AGENT_BACKEND_MODE),
     agentModel: resolvedAgentModel,
-    port: overrides.port ?? parsePort(source.LOVART_DOFE_SERVER_PORT ?? source.PORT),
+    port:
+      overrides.port ??
+      parsePort(source.LOVART_DOFE_SERVER_PORT ?? source.PORT),
     version: overrides.version ?? readServerVersion(),
     webOrigin:
-      overrides.webOrigin ?? source.LOVART_DOFE_WEB_ORIGIN ?? DEFAULT_WEB_ORIGIN,
+      overrides.webOrigin ??
+      source.LOVART_DOFE_WEB_ORIGIN ??
+      DEFAULT_WEB_ORIGIN,
     ...(agentFilesRoot ? { agentFilesRoot } : {}),
     ...(googleApiKey ? { googleApiKey } : {}),
     ...(googleApplicationCredentials ? { googleApplicationCredentials } : {}),
     ...(openAIApiBase ? { openAIApiBase } : {}),
     ...(openAIApiKey ? { openAIApiKey } : {}),
+    ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
+    ...(dofeModelBaseUrl ? { dofeModelBaseUrl } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(tos ? { tos } : {}),
     ...(ssoApiUrl ? { ssoApiUrl } : {}),
@@ -226,6 +275,25 @@ function parseAgentModel(rawModel: string | undefined) {
 function normalizeOptionalString(value: string | undefined) {
   const normalizedValue = value?.trim();
   return normalizedValue || undefined;
+}
+
+export function normalizeDofeModelBaseUrl(value: string | undefined) {
+  const normalizedValue = normalizeOptionalString(value);
+  if (!normalizedValue) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(normalizedValue);
+  } catch {
+    throw new Error("DOFE_MODEL_BASE_URL must be an absolute http(s) URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("DOFE_MODEL_BASE_URL must use http or https.");
+  }
+  if (url.pathname === "" || url.pathname === "/") {
+    url.pathname = "/api";
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 function parsePort(rawPort: string | undefined) {

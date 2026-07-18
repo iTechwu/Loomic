@@ -5,6 +5,8 @@ import { Building2, ChevronsUpDown, UsersRound } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -36,28 +38,31 @@ export function TenantTeamNav() {
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuLabel>{context.tenant.name}</DropdownMenuLabel>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{context.tenant.name}</DropdownMenuLabel>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <ul className="px-1.5 py-1" aria-label="团队列表">
+          <DropdownMenuGroup aria-label="团队列表">
             {context.teams.length ? (
               context.teams.map((team) => (
-                <li
+                <DropdownMenuItem
+                  disabled
                   key={team.id}
-                  className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm"
+                  className="cursor-default"
                 >
                   <UsersRound className="size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate">{team.name}</span>
                   <span className="text-xs text-muted-foreground">
                     {team.role}
                   </span>
-                </li>
+                </DropdownMenuItem>
               ))
             ) : (
-              <li className="px-1.5 py-1 text-sm text-muted-foreground">
+              <DropdownMenuItem disabled className="cursor-default">
                 未加入团队
-              </li>
+              </DropdownMenuItem>
             )}
-          </ul>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
