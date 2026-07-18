@@ -372,11 +372,32 @@ lovart.dofe/
 | `SSO_CLIENT_SECRET`, `SSO_INTERNAL_API_URL` | Server-only OIDC exchange configuration |
 | `RABBITMQ_URL` | Required by the worker and enables asynchronous generation routes on the API |
 
-### AI Providers (at least one required)
+### AI Model Router (recommended)
+
+`models.dofe.ai` is the catalog and routing authority for Agent/LLM calls.
+Configure this pair to use the ixicai data plane. A root URL such as
+`https://ixicai.cn` is normalized to `https://ixicai.cn/api`; the root itself
+serves the interactive application rather than the model API.
 
 | Variable | Description |
 |----------|-------------|
-| `LOVART_DOFE_AGENT_MODEL` | Agent LLM model (e.g., `google:gemini-2.5-flash`) |
+| `DOFE_MODEL_BASE_URL` | DoFe Models gateway, e.g. `https://ixicai.cn` or `https://ixicai.cn/api` |
+| `DOFE_MODEL_API_KEY` | Server-only DoFe Models API key; required together with the base URL |
+
+The server reads the API-key-scoped `/v1/models` catalog, caches it briefly,
+and excludes known asynchronous image/video aliases from the Agent picker. It
+selects a native gateway protocol by model family: `gemini-*` uses `/gemini`,
+`claude-*` uses `/anthropic`, and all other text aliases use OpenAI-compatible
+`/v1`. The gateway remains responsible for alias resolution, provider choice,
+protocol transforms, fallback, billing, and usage records. Existing workspace
+settings with `openai:` or `google:` prefixes are migrated in-memory to the
+gateway alias when the router is enabled.
+
+### Direct AI Providers (fallback without the router)
+
+| Variable | Description |
+|----------|-------------|
+| `LOVART_DOFE_AGENT_MODEL` | Agent LLM model (e.g., `dofe:gpt-5.4`; legacy `google:gemini-2.5-flash` remains supported) |
 | `GOOGLE_API_KEY` | Google AI API key (Gemini + Imagen + Veo) |
 | `OPENAI_API_KEY` | OpenAI API key (GPT + DALL-E) |
 | `OPENAI_API_BASE` | Custom OpenAI-compatible endpoint |

@@ -46,25 +46,20 @@ const GOOGLE_MODELS: ModelInfo[] = [
   },
 ];
 
-export async function registerModelRoutes(
-  app: FastifyInstance,
-  env: ServerEnv,
-) {
+export async function registerModelRoutes(app: FastifyInstance, env: ServerEnv) {
   const dofeCatalog = createDofeModelCatalog(env);
 
   app.get("/api/models", async (_request, reply) => {
     if (dofeCatalog) {
       try {
         const models = await dofeCatalog.listChatModels();
-        return reply.code(200).send(
-          modelListResponseSchema.parse({
-            models: models.map((model) => ({
-              id: `dofe:${model.id}`,
-              name: model.id,
-              provider: "dofe",
-            })),
-          }),
-        );
+        return reply.code(200).send(modelListResponseSchema.parse({
+          models: models.map((model) => ({
+            id: `dofe:${model.id}`,
+            name: model.id,
+            provider: "dofe",
+          })),
+        }));
       } catch (error) {
         app.log.error(error, "DoFe model router catalog is unavailable");
         return reply.code(503).send({

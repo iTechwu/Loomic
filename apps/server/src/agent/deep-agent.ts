@@ -5,6 +5,7 @@ import type {
 import type { BaseLanguageModel } from "@langchain/core/language_models/base";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatVertexAI } from "@langchain/google-vertexai";
+import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { createDeepAgent } from "deepagents";
 
@@ -13,6 +14,12 @@ import {
   DEFAULT_GOOGLE_AGENT_MODEL,
   type ServerEnv,
 } from "../config/env.js";
+import {
+  dofeModelProtocolBaseUrl,
+  hasDofeModelRouter,
+  resolveDofeModelProtocol,
+  toDofeRouterModelId,
+} from "../models/dofe-model-router.js";
 import type { ConnectionManager } from "../ws/connection-manager.js";
 import {
   createAgentBackend,
@@ -145,11 +152,9 @@ export function createLovartDofeDeepAgent(options: {
 /**
  * Create a streaming chat model from a `<provider>:<model-id>` specifier.
  *
- * Supported providers:
- * - `openai` (default) — uses ChatOpenAI with `streamUsage: false` to work
- *   around the one-api proxy stripping `delta.role` from chunks.
- * - `google` — uses ChatGoogleGenerativeAI (Google AI Studio, API Key) or
- *   ChatVertexAI (Vertex AI, service account) depending on available config.
+ * With DOFE_MODEL_* configured, the model family selects the gateway's native
+ * namespace: Gemini → /gemini, Claude → /anthropic, all other text models →
+ * OpenAI-compatible /v1. Direct vendor clients are only used without a router.
  */
 export function createStreamingChatModel(
   specifier: string,
@@ -164,20 +169,49 @@ export function createStreamingChatModel(
     | "openAIApiKey"
   >,
 ): BaseLanguageModel {
-  if (env.dofeModelApiKey && env.dofeModelBaseUrl) {
+  if (hasDofeModelRouter(env)) {
     const modelName = toDofeRouterModelId(specifier);
-    const baseUrl = `${env.dofeModelBaseUrl}/v1`;
+    const protocol = resolveDofeModelProtocol(modelName);
+    const baseUrl = dofeModelProtocolBaseUrl(env.dofeModelBaseUrl, protocol);
     console.info("[model-router] agent_model_routed", {
       model: modelName,
+      protocol,
       endpoint: baseUrl,
     });
-    return new ChatOpenAI({
-      model: modelName,
-      apiKey: env.dofeModelApiKey,
-      configuration: { baseURL: baseUrl },
-      streaming: true,
-      streamUsage: false,
-    });
+
+    switch (protocol) {
+      case "gemini":
+        return new ChatGoogleGenerativeAI({
+          model: modelName,
+          // @google/generative-ai always emits x-goog-api-key from apiKey and
+          // reserves that header from custom overrides. The DoFe data plane
+          // authenticates this service with Bearer, so use a truthy whitespace
+          // placeholder that the gateway treats as an absent Google key.
+          apiKey: " ",
+          baseUrl,
+          // Keep the router credential out of the Google-specific header.
+          customHeaders: { Authorization: `Bearer ${env.dofeModelApiKey}` },
+          streaming: true,
+          streamUsage: false,
+        });
+      case "anthropic":
+        return new ChatAnthropic({
+          model: modelName,
+          apiKey: env.dofeModelApiKey,
+          clientOptions: { baseURL: baseUrl },
+          streaming: true,
+          streamUsage: false,
+        });
+      case "openai":
+        return new ChatOpenAI({
+          model: modelName,
+          apiKey: env.dofeModelApiKey,
+          configuration: { baseURL: baseUrl },
+          streaming: true,
+          // Upstream protocols do not all provide OpenAI usage chunks.
+          streamUsage: false,
+        });
+    }
   }
 
   const colonIdx = specifier.indexOf(":");
@@ -231,9 +265,14 @@ export function createStreamingChatModel(
       });
     case "openai":
     default:
+      if (!env.openAIApiKey) {
+        throw new Error(
+          "No DOFE_MODEL_* router or direct OpenAI/Google model provider is configured.",
+        );
+      }
       return new ChatOpenAI({
         model: modelName,
-        ...(env.openAIApiKey ? { apiKey: env.openAIApiKey } : {}),
+        apiKey: env.openAIApiKey,
         ...(env.openAIApiBase
           ? { configuration: { baseURL: env.openAIApiBase } }
           : {}),
@@ -250,9 +289,7 @@ export function createDefaultModelSpecifier(
   env: Pick<ServerEnv, "agentModel" | "dofeModelApiKey" | "dofeModelBaseUrl">,
 ) {
   const model = env.agentModel;
-  if (env.dofeModelApiKey && env.dofeModelBaseUrl) {
-    return `dofe:${toDofeRouterModelId(model)}`;
-  }
+  if (hasDofeModelRouter(env)) return `dofe:${toDofeRouterModelId(model)}`;
   // Already has an explicit provider prefix — pass through as-is.
   if (model.includes(":")) return model;
   // Auto-detect Google models by name prefix.
@@ -260,17 +297,6 @@ export function createDefaultModelSpecifier(
     return `google:${model}`;
   return `openai:${model}`;
 }
-
-function toDofeRouterModelId(specifier: string): string {
-  const separator = specifier.indexOf(":");
-  if (separator <= 0) return specifier;
-  const provider = specifier.slice(0, separator);
-  if (["dofe", "openai", "google", "anthropic"].includes(provider)) {
-    return specifier.slice(separator + 1);
-  }
-  return specifier;
-}
-
 export function applyOpenAICompatEnv(
   env: Pick<ServerEnv, "openAIApiBase" | "openAIApiKey">,
   target: NodeJS.ProcessEnv = process.env,

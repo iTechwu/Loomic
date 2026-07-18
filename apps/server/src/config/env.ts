@@ -5,7 +5,7 @@ import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
-export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "glm-5.2";
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "gpt-5.4";
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
@@ -34,8 +34,10 @@ export type ServerEnv = {
   agentFilesRoot?: string;
   agentModel: string;
   databaseUrl?: string;
-  dofeModelApiKey?: string;
+  /** DoFe Models gateway data-plane base URL, normalized to include /api. */
   dofeModelBaseUrl?: string;
+  /** DoFe Models gateway API key. This stays server-side only. */
+  dofeModelApiKey?: string;
   googleApiKey?: string;
   googleApplicationCredentials?: string;
   googleFontsApiKey?: string;
@@ -85,11 +87,10 @@ export function loadServerEnv(
   const openAIApiKey =
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
   const dofeModelBaseUrl =
-    overrides.dofeModelBaseUrl ??
-    normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
+    overrides.dofeModelBaseUrl ?? normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
   const dofeModelApiKey =
-    overrides.dofeModelApiKey ??
-    normalizeOptionalString(source.DOFE_MODEL_API_KEY);
+    overrides.dofeModelApiKey ?? normalizeOptionalString(source.DOFE_MODEL_API_KEY);
+
   if (!!dofeModelBaseUrl !== !!dofeModelApiKey) {
     throw new Error(
       "DOFE_MODEL_BASE_URL and DOFE_MODEL_API_KEY must be configured together.",
@@ -218,8 +219,8 @@ export function loadServerEnv(
     ...(googleApplicationCredentials ? { googleApplicationCredentials } : {}),
     ...(openAIApiBase ? { openAIApiBase } : {}),
     ...(openAIApiKey ? { openAIApiKey } : {}),
-    ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
     ...(dofeModelBaseUrl ? { dofeModelBaseUrl } : {}),
+    ...(dofeModelApiKey ? { dofeModelApiKey } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(tos ? { tos } : {}),
     ...(ssoApiUrl ? { ssoApiUrl } : {}),
@@ -277,6 +278,11 @@ function normalizeOptionalString(value: string | undefined) {
   return normalizedValue || undefined;
 }
 
+/**
+ * ixicai.cn serves the interactive application at the root and exposes its
+ * models data-plane beneath /api. Accepting either form prevents requests from
+ * being sent to the login application when an operator configures the root URL.
+ */
 export function normalizeDofeModelBaseUrl(value: string | undefined) {
   const normalizedValue = normalizeOptionalString(value);
   if (!normalizedValue) return undefined;
@@ -287,9 +293,10 @@ export function normalizeDofeModelBaseUrl(value: string | undefined) {
   } catch {
     throw new Error("DOFE_MODEL_BASE_URL must be an absolute http(s) URL.");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("DOFE_MODEL_BASE_URL must use http or https.");
   }
+
   if (url.pathname === "" || url.pathname === "/") {
     url.pathname = "/api";
   }

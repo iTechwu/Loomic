@@ -1,31 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { loadServerEnv } from "./env.js";
+import {
+  DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL,
+  loadServerEnv,
+  normalizeDofeModelBaseUrl,
+} from "./env.js";
 
 describe("DoFe model router environment", () => {
-  it("uses the router default and normalizes the ixicai API data plane", () => {
-    const env = loadServerEnv(
-      {},
-      {
-        DOFE_MODEL_API_KEY: "router-key",
-        DOFE_MODEL_BASE_URL: "https://ixicai.cn",
-      },
+  it("normalizes the ixicai domain to the API data plane", () => {
+    expect(normalizeDofeModelBaseUrl("https://ixicai.cn")).toBe(
+      "https://ixicai.cn/api",
     );
-
-    expect(env.agentModel).toBe("glm-5.2");
-    expect(env.dofeModelBaseUrl).toBe("https://ixicai.cn/api");
+    expect(normalizeDofeModelBaseUrl("https://ixicai.cn/api/")).toBe(
+      "https://ixicai.cn/api",
+    );
   });
 
-  it("rejects incomplete router credentials", () => {
+  it("requires a complete router credential pair", () => {
     expect(() =>
-      loadServerEnv(
-        {},
-        {
-          DOFE_MODEL_BASE_URL: "https://ixicai.cn/api",
-        },
-      ),
+      loadServerEnv({}, { DOFE_MODEL_BASE_URL: "https://ixicai.cn" }),
     ).toThrow(
       "DOFE_MODEL_BASE_URL and DOFE_MODEL_API_KEY must be configured together.",
     );
+  });
+
+  it("uses the router-safe default model when configured", () => {
+    const env = loadServerEnv({}, {
+      DOFE_MODEL_API_KEY: "router-key",
+      DOFE_MODEL_BASE_URL: "https://ixicai.cn",
+    });
+
+    expect(env.agentModel).toBe(DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL);
+    expect(env.dofeModelBaseUrl).toBe("https://ixicai.cn/api");
   });
 });
