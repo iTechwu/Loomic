@@ -27,7 +27,7 @@ export type OutputFormat = "png" | "jpg" | "webp";
  * `designApiKey` is absent.
  */
 export type ProviderAuth = {
-  /** Design apikey (sk-...) — Bearer for /v1/generation/tasks. */
+  /** Design apikey (sk-...) — Bearer for /generation/tasks. */
   designApiKey: string;
   /** Seedance asset AK/SK — reserved for asset OpenAPI uploads (future). */
   seedanceAccessKeyId?: string;

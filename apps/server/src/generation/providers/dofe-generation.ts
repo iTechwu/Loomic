@@ -17,9 +17,9 @@ import { GenerationError, aspectRatioToDimensions } from "../utils.js";
  * All image and video models exposed by the gateway are produced through the
  * single multimodal_generation async protocol:
  *
- *   POST   {base}/v1/generation/tasks      → { taskId, status, outputAssets? }
- *   GET    {base}/v1/generation/tasks/:id  → poll until terminal
- *   GET    {base}/v1/generation/tasks/:id/artifacts → { assets[] } (fallback)
+ *   POST   {base}/generation/tasks      → { taskId, status, outputAssets? }
+ *   GET    {base}/generation/tasks/:id  → poll until terminal
+ *   GET    {base}/generation/tasks/:id/artifacts → { assets[] } (fallback)
  *
  * Authentication is per-user: each generate() call must carry the owning user's
  * design apikey via params.auth. There is no constructor-time key, so the
@@ -31,7 +31,9 @@ import { GenerationError, aspectRatioToDimensions } from "../utils.js";
  */
 
 const DEFAULT_BASE_URL = "https://ixicai.cn/api";
-const TASK_PATH = "/v1/generation/tasks";
+// The ixicai OpenAI-compatible catalog is served under /v1, but multimodal
+// generation is a separate ts-rest contract rooted at /generation.
+const TASK_PATH = "/generation/tasks";
 
 const IMAGE_POLL_INTERVAL_MS = 2_000;
 const IMAGE_POLL_TIMEOUT_MS = 240_000;
