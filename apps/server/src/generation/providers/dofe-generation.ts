@@ -169,6 +169,12 @@ type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
+type GenerationContentItem = {
+  part: ContentPart;
+  order: number;
+  role?: "prompt" | "reference";
+};
+
 type TaskAsset = {
   assetId: string;
   type?: string;
@@ -189,12 +195,19 @@ type TaskResponse = {
 
 type EndpointKind = "image_async" | "video_async";
 
-function buildContent(prompt: string, inputImages?: string[]): ContentPart[] {
+function buildContent(
+  prompt: string,
+  inputImages?: string[],
+): GenerationContentItem[] {
   const parts: ContentPart[] = [{ type: "text", text: prompt }];
   for (const url of inputImages ?? []) {
     parts.push({ type: "image_url", image_url: { url } });
   }
-  return parts;
+  return parts.map((part, order) => ({
+    part,
+    order,
+    ...(part.type === "text" ? { role: "prompt" as const } : { role: "reference" as const }),
+  }));
 }
 
 function requireAuth(auth: ProviderAuth | undefined): string {
@@ -216,7 +229,7 @@ async function createTask(
   body: {
     model: string;
     endpointKind: EndpointKind;
-    content: ContentPart[];
+    content: GenerationContentItem[];
     params?: Record<string, unknown>;
   },
 ): Promise<TaskResponse> {
