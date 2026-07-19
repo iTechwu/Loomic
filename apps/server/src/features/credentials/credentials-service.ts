@@ -48,6 +48,8 @@ export type CredentialsService = {
    */
   ensureProvisioned(input: {
     userId: string;
+    /** Stable SSO subject used as the Models credential owner. */
+    ssoUserId?: string;
     ssoTeamId?: string;
   }): Promise<void>;
   /**
@@ -73,11 +75,12 @@ export function createCredentialsService(
   const { repository, crypto, provisionConfig } = options;
 
   return {
-    async ensureProvisioned({ userId, ssoTeamId }) {
-      // Fast path: an existing ready row means we never call models again — its
-      // provision endpoint is non-idempotent and would mint a second key.
-      const ready = await repository.findReady(userId);
-      if (ready) return;
+    async ensureProvisioned({ userId, ssoUserId, ssoTeamId }) {
+      const ready = await repository.findReady(userId, ssoTeamId);
+      // A matching ready row is reusable. Rows created before SSO subject
+      // tracking are refreshed once, so Models owns the SSO user rather than
+      // the local design profile id.
+      if (ready && (!ssoUserId || ready.ssoUserId === ssoUserId)) return;
 
       // Retry path (ensureViewer) may arrive without ssoTeamId; recover it from
       // any existing row. If we have neither, we cannot provision — defer to
@@ -88,18 +91,25 @@ export function createCredentialsService(
         console.warn("[credentials] ensure_skipped_no_team", { userId });
         return;
       }
+      const resolvedSsoUserId =
+        ssoUserId ?? ready?.ssoUserId ?? (await repository.findAny(userId))?.ssoUserId;
+      if (!resolvedSsoUserId) {
+        console.warn("[credentials] ensure_skipped_no_sso_subject", { userId, ssoTeamId: resolvedTeamId });
+        return;
+      }
 
       try {
         const provisioned = await provisionSeedanceCredentials(
           provisionConfig,
           {
-            userId,
+            userId: resolvedSsoUserId,
             ssoTeamId: resolvedTeamId,
             name: options.provisionName ?? DEFAULT_PROVISION_NAME,
           },
         );
         await repository.saveReady({
           userId,
+          ssoUserId: resolvedSsoUserId,
           ssoTeamId: resolvedTeamId,
           modelsApiKeyId: provisioned.apiKey.id,
           modelsKeyPrefix: provisioned.apiKey.keyPrefix,
@@ -112,6 +122,7 @@ export function createCredentialsService(
         });
         console.info("[credentials] provision_ok", {
           userId,
+          ssoUserId: resolvedSsoUserId,
           ssoTeamId: resolvedTeamId,
           keyPrefix: provisioned.apiKey.keyPrefix,
           cryptoEnabled: crypto.enabled,

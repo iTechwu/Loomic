@@ -5,6 +5,7 @@ export type ProvisionState = "ready" | "provisioning" | "failed";
 export type UserCredentialRow = {
   id: string;
   userId: string;
+  ssoUserId: string | null;
   ssoTeamId: string;
   modelsApiKeyId: string | null;
   modelsKeyPrefix: string | null;
@@ -18,6 +19,7 @@ export type UserCredentialRow = {
 
 export type SaveReadyInput = {
   userId: string;
+  ssoUserId: string;
   ssoTeamId: string;
   modelsApiKeyId: string;
   modelsKeyPrefix: string;
@@ -28,7 +30,7 @@ export type SaveReadyInput = {
 };
 
 export type UserCredentialsRepository = {
-  findReady(userId: string): Promise<UserCredentialRow | null>;
+  findReady(userId: string, ssoTeamId?: string): Promise<UserCredentialRow | null>;
   /** Latest row of any state — used to recover ssoTeamId for retry when the
    * caller (e.g. ensureViewer) doesn't carry it. */
   findAny(userId: string): Promise<UserCredentialRow | null>;
@@ -37,11 +39,12 @@ export type UserCredentialsRepository = {
 };
 
 const SELECT_COLS =
-  "id, user_id, sso_team_id, models_api_key_id, models_key_prefix, apikey_ciphertext, models_credential_id, access_key_id, secret_access_key_ciphertext, provision_state, last_provision_error";
+  "id, user_id, sso_user_id, sso_team_id, models_api_key_id, models_key_prefix, apikey_ciphertext, models_credential_id, access_key_id, secret_access_key_ciphertext, provision_state, last_provision_error";
 
 type DbRow = {
   id: string;
   user_id: string;
+  sso_user_id: string | null;
   sso_team_id: string;
   models_api_key_id: string | null;
   models_key_prefix: string | null;
@@ -63,13 +66,14 @@ export function createUserCredentialsRepository(
   pool: DatabasePool,
 ): UserCredentialsRepository {
   return {
-    async findReady(userId) {
+    async findReady(userId, ssoTeamId) {
       const result = await pool.query<DbRow>(
         `select ${SELECT_COLS} from user_credentials
          where user_id = $1 and provision_state = 'ready'
+           and ($2::uuid is null or sso_team_id = $2)
          order by provisioned_at desc
          limit 1`,
-        [userId],
+        [userId, ssoTeamId ?? null],
       );
       const row = result.rows[0];
       return row ? toCamelCase(row) : null;
@@ -90,11 +94,12 @@ export function createUserCredentialsRepository(
     async saveReady(input) {
       await pool.query(
         `insert into user_credentials (
-           user_id, sso_team_id, models_api_key_id, models_key_prefix,
+           user_id, sso_user_id, sso_team_id, models_api_key_id, models_key_prefix,
            apikey_ciphertext, models_credential_id, access_key_id,
            secret_access_key_ciphertext, provision_state, provisioned_at
-         ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'ready', now())
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ready', now())
          on conflict (user_id, sso_team_id) do update set
+           sso_user_id = excluded.sso_user_id,
            models_api_key_id = excluded.models_api_key_id,
            models_key_prefix = excluded.models_key_prefix,
            apikey_ciphertext = excluded.apikey_ciphertext,
@@ -106,6 +111,7 @@ export function createUserCredentialsRepository(
            provisioned_at = now()`,
         [
           input.userId,
+          input.ssoUserId,
           input.ssoTeamId,
           input.modelsApiKeyId,
           input.modelsKeyPrefix,
@@ -134,6 +140,7 @@ function toCamelCase(row: DbRow): UserCredentialRow {
   return {
     id: row.id,
     userId: row.user_id,
+    ssoUserId: row.sso_user_id,
     ssoTeamId: row.sso_team_id,
     modelsApiKeyId: row.models_api_key_id,
     modelsKeyPrefix: row.models_key_prefix,

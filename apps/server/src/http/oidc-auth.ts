@@ -405,7 +405,11 @@ async function createDataSession(
   const ssoTeamId = tenantContext?.teams?.[0]?.id;
   if (credentialsService && ssoTeamId) {
     void credentialsService
-      .ensureProvisioned({ userId: dataUserId, ssoTeamId })
+      .ensureProvisioned({
+        userId: dataUserId,
+        ssoUserId: identity.id,
+        ssoTeamId,
+      })
       .catch(() => {
         /* provisioning failures are logged inside ensureProvisioned */
       });

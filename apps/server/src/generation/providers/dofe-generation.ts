@@ -25,10 +25,9 @@ import { GenerationError, aspectRatioToDimensions } from "../utils.js";
  * design apikey via params.auth. There is no constructor-time key, so the
  * provider is a stateless singleton safe to share across requests.
  *
- * NOTE: catalog ids mirror https://ixicai.cn/api/v1/models verbatim. When the
- * gateway adds/removes models, update DOFE_IMAGE_MODELS / DOFE_VIDEO_MODELS.
- * Per-model capabilities/limits below are conservative defaults; no further
- * calibration is needed for the current product surface.
+ * Runtime model IDs are loaded from the authenticated ixicai catalog. The
+ * exported lists below are retained for source compatibility only; providers
+ * start empty and are populated from `/v1/models` plus capabilities.
  */
 
 const DEFAULT_BASE_URL = "https://ixicai.cn/api";
@@ -356,8 +355,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export class DofeImageProvider implements ImageProvider {
   readonly name = "dofe";
-  readonly models = DOFE_IMAGE_MODELS;
+  private currentModels: readonly ModelInfo[] = [];
   constructor(private readonly baseUrl: string = DEFAULT_BASE_URL) {}
+
+  get models(): readonly ModelInfo[] {
+    return this.currentModels;
+  }
+
+  setModels(models: readonly ModelInfo[]): void {
+    this.currentModels = models;
+  }
 
   async generate(params: ImageGenerateParams): Promise<GeneratedImage> {
     const apiKey = requireAuth(params.auth);
@@ -393,8 +400,16 @@ export class DofeImageProvider implements ImageProvider {
 
 export class DofeVideoProvider implements VideoProvider {
   readonly name = "dofe";
-  readonly models = DOFE_VIDEO_MODELS;
+  private currentModels: readonly VideoModelInfo[] = [];
   constructor(private readonly baseUrl: string = DEFAULT_BASE_URL) {}
+
+  get models(): readonly VideoModelInfo[] {
+    return this.currentModels;
+  }
+
+  setModels(models: readonly VideoModelInfo[]): void {
+    this.currentModels = models;
+  }
 
   async generate(params: VideoGenerateParams): Promise<GeneratedVideo> {
     const apiKey = requireAuth(params.auth);

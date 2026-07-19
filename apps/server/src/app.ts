@@ -148,13 +148,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // models); in that case model calls fall back to whatever provider keys exist
   // and provisioning is skipped.
   const credentialCrypto = createCredentialCrypto(env.lovartCredentialEncryptionKey);
-  if (!credentialCrypto.enabled) {
-    app.log.warn(
-      "[credentials] encryption disabled — user credentials will be stored plaintext. Set LOVART_CREDENTIAL_ENCRYPTION_KEY (32 bytes) to enable AES-256-GCM encryption.",
+  const credentialsEnabled = Boolean(
+    credentialCrypto.enabled && env.internalApiSecret && env.dofeModelBaseUrl,
+  );
+  if (!credentialsEnabled && (env.internalApiSecret || env.dofeModelBaseUrl)) {
+    app.log.error(
+      "[credentials] provisioning disabled: LOVART_CREDENTIAL_ENCRYPTION_KEY, INTERNAL_API_SECRET, and DOFE_MODEL_BASE_URL are required.",
     );
   }
   const credentialsService: CredentialsService | undefined =
-    env.internalApiSecret && env.dofeModelBaseUrl
+    credentialsEnabled && env.internalApiSecret && env.dofeModelBaseUrl
       ? createCredentialsService({
           repository: createUserCredentialsRepository(databasePool),
           crypto: credentialCrypto,

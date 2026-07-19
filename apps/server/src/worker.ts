@@ -38,11 +38,12 @@ async function main() {
   // Per-user models credential resolver — workers resolve the job owner's key
   // (background_jobs.created_by) before each generation call. Provisioning
   // itself runs on the API server (OIDC/ensureViewer); the worker only reads.
+  const credentialCrypto = createCredentialCrypto(env.lovartCredentialEncryptionKey);
   const credentialsService: CredentialsService | undefined =
-    env.internalApiSecret && env.dofeModelBaseUrl
+    credentialCrypto.enabled && env.internalApiSecret && env.dofeModelBaseUrl
       ? createCredentialsService({
           repository: createUserCredentialsRepository(pool),
-          crypto: createCredentialCrypto(env.lovartCredentialEncryptionKey),
+          crypto: credentialCrypto,
           provisionConfig: {
             baseUrl: env.dofeModelBaseUrl,
             serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
