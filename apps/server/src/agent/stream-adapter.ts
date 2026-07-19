@@ -49,7 +49,9 @@ export async function* adaptDeepAgentStream(
   const now = options.now ?? (() => new Date().toISOString());
   const seenCompletedToolCalls = new Set<string>();
   const seenStreamedMessageIds = new Set<string>();
+  const seenThinkingMessageIds = new Set<string>();
   const seenStartedToolCalls = new Set<string>();
+  let emittedVisibleEvent = false;
   /** Tracks active sub-agent parent runs so we can detect nested inner tools. */
   const activeSubAgentRuns = new Set<string>();
 
@@ -97,6 +99,18 @@ export async function* adaptDeepAgentStream(
           (chunk as { id?: string }).id ?? `message_${options.runId}`;
 
         const content = (chunk as { content: unknown }).content;
+        const thinking = extractChunkThinking(chunk);
+        if (thinking) {
+          seenThinkingMessageIds.add(messageId);
+          emittedVisibleEvent = true;
+          yield {
+            type: "thinking.delta" as const,
+            runId: options.runId,
+            messageId,
+            delta: thinking,
+            timestamp: now(),
+          };
+        }
 
         // Handle array content (e.g. Gemini thinking + text blocks)
         if (Array.isArray(content)) {
@@ -110,6 +124,7 @@ export async function* adaptDeepAgentStream(
               typeof part.thinking === "string" &&
               part.thinking
             ) {
+              emittedVisibleEvent = true;
               yield {
                 type: "thinking.delta" as const,
                 runId: options.runId,
@@ -129,6 +144,7 @@ export async function* adaptDeepAgentStream(
                     : "";
               if (text) {
                 seenStreamedMessageIds.add(messageId);
+                emittedVisibleEvent = true;
                 yield {
                   type: "message.delta" as const,
                   runId: options.runId,
@@ -147,6 +163,7 @@ export async function* adaptDeepAgentStream(
         if (!delta) continue;
 
         seenStreamedMessageIds.add(messageId);
+        emittedVisibleEvent = true;
         yield {
           delta,
           messageId,
@@ -171,11 +188,24 @@ export async function* adaptDeepAgentStream(
 
           // Skip if this was a tool call message (tool lifecycle via on_tool_*)
           if ((msg.tool_calls?.length ?? 0) > 0) continue;
+          const thinking = extractChunkThinking(msg);
+          if (thinking && !seenThinkingMessageIds.has(messageId)) {
+            seenThinkingMessageIds.add(messageId);
+            emittedVisibleEvent = true;
+            yield {
+              type: "thinking.delta" as const,
+              runId: options.runId,
+              messageId,
+              delta: thinking,
+              timestamp: now(),
+            };
+          }
           if (seenStreamedMessageIds.has(messageId)) continue;
 
           const delta = extractChunkText(msg);
           if (!delta) continue;
 
+          emittedVisibleEvent = true;
           yield {
             delta,
             messageId,
@@ -195,6 +225,7 @@ export async function* adaptDeepAgentStream(
 
         if (seenStartedToolCalls.has(toolCallId)) continue;
         seenStartedToolCalls.add(toolCallId);
+        emittedVisibleEvent = true;
 
         // Extract tool input arguments for frontend display
         const rawInput = evt.data?.input;
@@ -227,6 +258,7 @@ export async function* adaptDeepAgentStream(
 
         if (seenCompletedToolCalls.has(toolCallId)) continue;
         seenCompletedToolCalls.add(toolCallId);
+        emittedVisibleEvent = true;
 
         const output = evt.data?.output;
 
@@ -278,6 +310,19 @@ export async function* adaptDeepAgentStream(
       error: {
         code: "run_failed",
         message: sanitizeErrorForClient(error),
+      },
+      runId: options.runId,
+      timestamp: now(),
+      type: "run.failed",
+    };
+    return;
+  }
+
+  if (!emittedVisibleEvent) {
+    yield {
+      error: {
+        code: "run_failed",
+        message: "The selected model completed without returning content. Please choose another model and try again.",
       },
       runId: options.runId,
       timestamp: now(),
@@ -510,6 +555,25 @@ function extractChunkText(chunk: unknown): string {
     }
   }
 
+  return "";
+}
+
+/**
+ * OpenAI-compatible reasoning models place their internal stream separately
+ * from `content`. Preserve it for the chat UI instead of treating a valid
+ * reasoning-only chunk as an empty response.
+ */
+function extractChunkThinking(chunk: unknown): string {
+  if (!chunk || typeof chunk !== "object") return "";
+
+  const additional = (chunk as { additional_kwargs?: unknown }).additional_kwargs;
+  if (!additional || typeof additional !== "object") return "";
+
+  const record = additional as Record<string, unknown>;
+  for (const key of ["reasoning_content", "reasoning", "thinking"]) {
+    const value = record[key];
+    if (typeof value === "string" && value) return value;
+  }
   return "";
 }
 

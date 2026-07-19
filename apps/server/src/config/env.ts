@@ -5,7 +5,7 @@ import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
-export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "gpt-5.4";
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "glm-5.2";
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
