@@ -1,4 +1,5 @@
 import type { ProjectCreateRequest, ProjectSummary, ProjectUpdateRequest } from "@lovart.dofe/shared";
+import { randomUUID } from "node:crypto";
 
 import type { NativeDataRepository, NativeProjectRow } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
@@ -50,7 +51,10 @@ export function createProjectService(options: { repository: NativeDataRepository
           createdBy: user.id,
           description: input.description?.trim() || null,
           name: input.name.trim(),
-          slug: slugify(input.name),
+          // Display names are intentionally reusable. Keep the database slug
+          // collision-free so repeatedly creating the default "Untitled"
+          // project never fails with a 409.
+          slug: `${slugify(input.name)}-${randomUUID().slice(0, 8)}`,
           workspaceId: viewer.workspace.id,
         });
         return mapSummary(project, viewer.workspace, options.storage);
