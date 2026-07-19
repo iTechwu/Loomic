@@ -11,6 +11,7 @@ import { resolveImageProviderName } from "../generation/providers/registry.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import { JobServiceError } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
 import type { UploadService } from "../features/uploads/upload-service.js";
 import type { AuthenticatedUser, RequestAuthenticator } from "../auth/sso-authenticator.js";
 
@@ -37,6 +38,7 @@ export async function registerGenerateRoutes(
     jobService?: JobService;
     uploadService: UploadService;
     viewerService: ViewerService;
+    credentialsService?: CredentialsService;
   },
 ) {
   app.post("/api/agent/generate-image", async (request, reply) => {
@@ -66,13 +68,27 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "black-forest-labs/flux-kontext-pro";
+    const model = payload.model ?? "flux-kontext-pro";
 
     try {
+      // Resolve the caller's DoFe credentials (strict no-fallback: throws if the
+      // user has no ready credentials, surfacing as a generation failure below).
+      const credentials = options.credentialsService
+        ? await options.credentialsService.getByUserId(user.id)
+        : undefined;
+      const auth = credentials
+        ? {
+            designApiKey: credentials.designApiKey,
+            seedanceAccessKeyId: credentials.seedanceAccessKeyId,
+            seedanceSecretAccessKey: credentials.seedanceSecretAccessKey,
+          }
+        : undefined;
+
       const providerName = resolveImageProviderName(model);
       const result = await generateImage(providerName, {
         prompt: payload.prompt,
         model,
+        ...(auth ? { auth } : {}),
         aspectRatio: payload.aspectRatio ?? "1:1",
         ...(payload.quality ? { quality: payload.quality } : {}),
       });
@@ -159,7 +175,7 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "google-official/veo-3.1-generate-preview";
+    const model = payload.model ?? "veo-3.1-generate";
 
     try {
       const viewer = await options.viewerService.ensureViewer(user);

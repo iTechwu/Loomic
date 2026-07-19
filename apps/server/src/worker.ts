@@ -17,6 +17,12 @@ import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.j
 import { createJobService } from "./features/jobs/job-service.js";
 import { getExecutor, type ExecutorContext } from "./features/jobs/job-executor.js";
 import { registerAllProviders } from "./generation/providers/register-all.js";
+import { createCredentialCrypto } from "./features/credentials/crypto.js";
+import {
+  createCredentialsService,
+  type CredentialsService,
+} from "./features/credentials/credentials-service.js";
+import { createUserCredentialsRepository } from "./features/credentials/credentials-repository.js";
 import "./features/jobs/executors/image-generation.js";
 import "./features/jobs/executors/video-generation.js";
 
@@ -29,6 +35,21 @@ async function main() {
   registerAllProviders(env);
 
   const pool = createDatabasePool(env.databaseUrl);
+  // Per-user models credential resolver — workers resolve the job owner's key
+  // (background_jobs.created_by) before each generation call. Provisioning
+  // itself runs on the API server (OIDC/ensureViewer); the worker only reads.
+  const credentialsService: CredentialsService | undefined =
+    env.internalApiSecret && env.dofeModelBaseUrl
+      ? createCredentialsService({
+          repository: createUserCredentialsRepository(pool),
+          crypto: createCredentialCrypto(env.lovartCredentialEncryptionKey),
+          provisionConfig: {
+            baseUrl: env.dofeModelBaseUrl,
+            serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+            internalApiSecret: env.internalApiSecret,
+          },
+        })
+      : undefined;
   const dataRepository = createNativeDataRepository(pool);
   const jobRepository = createNativeJobRepository(pool);
   const rabbitMq = createRabbitMqClient(env.rabbitMqUrl);
@@ -51,7 +72,7 @@ async function main() {
     const prefetch = queue === "image_generation_jobs" ? env.workerImageConcurrency ?? 3 : env.workerVideoConcurrency ?? 2;
     await rabbitMq.consume(queue, async ({ payload }) => {
       if (stopping) return;
-      await processMessage(queue, payload as Record<string, unknown>, { dataRepository, env, jobRepository, jobService, objectStorage, rabbitMq }, tag);
+      await processMessage(queue, payload as Record<string, unknown>, { dataRepository, env, jobRepository, jobService, objectStorage, rabbitMq, ...(credentialsService ? { credentialsService } : {}) }, tag);
     }, { prefetch });
   }));
   console.log(`${tag} started`, { queues: QUEUES });

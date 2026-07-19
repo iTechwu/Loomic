@@ -31,14 +31,28 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   const createdBy: string | null = jobRow.created_by ?? null;
   const workspaceId: string = jobRow.workspace_id ?? jobId;
 
-  const model = payload.model ?? "wan-video/wan-2.6";
+  const model = payload.model ?? "seedance-2.0";
   const providerName = resolveVideoProviderName(model);
 
+  // Resolve the job owner's DoFe credentials (strict no-fallback).
+  if (!createdBy) throw new Error(`Job ${jobId} has no creator`);
+  const credentials = ctx.credentialsService
+    ? await ctx.credentialsService.getByUserId(createdBy)
+    : undefined;
+  const auth = credentials
+    ? {
+        designApiKey: credentials.designApiKey,
+        seedanceAccessKeyId: credentials.seedanceAccessKeyId,
+        seedanceSecretAccessKey: credentials.seedanceSecretAccessKey,
+      }
+    : undefined;
+
   try {
-    lap("replicate_call_start");
+    lap("dofe_call_start");
     const generated = await generateVideo(providerName, {
       prompt: payload.prompt,
       model,
+      ...(auth ? { auth } : {}),
       ...(payload.duration != null ? { duration: payload.duration } : {}),
       ...(payload.resolution ? { resolution: payload.resolution as "480p" | "720p" | "1080p" } : {}),
       ...(payload.aspect_ratio ? { aspectRatio: payload.aspect_ratio } : {}),
@@ -46,7 +60,7 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
       ...(payload.input_video ? { inputVideo: payload.input_video } : {}),
       ...(payload.enable_audio != null ? { enableAudio: payload.enable_audio } : {}),
     });
-    lap("replicate_call_done");
+    lap("dofe_call_done");
 
     // Vertex AI returns inline base64 data URIs; Developer API returns HTTP URLs.
     let buffer: Buffer;

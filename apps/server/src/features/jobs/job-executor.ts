@@ -6,6 +6,7 @@ import type { NativeDataRepository } from "../../database/native-data-repository
 import type { NativeJobRepository } from "../../database/job-repository.js";
 import type { RabbitMqClient } from "../../queue/rabbitmq-client.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
+import type { CredentialsService } from "../credentials/credentials-service.js";
 
 export type ExecutorContext = {
   jobService: JobService;
@@ -14,6 +15,12 @@ export type ExecutorContext = {
   rabbitMq: RabbitMqClient;
   objectStorage: TosObjectStorage;
   env: ServerEnv;
+  /**
+   * Per-user models credential resolver. When set, executors resolve the job
+   * owner's credentials and pass them to the provider so generation runs under
+   * that user's DoFe key (strict per-user isolation).
+   */
+  credentialsService?: CredentialsService;
 };
 
 export type JobExecutor = (

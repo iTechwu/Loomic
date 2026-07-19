@@ -65,6 +65,18 @@ export type ServerEnv = {
   version: string;
   volcesApiKey?: string;
   volcesBaseUrl?: string;
+  /**
+   * Service name used to sign models.dofe.ai internal API requests. Must be on
+   * models' MODELS_SEEDANCE_CREDENTIAL_SERVICE_NAMES whitelist (lovart.dofe.ai
+   * is on the default list).
+   */
+  lovartModelsServiceName?: string;
+  /**
+   * AES-256-GCM key (32 bytes, base64/hex/utf8) for encrypting stored user
+   * credentials. When unset, credentials fall back to plaintext storage and a
+   * startup warning is logged.
+   */
+  lovartCredentialEncryptionKey?: string;
   skillsRoot?: string;
   webOrigin: string;
   workerConcurrency?: number;
@@ -156,6 +168,13 @@ export function loadServerEnv(
     overrides.volcesApiKey ?? normalizeOptionalString(source.VOLCES_API_KEY);
   const volcesBaseUrl =
     overrides.volcesBaseUrl ?? normalizeOptionalString(source.VOLCES_BASE_URL);
+  const lovartModelsServiceName =
+    overrides.lovartModelsServiceName ??
+    normalizeOptionalString(source.LOVART_MODELS_SERVICE_NAME) ??
+    "lovart.dofe.ai";
+  const lovartCredentialEncryptionKey =
+    overrides.lovartCredentialEncryptionKey ??
+    normalizeOptionalString(source.LOVART_CREDENTIAL_ENCRYPTION_KEY);
   const skillsRoot =
     overrides.skillsRoot ??
     normalizeOptionalString(source.LOVART_DOFE_SKILLS_ROOT);
@@ -243,6 +262,9 @@ export function loadServerEnv(
     ...(redisUrl ? { redisUrl } : {}),
     ...(volcesApiKey ? { volcesApiKey } : {}),
     ...(volcesBaseUrl ? { volcesBaseUrl } : {}),
+    ...(lovartCredentialEncryptionKey ? { lovartCredentialEncryptionKey } : {}),
+    // lovartModelsServiceName always has a default, so always include it.
+    lovartModelsServiceName,
     ...(skillsRoot ? { skillsRoot } : {}),
     ...(workerConcurrency ? { workerConcurrency } : {}),
     ...(workerImageConcurrency ? { workerImageConcurrency } : {}),

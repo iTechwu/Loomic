@@ -9,6 +9,7 @@ import {
   type SsoTenantTeamContext,
   fetchSsoTenantTeamContext,
 } from "../sso-tenant-context.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
 
 const PKCE_COOKIE = "lovart_oidc_pkce";
 const REFRESH_COOKIE = "lovart_oidc_refresh";
@@ -69,6 +70,7 @@ export async function registerOidcAuthRoutes(
   options: {
     env: ServerEnv;
     identities: SsoIdentityRepository;
+    credentialsService?: CredentialsService;
   },
 ) {
   const config = tryLoadOidcConfig(options.env);
@@ -171,6 +173,7 @@ export async function registerOidcAuthRoutes(
         tokens,
         options.identities,
         config,
+        options.credentialsService,
       );
 
       if (tokens.refresh_token) {
@@ -208,6 +211,7 @@ export async function registerOidcAuthRoutes(
         tokens,
         options.identities,
         config,
+        options.credentialsService,
       );
       if (tokens.refresh_token) {
         setCookie(reply, REFRESH_COOKIE, tokens.refresh_token, {
@@ -373,6 +377,7 @@ async function createDataSession(
   tokens: SsoTokenResponse,
   identities: SsoIdentityRepository,
   config: OidcConfig,
+  credentialsService?: CredentialsService,
 ): Promise<BrowserSession> {
   if (!isUuid(identity.id))
     throw new Error("SSO subject must be a UUID for the current data schema");
@@ -392,6 +397,19 @@ async function createDataSession(
         : {}),
     }).catch(() => undefined),
   ]);
+
+  // Provision per-user models credentials. The OIDC path is the only one that
+  // carries the real SSO team id, so it owns first-time provisioning;
+  // ensureViewer handles retries on later requests. Fire-and-forget so a models
+  // outage never blocks login.
+  const ssoTeamId = tenantContext?.teams?.[0]?.id;
+  if (credentialsService && ssoTeamId) {
+    void credentialsService
+      .ensureProvisioned({ userId: dataUserId, ssoTeamId })
+      .catch(() => {
+        /* provisioning failures are logged inside ensureProvisioned */
+      });
+  }
 
   return {
     accessToken: tokens.access_token,

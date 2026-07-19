@@ -81,6 +81,12 @@ import { createDatabasePool } from "./database/pool.js";
 import { createNativeDataRepository } from "./database/native-data-repository.js";
 import { createNativeSkillRepository } from "./database/skill-repository.js";
 import { createSsoIdentityRepository } from "./database/sso-identity-repository.js";
+import { createCredentialCrypto } from "./features/credentials/crypto.js";
+import {
+  createCredentialsService,
+  type CredentialsService,
+} from "./features/credentials/credentials-service.js";
+import { createUserCredentialsRepository } from "./features/credentials/credentials-repository.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
 import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./auth/sso-authenticator.js";
@@ -136,6 +142,29 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
   const databasePool = createDatabasePool(env.databaseUrl);
   const identities = createSsoIdentityRepository(databasePool);
+
+  // Per-user models credential provisioning + resolution. Disabled when the
+  // models internal secret or base URL isn't configured (e.g. local dev without
+  // models); in that case model calls fall back to whatever provider keys exist
+  // and provisioning is skipped.
+  const credentialCrypto = createCredentialCrypto(env.lovartCredentialEncryptionKey);
+  if (!credentialCrypto.enabled) {
+    app.log.warn(
+      "[credentials] encryption disabled — user credentials will be stored plaintext. Set LOVART_CREDENTIAL_ENCRYPTION_KEY (32 bytes) to enable AES-256-GCM encryption.",
+    );
+  }
+  const credentialsService: CredentialsService | undefined =
+    env.internalApiSecret && env.dofeModelBaseUrl
+      ? createCredentialsService({
+          repository: createUserCredentialsRepository(databasePool),
+          crypto: credentialCrypto,
+          provisionConfig: {
+            baseUrl: env.dofeModelBaseUrl,
+            serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+            internalApiSecret: env.internalApiSecret,
+          },
+        })
+      : undefined;
   const auth = options.auth ?? createSsoRequestAuthenticator(env, identities);
   const dataRepository = createNativeDataRepository(databasePool);
   const skillRepository = createNativeSkillRepository(databasePool);
@@ -144,7 +173,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const objectStorage = createConfiguredTosObjectStorage(env.tos);
   const canvasElementWriter = createCanvasElementWriter({ repository: dataRepository, storage: objectStorage });
   app.addHook("onClose", async () => databasePool.end());
-  const viewerService = options.viewerService ?? createViewerService({ repository: dataRepository });
+  const viewerService =
+    options.viewerService ??
+    createViewerService({
+      repository: dataRepository,
+      ...(credentialsService ? { credentialsService } : {}),
+    });
   const projectService =
     options.projectService ??
     createProjectService({ repository: dataRepository, storage: objectStorage, viewerService });
@@ -194,6 +228,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? {}
       : { eventDelayMs: options.mockEventDelayMs }),
     env,
+    ...(credentialsService ? { credentialsService } : {}),
     objectStorage,
     ...(jobService ? { jobService } : {}),
     viewerService,
@@ -229,7 +264,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
-  void registerOidcAuthRoutes(app, { env, identities });
+  void registerOidcAuthRoutes(app, {
+    env,
+    identities,
+    ...(credentialsService ? { credentialsService } : {}),
+  });
   void registerFontsRoutes(app, { env });
   void registerImageProxyRoute(app);
   void registerRunRoutes(app, agentRuns, {
@@ -276,6 +315,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     auth,
     uploadService,
     viewerService,
+    ...(credentialsService ? { credentialsService } : {}),
     ...(jobService ? { jobService } : {}),
   });
   if (jobService) {

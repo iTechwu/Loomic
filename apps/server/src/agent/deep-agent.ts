@@ -53,6 +53,12 @@ export type LovartDofeAgentFactory = (options: {
   dataRepository: NativeDataRepository;
   env: ServerEnv;
   model?: BaseLanguageModel | string;
+  /**
+   * Per-user models credential. When set, the DoFe router authenticates as the
+   * user (strict per-user isolation). When absent, falls back to the shared
+   * DOFE_MODEL_API_KEY — kept only for non-user contexts such as catalog probes.
+   */
+  credentials?: { designApiKey: string };
   persistImage?: PersistImageFn;
   objectStorage: TosObjectStorage;
 
@@ -72,6 +78,12 @@ export function createLovartDofeDeepAgent(options: {
   dataRepository: NativeDataRepository;
   env: ServerEnv;
   model?: BaseLanguageModel | string;
+  /**
+   * Per-user models credential. When set, the DoFe router authenticates as the
+   * user (strict per-user isolation). When absent, falls back to the shared
+   * DOFE_MODEL_API_KEY — kept only for non-user contexts such as catalog probes.
+   */
+  credentials?: { designApiKey: string };
   persistImage?: PersistImageFn;
   objectStorage: TosObjectStorage;
 
@@ -86,7 +98,7 @@ export function createLovartDofeDeepAgent(options: {
   const modelSpec = options.model ?? createDefaultModelSpecifier(options.env);
   const resolvedModel =
     typeof modelSpec === "string"
-      ? createStreamingChatModel(modelSpec, options.env)
+      ? createStreamingChatModel(modelSpec, options.env, options.credentials)
       : modelSpec;
 
   let systemPrompt = options.brandKitId
@@ -168,8 +180,14 @@ export function createStreamingChatModel(
     | "openAIApiBase"
     | "openAIApiKey"
   >,
+  credentials?: { designApiKey: string },
 ): BaseLanguageModel {
-  if (hasDofeModelRouter(env)) {
+  // The router authenticates with the user's provisioned designApiKey when
+  // available (strict per-user isolation), otherwise the shared
+  // DOFE_MODEL_API_KEY (non-user contexts only). The router is usable whenever
+  // the gateway base URL is configured AND some key is available.
+  const routerKey = credentials?.designApiKey ?? env.dofeModelApiKey;
+  if (env.dofeModelBaseUrl && routerKey) {
     const modelName = toDofeRouterModelId(specifier);
     const protocol = resolveDofeModelProtocol(modelName);
     const baseUrl = dofeModelProtocolBaseUrl(env.dofeModelBaseUrl, protocol);
@@ -177,6 +195,7 @@ export function createStreamingChatModel(
       model: modelName,
       protocol,
       endpoint: baseUrl,
+      keySource: credentials?.designApiKey ? "user_credential" : "global_env",
     });
 
     switch (protocol) {
@@ -190,14 +209,14 @@ export function createStreamingChatModel(
           apiKey: " ",
           baseUrl,
           // Keep the router credential out of the Google-specific header.
-          customHeaders: { Authorization: `Bearer ${env.dofeModelApiKey}` },
+          customHeaders: { Authorization: `Bearer ${routerKey}` },
           streaming: true,
           streamUsage: false,
         });
       case "anthropic":
         return new ChatAnthropic({
           model: modelName,
-          apiKey: env.dofeModelApiKey,
+          apiKey: routerKey,
           clientOptions: { baseURL: baseUrl },
           streaming: true,
           streamUsage: false,
@@ -205,7 +224,7 @@ export function createStreamingChatModel(
       case "openai":
         return new ChatOpenAI({
           model: modelName,
-          apiKey: env.dofeModelApiKey,
+          apiKey: routerKey,
           configuration: { baseURL: baseUrl },
           streaming: true,
           // Upstream protocols do not all provide OpenAI usage chunks.

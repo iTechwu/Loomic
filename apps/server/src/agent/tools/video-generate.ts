@@ -8,7 +8,7 @@ import {
   type AvailableModel,
 } from "../../generation/providers/registry.js";
 
-const DEFAULT_MODEL = "wan-video/wan-2.6";
+const DEFAULT_MODEL = "seedance-2.0";
 
 // ── Submit function type ───────────────────────────────────────────────────
 
