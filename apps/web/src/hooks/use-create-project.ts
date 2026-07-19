@@ -95,11 +95,6 @@ export function useCreateProject() {
         sessionStorage.removeItem(INITIAL_AGENT_MODEL_KEY);
       }
 
-      // Open the new tab synchronously within the user gesture so the
-      // browser popup-blocker doesn't intervene. We'll set the real URL
-      // once the API call returns.
-      const newTab = window.open("/loading-preview", "_blank");
-
       setCreating(true);
       try {
         const result = await createProject(token, { name: "Untitled" });
@@ -109,16 +104,12 @@ export function useCreateProject() {
           ? `/canvas?id=${canvasId}&prompt=${encodeURIComponent(opts.prompt)}`
           : `/canvas?id=${canvasId}`;
 
-        if (newTab) {
-          newTab.location.href = url;
-        } else {
-          // Popup was blocked despite sync open — fallback to in-page navigation
-          routerRef.current.push(url);
-        }
+        // Design authentication is held by the active client session. Opening
+        // a fresh tab drops that state and sends the user back through SSO, so
+        // project creation must continue in the current workspace tab.
+        routerRef.current.push(url);
         setCreating(false);
       } catch (err) {
-        // Close the blank tab on failure
-        newTab?.close();
         if (err instanceof ApiAuthError) {
           await signOutRef.current();
           routerRef.current.replace("/login");
