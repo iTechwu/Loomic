@@ -6,6 +6,7 @@ import {
   type Logger,
   type ModelsProvisionConfig,
   ModelsProvisionError,
+  getSeedanceCredentialsStatus,
   provisionSeedanceCredentials,
 } from "./models-client.js";
 
@@ -146,6 +147,39 @@ export function createCredentialsService(
 
       const startedAt = performance.now();
       try {
+        // A retry means a previous caller may have reached models but lost its
+        // response. Query the models-owned pair first. Initial provision and
+        // explicit SSO-subject rotation have attemptCount 1 and intentionally
+        // skip this extra round trip.
+        if (attemptCount > 1) {
+          const remoteStatus = await getSeedanceCredentialsStatus(
+            provisionConfig,
+            {
+              userId: resolvedSsoUserId,
+              ssoTeamId: resolvedTeamId,
+              correlationId,
+              logger,
+            },
+          );
+          logger.info("[credentials] provision_status_reconciled", {
+            correlationId,
+            attemptCount,
+            remoteState: remoteStatus.state,
+          });
+          if (remoteStatus.state === "incomplete") {
+            // models reports a partial/disabled pair. Do not overwrite it or
+            // create a second ownership record; preserve the lease for ops to
+            // reconcile from the models authority.
+            throw new ModelsProvisionError(
+              "models reported incomplete credential state",
+              0,
+              "state",
+            );
+          }
+          // `ready` still continues to provision: models' service-owned
+          // ensure paths return the same credential pair, allowing Lovart to
+          // restore encrypted local secrets without a second secret-read API.
+        }
         const provisioned = await provisionSeedanceCredentials(
           provisionConfig,
           {
@@ -183,7 +217,11 @@ export function createCredentialsService(
           error instanceof ModelsProvisionError ? error.code : "http";
         const status = error instanceof ModelsProvisionError ? error.status : 0;
         const statusCategory =
-          code === "timeout" ? "timeout" : `${Math.floor(status / 100) || 5}xx`;
+          code === "timeout"
+            ? "timeout"
+            : code === "state"
+              ? "remote_state"
+              : `${Math.floor(status / 100) || 5}xx`;
         // Sanitized error: correlationId + classification only, never the raw
         // message (which may carry response fragments) or any secret.
         const sanitizedError = `models provision ${code} (${statusCategory}) corr=${correlationId}`;
@@ -199,7 +237,8 @@ export function createCredentialsService(
         // non-idempotent POST. Keep the database lease until its TTL expires;
         // an immediate retry could mint duplicate credentials. Known HTTP
         // responses (including 5xx) can safely move to `failed` and retry.
-        const retainInFlight = code === "timeout" || status === 0;
+        const retainInFlight =
+          code === "timeout" || code === "state" || status === 0;
         if (retainInFlight) {
           logger.warn("[credentials] provision_retry_deferred", {
             correlationId,

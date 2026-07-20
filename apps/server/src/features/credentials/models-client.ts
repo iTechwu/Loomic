@@ -39,13 +39,26 @@ export type ProvisionedCredentials = {
   assetCredential: { id: string; accessKeyId: string; secretAccessKey: string };
 };
 
+/**
+ * Secret-free recovery metadata returned by models-sdk@0.2.11. This proves the
+ * remote state after an uncertain provision result but is never a second
+ * credential-delivery channel.
+ */
+export type SeedanceCredentialsStatus = {
+  state: "absent" | "incomplete" | "ready";
+  apiKey?: { id: string; keyPrefix: string; status: string };
+  assetCredential?: { id: string; accessKeyId: string; status: string };
+};
+
+export type ModelsProvisionErrorCode = "http" | "timeout" | "sdk" | "state";
+
 export class ModelsProvisionError extends Error {
   readonly status: number;
-  readonly code: "http" | "timeout" | "sdk";
+  readonly code: ModelsProvisionErrorCode;
   constructor(
     message: string,
     status: number,
-    code: "http" | "timeout" | "sdk" = "http",
+    code: ModelsProvisionErrorCode = "http",
   ) {
     super(message);
     this.name = "ModelsProvisionError";
@@ -198,6 +211,95 @@ export async function provisionSeedanceCredentials(
       failureCategory: "models_provision_unexpected",
     });
     throw new ModelsProvisionError("provision request failed", 0, "http");
+  }
+}
+
+/**
+ * Read the models-owned status of a credential pair before retrying an
+ * uncertain provision. The typed SDK response is metadata-only: callers must
+ * still use the controlled provision flow to receive secrets when recovering.
+ */
+export async function getSeedanceCredentialsStatus(
+  config: ModelsProvisionConfig,
+  input: {
+    userId: string;
+    ssoTeamId: string;
+    correlationId: string;
+    logger?: Logger;
+  },
+): Promise<SeedanceCredentialsStatus> {
+  validateConfig(config);
+  const client = createSignedModelsInternalDataClient({
+    baseUrl: config.baseUrl,
+    serviceName: config.serviceName,
+    internalApiSecret: config.internalApiSecret,
+    timeoutMs: config.timeoutMs ?? 8_000,
+    baseHeaders: { "x-correlation-id": input.correlationId },
+  });
+  const log = input.logger ?? silentLogger();
+  const startedAt = performance.now();
+
+  try {
+    const status = await client.seedanceCredentials.get({
+      query: { userId: input.userId, ssoTeamId: input.ssoTeamId },
+    });
+    log.info("[credentials] provision_status_lookup_ok", {
+      correlationId: input.correlationId,
+      latencyMs: Math.round(performance.now() - startedAt),
+      state: status.state,
+      hasApiKey: Boolean(status.apiKey),
+      hasAssetCredential: Boolean(status.assetCredential),
+    });
+    return status;
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - startedAt);
+    if (error instanceof ModelsInternalApiError && error.status === 0) {
+      log.error("[credentials] provision_status_lookup_timeout", {
+        correlationId: input.correlationId,
+        latencyMs,
+        statusCategory: "timeout",
+      });
+      throw new ModelsProvisionError(
+        "credential status request timed out",
+        0,
+        "timeout",
+      );
+    }
+    if (error instanceof ModelsInternalApiError) {
+      log.error("[credentials] provision_status_lookup_failed", {
+        correlationId: input.correlationId,
+        latencyMs,
+        status: error.status,
+        statusCategory: `${Math.floor(error.status / 100) || 5}xx`,
+      });
+      throw new ModelsProvisionError(
+        `credential status HTTP ${error.status}`,
+        error.status,
+        "http",
+      );
+    }
+    if (isTimeoutError(error)) {
+      log.error("[credentials] provision_status_lookup_timeout", {
+        correlationId: input.correlationId,
+        latencyMs,
+        statusCategory: "timeout",
+      });
+      throw new ModelsProvisionError(
+        "credential status request timed out",
+        0,
+        "timeout",
+      );
+    }
+    log.error("[credentials] provision_status_lookup_error", {
+      correlationId: input.correlationId,
+      latencyMs,
+      failureCategory: "models_credential_status_unexpected",
+    });
+    throw new ModelsProvisionError(
+      "credential status request failed",
+      0,
+      "http",
+    );
   }
 }
 

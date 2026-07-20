@@ -176,6 +176,20 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | 全量 CI gate 本地核验 | ✅ 完成（Cycle 14：verify:migrations / typecheck / test 71 / lint:baseline 806≤832 / build） |
 | 类型检查 / 全量测试 | ✅ Cycle 19 全量质量门通过（server 79 / web 73 / shared 24 用例） |
 
+### Cycle 20 — 上游解锁：SDK 0.2.11 状态查询面接入准备（2026-07-20）
+
+- **上游核验**：models 已发布 `@dofe/models-sdk@0.2.11`（npm `latest` 指向 0.2.11），新增 HMAC-only `seedanceCredentials.get({ query: { userId, ssoTeamId } })` → `GET /internal/seedance/credentials/status`。
+- [x] `apps/server/package.json` 由 `^0.2.10` 升级为 `^0.2.11`，`pnpm-lock.yaml` 解析 `@dofe/models-sdk@0.2.11` 并锁定 npmjs registry integrity。
+- [x] 新方法是 Zod-first/ts-rest typed data-client surface；响应仅为 `absent` / `incomplete` / `ready` 与安全元数据，**不**返回 API key、AK/SK 或密文。Lovart 不声明本地兼容类型。
+- [ ] 下一轮：在唯一 server credential adapter 封装状态查询与脱敏错误映射。
+
+### Cycle 21 — 远端状态 adapter：typed query、correlation 与脱敏（2026-07-20）
+
+- [x] `models-client.ts` 新增唯一的 `getSeedanceCredentialsStatus` server adapter，直接调用 SDK 0.2.11 `seedanceCredentials.get({query})`；不复制 path、query 类型、HMAC 或 response envelope。
+- [x] adapter 使用每次尝试的 `x-correlation-id`、既有 service name 和 timeout；日志仅记录 `state`、延迟与是否存在安全元数据，不记录 API key、AK/SK、密文、Authorization、请求 user/team 或上游 response body。
+- [x] 查询 timeout/HTTP/未知错误映射为既有 `ModelsProvisionError` 并 fail closed，供 service 决定保留 in-flight lease。
+- [x] `models-client.test.ts` 新增 status URL/header、secret-free log 与 timeout 测试；`pnpm --filter @lovart.dofe/server test src/features/credentials/models-client.test.ts`（11 tests）、server typecheck 与本轮 Biome 检查通过。
+
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 
 - **发现**：Cycle 13 将“ready 行的 `ssoUserId` 不匹配”视为一次性迁移路径，并让 service 在拿到 `ready` 后直接 fall through 发放。两个并发登录可同时读取 `ready`，分别绕过 `provisioning` 状态并发出两个非幂等 POST，与 P1 的同 user/team 单次发放不变量冲突。

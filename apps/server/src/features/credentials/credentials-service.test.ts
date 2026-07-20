@@ -7,10 +7,14 @@ import type {
 } from "./credentials-repository.js";
 import { createCredentialsService } from "./credentials-service.js";
 import type { Logger } from "./models-client.js";
-import { provisionSeedanceCredentials } from "./models-client.js";
+import {
+  getSeedanceCredentialsStatus,
+  provisionSeedanceCredentials,
+} from "./models-client.js";
 
 vi.mock("./models-client.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./models-client.js")>()),
+  getSeedanceCredentialsStatus: vi.fn(),
   provisionSeedanceCredentials: vi.fn(),
 }));
 
@@ -289,6 +293,90 @@ describe("CredentialsService", () => {
       { retainInFlight: true },
     );
     expect(JSON.stringify(logs)).toContain("models_provision_outcome_unknown");
+  });
+
+  it("reconciles a remotely ready retry before recovering secrets through idempotent provision", async () => {
+    const repository = makeRepository({
+      lock: {
+        status: "locked",
+        row: readyRow({
+          provisionState: "provisioning",
+          provisionAttemptCount: 2,
+          apikeyCiphertext: null,
+          secretAccessKeyCiphertext: null,
+        }),
+      },
+    });
+    vi.mocked(getSeedanceCredentialsStatus).mockResolvedValue({
+      state: "ready",
+      apiKey: { id: "akid", keyPrefix: "sk-test", status: "active" },
+      assetCredential: { id: "acid", accessKeyId: "AKtest", status: "active" },
+    });
+    vi.mocked(provisionSeedanceCredentials).mockResolvedValue({
+      apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
+      assetCredential: {
+        id: "acid",
+        accessKeyId: "AKtest",
+        secretAccessKey: "AKSKsecret",
+      },
+    });
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+
+    await makeService(repository, {
+      info: (message, data = {}) => logs.push({ message, data }),
+      warn: () => {},
+      error: () => {},
+    }).ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    expect(getSeedanceCredentialsStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: SSO_USER_ID,
+        ssoTeamId: TEAM_ID,
+        correlationId: expect.any(String),
+      }),
+    );
+    expect(provisionSeedanceCredentials).toHaveBeenCalledTimes(1);
+    expect(repository.saveReady).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(logs)).toContain("provision_status_reconciled");
+    expect(JSON.stringify(logs)).not.toContain("sk-secret");
+    expect(JSON.stringify(logs)).not.toContain("AKSKsecret");
+  });
+
+  it("fails closed and retains the lease when models reports an incomplete pair", async () => {
+    const repository = makeRepository({
+      lock: {
+        status: "locked",
+        row: readyRow({
+          provisionState: "provisioning",
+          provisionAttemptCount: 2,
+          apikeyCiphertext: null,
+        }),
+      },
+    });
+    vi.mocked(getSeedanceCredentialsStatus).mockResolvedValue({
+      state: "incomplete",
+      apiKey: { id: "akid", keyPrefix: "sk-test", status: "revoked" },
+    });
+
+    await makeService(repository).ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    expect(provisionSeedanceCredentials).not.toHaveBeenCalled();
+    expect(repository.saveReady).not.toHaveBeenCalled();
+    expect(repository.saveFailed).toHaveBeenCalledWith(
+      LOCAL_USER_ID,
+      TEAM_ID,
+      expect.stringMatching(/models provision state \(remote_state\) corr=/),
+      { retainInFlight: true },
+    );
   });
 
   it("does not write local identity, SSO identity, team, or storage errors to logs", async () => {

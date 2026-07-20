@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ModelsProvisionError,
+  getSeedanceCredentialsStatus,
   provisionSeedanceCredentials,
 } from "./models-client.js";
 
@@ -281,6 +282,78 @@ describe("provisionSeedanceCredentials", () => {
       // not secrets and are listed as required telemetry in the integration plan.
       expect(payload).toContain("akid");
       expect(payload).toContain("acid");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reads secret-free credential status through the typed SDK endpoint", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        code: 0,
+        msg: "ok",
+        data: {
+          state: "ready",
+          apiKey: { id: "akid", keyPrefix: "sk-test", status: "active" },
+          assetCredential: {
+            id: "acid",
+            accessKeyId: "AKtest",
+            status: "active",
+          },
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+
+    try {
+      await expect(
+        getSeedanceCredentialsStatus(makeConfig(), {
+          userId: "user-1",
+          ssoTeamId: "team-1",
+          correlationId: CORRELATION_ID,
+          logger: {
+            info: (message, data = {}) => logs.push({ message, data }),
+            warn: () => {},
+            error: () => {},
+          },
+        }),
+      ).resolves.toMatchObject({ state: "ready" });
+
+      const call = fetchMock.mock.calls[0] as unknown as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(call[0]).toBe(
+        `${BASE_URL}/internal/seedance/credentials/status?userId=user-1&ssoTeamId=team-1`,
+      );
+      expect(call[1].headers["x-correlation-id"]).toBe(CORRELATION_ID);
+      const output = JSON.stringify(logs);
+      expect(output).toContain("provision_status_lookup_ok");
+      expect(output).not.toContain("sk-secret");
+      expect(output).not.toContain("AKSKsecret");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fails closed when credential status lookup times out", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const error = new Error("upstream details must not escape") as Error & {
+        name: string;
+      };
+      error.name = "TimeoutError";
+      throw error;
+    });
+
+    try {
+      await expect(
+        getSeedanceCredentialsStatus(makeConfig(), {
+          userId: "user-1",
+          ssoTeamId: "team-1",
+          correlationId: CORRELATION_ID,
+        }),
+      ).rejects.toMatchObject({ code: "timeout", status: 0 });
     } finally {
       vi.unstubAllGlobals();
     }
