@@ -175,8 +175,8 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 | 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
-| 全量 CI gate 本地核验 | ✅ 完成（Cycle 29：verify:migrations / typecheck / test / lint:baseline 780≤832 / build） |
-| 类型检查 / 全量测试 | ✅ Cycle 29 全量质量门通过（workspace 15 / server 86 / web 73 / shared 24 用例） |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 34：verify:migrations / typecheck / test / lint:baseline 778≤832 / build） |
+| 类型检查 / 全量测试 | ✅ Cycle 34 全量质量门通过（workspace 15 / server 88 / web 73 / shared 24 用例） |
 
 ### Cycle 20 — 上游解锁：SDK 0.2.11 状态查询面接入准备（2026-07-20）
 
@@ -261,7 +261,13 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 
 - [x] `/api/image-models` 与 `/api/video-models` 现先执行 `RequestAuthenticator.authenticate`；缺失或无效 SSO bearer 返回统一 `401 unauthorized`，不读取 catalog projection。
 - [x] 移除两条 route 的未使用 `ViewerService` 参数，保留 registry 作为 server-side-only 投影；响应仍只包含模型显示元数据，不包含 bearer、API key 或资产凭据。
-- [ ] Cycle 34：完成 route 回归、全局 lint/build/边界扫描，并在无待办时收束本轮。
+- [x] Cycle 34 已完成：完成 route 回归、全局 lint/build/边界扫描，并在无待办时收束本轮。
+
+### Cycle 34 — route 回归与最终安全门（2026-07-20）
+
+- [x] 新增 `model-catalog-routes.test.ts`：未认证 image/video 请求均为标准 401；认证请求仅返回 server-side catalog 投影，测试断言响应不含 session bearer 或 credential 值。
+- [x] 完整门禁通过：`verify:migrations`（13）、workspace 15、server 25 files / 88 tests、web 23 files / 73 tests、shared 24 tests、`lint:baseline`（778 <= 832）和 `build`。
+- [x] 最终复审：所有 `fetchImageModels` / `fetchVideoModels` 调用均传入既有 SSO session token；浏览器目录未包含 models SDK、内部 secret 或 tenant credential；无当前未勾选实施项。
 
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 
