@@ -478,6 +478,9 @@ stateDiagram-v2
 | 101（复审循环 BQ：错误 sanitizer 名实一致） | `sanitizeErrorForClient` 不再将 raw message、cause、provider response body、details 或 stack 写入 console；仅记录稳定 failureCategory，且保持既有客户端友好文案。 | Server 67 项测试、typecheck 和触及文件 Biome 检查通过；测试注入 Authorization、prompt 与 response token 验证零泄露。 | 已完成 agent/runtime 共用错误 sanitizer 的日志边界收敛。 |
 | 102（复审循环 BR：全仓复核与遗留日志建账） | 完整复核确认第 97-101 轮行为、SDK 契约与测试数字；同时扫描出 33 个仍有直接 console 的 Server 文件，其中 18 处同时输出身份标识或原始错误文本。 | `pnpm test` 通过（workspace 15、Web 73、Server 67），全 workspace typecheck、token gate 与 Biome `805 <= 832` 通过。 | 本轮五项业务代码实施已闭环；将 projects/canvas/uploads、worker/queue/database 和 provider/agent runtime 的 18 处旧式日志列为本地 P1，必须迁移至 allowlisted failureCategory 日志后才可宣称全应用日志治理完成。 |
 | 103（复审循环 BS：创作资源日志最小化） | 新增不接收任意 context 的 operational log 接口；projects、canvas、uploads 的创建、查询、缩略图、文件提取、上传、删除和 orphan cleanup 只输出稳定 failureCategory。 | Server 71 项测试、typecheck 与 operational-log 单测通过；静态复核确认三个服务不再向 console 传 user/resource/object path 或原始错误。 | 已完成创作资源域日志收敛；下一轮处理 job 与消息队列域。 |
+| 104（复审循环 BT：异步作业日志最小化） | agent-run metadata、job publish 与 RabbitMQ connection/consumer 错误改用 operational failureCategory；不再输出 run/job/queue、消息 handler 或 AMQP 原始错误。 | Server 71 项测试、typecheck 与触及 logger 文件 Biome 检查通过；静态复核确认重试补偿、nack/requeue 行为未变。 | 已完成异步作业与消息队列日志收敛；下一轮处理 database/cache/worker 进程级日志。 |
+| 105（复审循环 BU：连接层日志与类型收敛） | Postgres pool rollback/idle、Redis 与 LangGraph checkpointer 连接错误改用 stable failureCategory；Redis 动态加载返回类型从 `any` 收紧为 `IORedis`。 | Server 71 项测试、typecheck、Redis 回归测试及触及文件 Biome 检查通过。 | 已完成连接层原始驱动错误清理；下一轮处理 worker payload、任务 ID 与 executor 错误。 |
+| 106（复审循环 BV：worker 运行日志最小化） | worker 的启动、停止、成功、非法消息、重试、死信和 fatal 日志使用无任意 context 的 outcome/failure category；不再输出 payload、job ID、worker tag 或 executor 原始错误。 | Server 72 项测试、typecheck 与 worker/operational-log Biome 检查通过。 | 已完成 worker 日志收敛；任务状态持久化的用户可见失败文案保持既有业务语义。 |
 
 ### 外部阻塞项
 

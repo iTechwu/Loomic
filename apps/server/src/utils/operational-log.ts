@@ -16,3 +16,10 @@ export function logOperationalWarning(
 ): void {
   console.warn(event, { failureCategory });
 }
+
+export function logOperationalInfo(
+  event: string,
+  outcomeCategory: string,
+): void {
+  console.info(event, { outcomeCategory });
+}

@@ -1,4 +1,5 @@
 import type { ServerEnv } from "../config/env.js";
+import { logOperationalWarning } from "../utils/operational-log.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
 
@@ -122,10 +123,10 @@ export function createDofeModelCatalog(
 
       pending = refresh().catch((error: unknown) => {
         if (cache) {
-          console.warn("[model-router] catalog_refresh_failed_using_stale_cache", {
-            endpoint: baseUrl,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logOperationalWarning(
+            "[model-router] catalog refresh failed using stale cache",
+            "model_catalog_stale_cache",
+          );
           return cache.models;
         }
         throw error;

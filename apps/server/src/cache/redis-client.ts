@@ -1,11 +1,13 @@
 import { createRequire } from "node:module";
 import type { Redis as IORedis } from "ioredis";
 
+import { logOperationalFailure } from "../utils/operational-log.js";
+
 const require = createRequire(import.meta.url);
 const Redis = require("ioredis") as new (
   value: string,
   options: Record<string, unknown>,
-) => any;
+) => IORedis;
 const MAX_REDIS_CONNECTION_RETRIES = 2;
 
 /**
@@ -40,15 +42,23 @@ export function createRedisClient(url: string): RedisClient {
     maxRetriesPerRequest: 2,
     retryStrategy: redisRetryDelay,
   });
-  client.on("error", (error: Error) => console.error("[redis] client error", { message: error.message }));
+  client.on("error", () =>
+    logOperationalFailure("[redis] client error", "redis_client"),
+  );
   return {
     connection: client,
-    async ping() { await client.ping(); },
-    async get(key) { return client.get(key); },
+    async ping() {
+      await client.ping();
+    },
+    async get(key) {
+      return client.get(key);
+    },
     async set(key, value, ttlSeconds) {
       if (ttlSeconds) await client.set(key, value, "EX", ttlSeconds);
       else await client.set(key, value);
     },
-    async close() { await client.quit().catch(() => undefined); },
+    async close() {
+      await client.quit().catch(() => undefined);
+    },
   };
 }

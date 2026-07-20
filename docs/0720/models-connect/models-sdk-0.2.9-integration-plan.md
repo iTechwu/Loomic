@@ -173,8 +173,8 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
-| 全量 CI gate 本地核验 | ✅ 完成（Cycle 9：verify:migrations / typecheck / test 61 / lint:baseline 809≤832 / build） |
-| 类型检查 / 全量测试 | ✅ `tsc` 通过，61 用例通过 |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 14：verify:migrations / typecheck / test 71 / lint:baseline 806≤832 / build） |
+| 类型检查 / 全量测试 | ✅ `tsc` 通过，71 用例通过 |
 
 ## 待办（外部依赖解锁后）
 
@@ -201,3 +201,15 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - **接受的限制**：迁移窗口内并发重签理论上可能对 models 端发起两次 POST（行仍为 `ready`，未重入 `provisioning`），产生一个孤立凭据；最新结果经 upsert 胜出，非安全/正确性事故。为该近不可能边缘场景新增 `force` 重锁属过度工程，按第一性原理不予引入。
 - [x] 新增 characterization 测试：ready 行 `ssoUserId = null` + 调用方带真实 `ssoUserId` → 触发重签，`saveReady` 以真实 SSO subject 持久化。锁定该迁移行为防回归。
 - [x] `credentials-service.test.ts` 8 用例 ✅。
+
+### Cycle 14 — 深审收尾：全量 CI gate 复核（2026-07-20）
+
+- **深审范围**：重读 `credentials-service.ts` / `credentials-repository.ts` / `models-client.ts` 全量 + SDK 0.2.10 `seedanceCredentials` 资源面（确认仅 `create`，无 get/list/revoke → 远端状态校验仍阻塞）。
+- [x] Cycle 10–13 改动后的全量 CI gate：
+  - `verify:migrations` ✅
+  - `typecheck` ✅
+  - `test` ✅ 22 文件 / **71 用例**（本轮净增：decrypt-failure、stale-takeover、SSO-migration-reprovision、unknown-error-sanitization 等）
+  - `lint:baseline` ✅ **806 ≤ 832**（无回归；改动文件本身零 biome 错误）
+  - `build` ✅
+  - 浏览器包零泄漏 ✅
+- [x] 本轮（Cycle 10–14）深审结论：Lovart 侧凭据发放链路在"认证收敛 / 并发互斥 / 可观测性 / 无降级 / 解密容错 / 迁移安全网 / stale 恢复 / 部署迁移 / CI 安全门"九个维度均已闭环且测试覆盖。

@@ -13,6 +13,7 @@
  */
 import type { ServerEnv } from "../../config/env.js";
 import { createDofeModelCatalog } from "../../models/dofe-model-router.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 import { DofeImageProvider, DofeVideoProvider } from "./dofe-generation.js";
 import { registerImageProvider, registerVideoProvider } from "./registry.js";
 
@@ -33,10 +34,11 @@ export function registerAllProviders(env: ServerEnv): void {
         displayName: model.id,
         description: "Image generation via ixicai.cn",
       })));
-    }).catch((error: unknown) => {
-      console.error("[model-router] image_catalog_sync_failed", {
-        message: error instanceof Error ? error.message : String(error),
-      });
+    }).catch(() => {
+      logOperationalFailure(
+        "[model-router] image catalog sync failed",
+        "model_catalog_image_sync",
+      );
     });
     void catalog?.listVideoModels().then((models) => {
       videoProvider.setModels(models.map((model) => ({
@@ -51,10 +53,11 @@ export function registerAllProviders(env: ServerEnv): void {
         },
         limits: { maxDuration: 16, maxResolution: "1080p", maxInputImages: 3 },
       })));
-    }).catch((error: unknown) => {
-      console.error("[model-router] video_catalog_sync_failed", {
-        message: error instanceof Error ? error.message : String(error),
-      });
+    }).catch(() => {
+      logOperationalFailure(
+        "[model-router] video catalog sync failed",
+        "model_catalog_video_sync",
+      );
     });
   }
 }

@@ -7,6 +7,7 @@ import type {
   VideoProvider,
 } from "../types.js";
 import { fetchAsBase64, GenerationError } from "../utils.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -280,7 +281,10 @@ export class GoogleVideoProvider implements VideoProvider {
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.error(`[google-video] generateVideos API error:`, detail);
+      logOperationalFailure(
+        "[google-video] generateVideos API error",
+        "google_video_generate",
+      );
       if (detail.includes("PERMISSION_DENIED") || detail.includes("403") || detail.includes("SERVICE_DISABLED")) {
         throw new GenerationError(
           PROVIDER_NAME,
@@ -312,7 +316,10 @@ export class GoogleVideoProvider implements VideoProvider {
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        console.error(`[google-video] polling error:`, detail);
+        logOperationalFailure(
+          "[google-video] polling error",
+          "google_video_poll",
+        );
         throw new GenerationError(
           PROVIDER_NAME,
           "api_error",
@@ -323,7 +330,10 @@ export class GoogleVideoProvider implements VideoProvider {
 
     // Check for operation-level errors.
     if (operation.error) {
-      console.error(`[google-video] operation error:`, JSON.stringify(operation.error));
+      logOperationalFailure(
+        "[google-video] operation error",
+        "google_video_operation",
+      );
       throw new GenerationError(
         PROVIDER_NAME,
         "api_error",

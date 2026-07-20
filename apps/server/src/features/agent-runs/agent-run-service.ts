@@ -47,7 +47,13 @@ export function createAgentRunMetadataService(options: {
           `update agent_runs set status = $2, completed_at = coalesce($3::timestamptz, completed_at),
              error_code = coalesce($4, error_code), error_message = coalesce($5, error_message)
            where id = $1`,
-          [input.runId, input.status, input.completedAt ?? null, input.errorCode ?? null, input.errorMessage ?? null],
+          [
+            input.runId,
+            input.status,
+            input.completedAt ?? null,
+            input.errorCode ?? null,
+            input.errorMessage ?? null,
+          ],
         );
       } catch {
         logOperationalFailure(

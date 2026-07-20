@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   logOperationalFailure,
+  logOperationalInfo,
   logOperationalWarning,
 } from "./operational-log.js";
 
@@ -35,6 +36,19 @@ describe("operational log", () => {
       });
     } finally {
       warn.mockRestore();
+    }
+  });
+
+  it("writes informational outcomes without arbitrary context", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      logOperationalInfo("[worker] job succeeded", "worker_job_succeeded");
+      expect(info).toHaveBeenCalledWith("[worker] job succeeded", {
+        outcomeCategory: "worker_job_succeeded",
+      });
+    } finally {
+      info.mockRestore();
     }
   });
 });
