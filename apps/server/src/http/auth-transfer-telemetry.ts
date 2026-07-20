@@ -5,6 +5,7 @@ import { z } from "zod";
 
 const AUTH_TRANSFER_EVENTS_PER_MINUTE = 30;
 const REDIS_READINESS_TIMEOUT_MS = 5_000;
+const REDIS_READINESS_RETRY_MS = 100;
 
 const authTransferEventSchema = z
   .object({
@@ -56,21 +57,45 @@ export function registerAuthTransferTelemetryReadiness(
 export async function waitForRedisReadiness(
   redis: Pick<Redis, "ping">,
   timeoutMs = REDIS_READINESS_TIMEOUT_MS,
+  retryMs = REDIS_READINESS_RETRY_MS,
 ): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      redis.ping(),
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("Redis readiness probe timed out.")),
-          timeoutMs,
-        );
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error("Redis readiness probe timed out.");
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        redis.ping(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("Redis readiness probe timed out.")),
+            remainingMs,
+          );
+        }),
+      ]);
+      return;
+    } catch (error) {
+      if (!isRedisConnectionPending(error)) throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(retryMs, Math.max(0, deadline - Date.now()))),
+    );
   }
+}
+
+function isRedisConnectionPending(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("Stream isn't writeable and enableOfflineQueue options is false")
+  );
 }
 
 export function registerAuthTransferTelemetryRoute(
