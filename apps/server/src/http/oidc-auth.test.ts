@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ServerEnv } from "../config/env.js";
 import { ssoProfileEmail } from "../sso-identity-email.js";
@@ -23,6 +23,7 @@ const configuredEnv: ServerEnv = {
 const apps: ReturnType<typeof Fastify>[] = [];
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
@@ -97,5 +98,29 @@ describe("OIDC auth routes", () => {
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
     expect(response.headers["set-cookie"]).toContain("Secure");
     expect(response.headers["set-cookie"]).toContain("SameSite=None");
+  });
+
+  it("returns users to the public signed-out state after SSO logout", async () => {
+    const app = createTestApp(configuredEnv);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
+    await registerOidcAuthRoutes(app, {
+      env: configuredEnv,
+      identities: {
+        resolve: async () => "00000000-0000-4000-8000-000000000001",
+      },
+    });
+
+    const response = await app.inject({
+      headers: { cookie: "lovart_oidc_refresh=refresh-token" },
+      method: "POST",
+      url: "/api/auth/oidc/logout",
+    });
+    const body = response.json() as { logoutUrl: string };
+
+    expect(response.statusCode).toBe(200);
+    expect(body.logoutUrl).toContain(
+      "post_logout_redirect_uri=https%3A%2F%2Flovart.example.test%2F%3Fsigned_out%3D1",
+    );
+    expect(response.headers["set-cookie"]).toContain("Max-Age=0");
   });
 });

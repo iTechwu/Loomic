@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
@@ -128,7 +128,10 @@ export async function registerOidcAuthRoutes(
         secure: isSecureCookieRequired(options.env.webOrigin),
       },
     );
-    request.log.info({ returnTo }, "oidc_authorization_started");
+    request.log.info(
+      { entryRoute: routeOnly(returnTo) },
+      "oidc_authorization_started",
+    );
     return reply.redirect(authorizationUrl.toString(), 302);
   });
 
@@ -185,11 +188,22 @@ export async function registerOidcAuthRoutes(
         });
       }
 
-      request.log.info({ userId: identity.id }, "oidc_exchange_completed");
+      request.log.info(
+        {
+          hasTenantContext: Boolean(session.tenantContext),
+          userIdHash: hashIdentityId(identity.id),
+        },
+        "oidc_exchange_completed",
+      );
       return reply.code(200).send({ ...session, returnTo: pkce.returnTo });
-    } catch (error) {
-      request.log.warn({ err: error }, "oidc_exchange_failed");
-      return reply.code(401).send({ error: "authentication_failed" });
+    } catch {
+      request.log.warn(
+        { failureCategory: "token_or_identity_validation" },
+        "oidc_exchange_failed",
+      );
+      return reply
+        .code(401)
+        .send({ error: "authentication_failed", requestId: request.id });
     }
   });
 
@@ -222,16 +236,22 @@ export async function registerOidcAuthRoutes(
         });
       }
 
-      request.log.info({ userId: identity.id }, "oidc_session_refreshed");
+      request.log.info(
+        { userIdHash: hashIdentityId(identity.id) },
+        "oidc_session_refreshed",
+      );
       return reply.code(200).send(session);
-    } catch (error) {
+    } catch {
       clearCookie(
         reply,
         REFRESH_COOKIE,
         "/api/auth/oidc",
         options.env.webOrigin,
       );
-      request.log.warn({ err: error }, "oidc_refresh_failed");
+      request.log.warn(
+        { failureCategory: "token_or_identity_validation" },
+        "oidc_refresh_failed",
+      );
       return reply.code(401).send({ error: "session_expired" });
     }
   });
@@ -244,17 +264,23 @@ export async function registerOidcAuthRoutes(
     if (refreshToken) {
       try {
         await revokeToken(config, refreshToken);
-      } catch (error) {
-        request.log.warn({ err: error }, "oidc_revocation_failed");
+      } catch {
+        request.log.warn(
+          { failureCategory: "revocation_failed" },
+          "oidc_revocation_failed",
+        );
       }
     }
 
     const logoutUrl = new URL("oauth/logout", withTrailingSlash(config.apiUrl));
     logoutUrl.searchParams.set(
       "post_logout_redirect_uri",
-      `${options.env.webOrigin.replace(/\/+$/, "")}/login`,
+      `${options.env.webOrigin.replace(/\/+$/, "")}/?signed_out=1`,
     );
-    request.log.info("oidc_logout_completed");
+    request.log.info(
+      { revocationAttempted: Boolean(refreshToken) },
+      "oidc_logout_completed",
+    );
     return reply.code(200).send({ logoutUrl: logoutUrl.toString() });
   });
 }
@@ -458,6 +484,14 @@ function safeReturnTo(value: unknown): string {
   )
     return "/home";
   return value;
+}
+
+function routeOnly(returnTo: string): string {
+  return returnTo.split(/[?#]/, 1)[0] ?? "/home";
+}
+
+function hashIdentityId(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
 function isUuid(value: string): boolean {

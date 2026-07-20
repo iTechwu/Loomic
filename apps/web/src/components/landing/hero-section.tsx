@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Sparkles, ChevronDown, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fadeUp, blurIn, scaleUp } from "@/components/landing/motion";
 import { TypewriterText, useTypewriter } from "@/components/landing/typewriter";
+import { buildSsoStartHref } from "@/lib/sso-auth";
 
 // ---------------------------------------------------------------------------
 // HeroBadge
@@ -279,8 +279,8 @@ export function HeroSection() {
           transition={{ delay: ctaDelay }}
           className="mt-10 flex flex-wrap items-center justify-center gap-4"
         >
-          <Link
-            href="/login"
+          <a
+            href={buildSsoStartHref("/home")}
             className={cn(
               "landing-cta-shimmer inline-flex items-center px-8 py-3 rounded-full text-base font-medium",
               "text-foreground",
@@ -293,7 +293,7 @@ export function HeroSection() {
             }}
           >
             开始创作
-          </Link>
+          </a>
           <a
             href="#showcase"
             onClick={(e) => {

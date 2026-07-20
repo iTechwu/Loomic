@@ -8,6 +8,7 @@ import type { ReadyAttachment } from "@/hooks/use-image-attachments";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/toast";
 import { ApiAuthError, createProject } from "@/lib/server-api";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 
 /** sessionStorage key used to pass attachments from Home → Canvas auto-send. */
 export const INITIAL_ATTACHMENTS_KEY = "lovart.dofe:initial-attachments";
@@ -22,13 +23,11 @@ export const INITIAL_AGENT_MODEL_KEY = "lovart.dofe:initial-agent-model";
  * Used by Home page, Projects page, and Canvas logo menu.
  */
 export function useCreateProject() {
-  const { session, signOut } = useAuth();
+  const { session } = useAuth();
   const router = useRouter();
   const { error: toastError } = useToast();
   const [creating, setCreating] = useState(false);
 
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
   const routerRef = useRef(router);
   routerRef.current = router;
 
@@ -111,8 +110,8 @@ export function useCreateProject() {
         setCreating(false);
       } catch (err) {
         if (err instanceof ApiAuthError) {
-          await signOutRef.current();
-          routerRef.current.replace("/login");
+          setCreating(false);
+          replaceWithSsoLogin(getBrowserReturnTo());
           return;
         }
         toastError("项目创建失败");

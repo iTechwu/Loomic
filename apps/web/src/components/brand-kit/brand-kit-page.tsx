@@ -22,12 +22,13 @@ import {
   uploadBrandKitAsset,
 } from "../../lib/brand-kit-api";
 import { ApiAuthError } from "../../lib/server-api";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "../../lib/sso-auth";
 import { BrandKitEditor } from "./brand-kit-editor";
 import { BrandKitSidebar } from "./brand-kit-sidebar";
 import { EmptyState } from "./empty-state";
 
 export function BrandKitPage() {
-  const { session, signOut } = useAuth();
+  const { session } = useAuth();
 
   const [kits, setKits] = useState<BrandKitSummary[]>([]);
   const [selectedKit, setSelectedKit] = useState<BrandKitDetail | null>(null);
@@ -39,12 +40,9 @@ export function BrandKitPage() {
   accessTokenRef.current = session?.access_token;
   const selectedKitRef = useRef(selectedKit);
   selectedKitRef.current = selectedKit;
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
-
-  const handleAuthError = useCallback(async (err: unknown) => {
+  const handleAuthError = useCallback((err: unknown) => {
     if (err instanceof ApiAuthError) {
-      await signOutRef.current();
+      replaceWithSsoLogin(getBrowserReturnTo());
       return true;
     }
     return false;
@@ -64,7 +62,7 @@ export function BrandKitPage() {
         const detail = await fetchBrandKit(getToken(), kitId);
         setSelectedKit(detail);
       } catch (err) {
-        if (await handleAuthError(err)) return;
+        if (handleAuthError(err)) return;
         console.error("Failed to load brand kit detail:", err);
       }
     },
@@ -77,7 +75,7 @@ export function BrandKitPage() {
       setKits(data.brandKits);
       return data.brandKits;
     } catch (err) {
-      if (await handleAuthError(err)) return [];
+      if (handleAuthError(err)) return [];
       console.error("Failed to load brand kits:", err);
       return [];
     }
@@ -100,7 +98,7 @@ export function BrandKitPage() {
           setSelectedKit(detail);
         }
       } catch (err) {
-        if (await handleAuthError(err)) return;
+        if (handleAuthError(err)) return;
         console.error("Failed to load brand kits:", err);
       } finally {
         setLoading(false);
@@ -123,7 +121,7 @@ export function BrandKitPage() {
       await refreshList();
       setSelectedKit(newKit);
     } catch (err) {
-      if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
       console.error("Failed to create brand kit:", err);
     }
   }, [getToken, handleAuthError, refreshList]);
@@ -136,7 +134,7 @@ export function BrandKitPage() {
       await refreshList();
       setSelectedKit(duplicated);
     } catch (err) {
-      if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
       console.error("Failed to duplicate brand kit:", err);
     }
   }, [getToken, handleAuthError, refreshList]);
@@ -154,7 +152,7 @@ export function BrandKitPage() {
         setSelectedKit(updated);
         await refreshList();
       } catch (err) {
-        if (await handleAuthError(err)) return;
+        if (handleAuthError(err)) return;
         console.error("Failed to update brand kit:", err);
       }
     },
@@ -174,7 +172,7 @@ export function BrandKitPage() {
         setSelectedKit(null);
       }
     } catch (err) {
-      if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
       console.error("Failed to delete brand kit:", err);
     }
   }, [getToken, handleAuthError, refreshList, loadKitDetail]);
@@ -193,7 +191,7 @@ export function BrandKitPage() {
           }
         }
       } catch (err) {
-        if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
         console.error("Failed to delete brand kit:", err);
       }
     },
@@ -220,7 +218,7 @@ export function BrandKitPage() {
         });
         await loadKitDetail(kit.id);
       } catch (err) {
-        if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
         console.error("Failed to create asset:", err);
       }
     },
@@ -238,7 +236,7 @@ export function BrandKitPage() {
         await updateBrandKitAsset(getToken(), kit.id, assetId, data);
         await loadKitDetail(kit.id);
       } catch (err) {
-        if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
         console.error("Failed to update asset:", err);
       }
     },
@@ -254,7 +252,7 @@ export function BrandKitPage() {
         await loadKitDetail(kit.id);
         await refreshList();
       } catch (err) {
-        if (await handleAuthError(err)) return;
+      if (handleAuthError(err)) return;
         console.error("Failed to delete asset:", err);
       }
     },
@@ -270,7 +268,7 @@ export function BrandKitPage() {
         await loadKitDetail(kit.id);
         await refreshList();
       } catch (err) {
-        if (await handleAuthError(err)) return;
+        if (handleAuthError(err)) return;
         console.error("Failed to upload asset:", err);
       }
     },

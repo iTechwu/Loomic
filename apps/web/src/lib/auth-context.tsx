@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const logoutUrl = await signOutFromSso();
     applySession(null);
-    if (logoutUrl) window.location.assign(logoutUrl);
+    window.location.assign(logoutUrl ?? "/?signed_out=1");
   }, [applySession]);
 
   const value = useMemo(

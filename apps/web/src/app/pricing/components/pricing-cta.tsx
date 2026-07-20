@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { buildSsoStartHref } from "@/lib/sso-auth";
 import { fadeInUp } from "./pricing-data";
 
 export function PricingCTA() {
@@ -27,15 +28,15 @@ export function PricingCTA() {
 
         <div className="mt-8 flex items-center justify-center gap-4">
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
-            <Link
-              href="/register"
+            <a
+              href={buildSsoStartHref("/home")}
               className={cn(
                 buttonVariants({ size: "lg" }),
                 "bg-accent text-accent-foreground hover:bg-accent/90",
               )}
             >
               免费开始
-            </Link>
+            </a>
           </motion.div>
 
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>

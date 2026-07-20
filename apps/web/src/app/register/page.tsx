@@ -1,36 +1,5 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-
-import { AuthShell } from "../../components/auth/auth-shell";
-import { LoadingScreen } from "../../components/loading-screen";
-import { RegisterForm } from "../../components/register-form";
-import { useAuth } from "../../lib/auth-context";
+import { LegacySsoRedirect } from "@/components/auth/legacy-sso-redirect";
 
 export default function RegisterPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace("/home");
-    }
-  }, [user, loading, router]);
-
-  if (loading || user) return <LoadingScreen />;
-
-  return (
-    <AuthShell
-      title="Create a DoFe account"
-      description="Continue to the central DoFe account service to register and manage your identity."
-      features={[
-        "One identity for DoFe workspaces",
-        "Centralized account security and recovery",
-        "Return to your workspace after authorization",
-      ]}
-    >
-      <RegisterForm />
-    </AuthShell>
-  );
+  return <LegacySsoRedirect />;
 }

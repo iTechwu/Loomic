@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
 import { buttonVariants } from "@/components/ui/button";
+import { buildSsoStartHref } from "@/lib/sso-auth";
 
 export function PricingNav() {
   return (
@@ -22,18 +23,18 @@ export function PricingNav() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/login"
+          <a
+            href={buildSsoStartHref("/home")}
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
             登录
-          </Link>
-          <Link
-            href="/register"
+          </a>
+          <a
+            href={buildSsoStartHref("/home")}
             className={buttonVariants({ size: "sm" })}
           >
             免费开始
-          </Link>
+          </a>
         </div>
       </nav>
     </motion.header>

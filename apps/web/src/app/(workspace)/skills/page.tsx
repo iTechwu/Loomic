@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 import {
   ApiAuthError,
   createSkill,
@@ -134,7 +135,10 @@ export default function SkillsPage() {
       });
       setSkills(merged);
     } catch (err) {
-      if (err instanceof ApiAuthError) return;
+      if (err instanceof ApiAuthError) {
+        replaceWithSsoLogin(getBrowserReturnTo());
+        return;
+      }
       console.error("Failed to fetch skills:", err);
     }
   }, [getToken]);
@@ -237,7 +241,10 @@ export default function SkillsPage() {
         const result = await fetchSkillDetail(token, skill.id);
         setDetailSkill(result.skill);
       } catch (err) {
-        if (err instanceof ApiAuthError) return;
+        if (err instanceof ApiAuthError) {
+          replaceWithSsoLogin(getBrowserReturnTo());
+          return;
+        }
         // Fallback: display as much as we have
         setDetailSkill({
           ...skill,

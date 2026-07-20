@@ -7,6 +7,7 @@ import { AgentSection } from "@/components/agent-section";
 import { ProfileSection } from "@/components/profile-section";
 import { SettingsSkeleton } from "@/components/skeletons/settings-skeleton";
 import { useAuth } from "@/lib/auth-context";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 import {
   ApiAuthError,
   fetchModels,
@@ -63,7 +64,7 @@ export default function SettingsPage() {
       setDefaultModel(settings.settings.defaultModel);
     } catch (err) {
       if (err instanceof ApiAuthError) {
-        // Workspace layout handles auth redirect
+        replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
     } finally {

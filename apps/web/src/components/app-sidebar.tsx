@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
 import { useAuth } from "@/lib/auth-context";
@@ -180,7 +180,6 @@ function MobileBottomBar() {
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { signOut } = useAuth();
 
   const isActive = (href: string) =>
@@ -188,7 +187,6 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace("/login");
   };
 
   return (

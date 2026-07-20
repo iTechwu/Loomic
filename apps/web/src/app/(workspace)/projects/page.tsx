@@ -2,7 +2,6 @@
 
 import type { WorkspaceSummary, ProjectSummary } from "@lovart.dofe/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { LoadingScreen } from "@/components/loading-screen";
 import { ProjectList } from "@/components/project-list";
@@ -15,10 +14,10 @@ import {
   ApiAuthError,
 } from "@/lib/server-api";
 import { Button } from "@/components/ui/button";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 
 export default function ProjectsPage() {
-  const { session, signOut } = useAuth();
-  const router = useRouter();
+  const { session } = useAuth();
   const { create: createNewProject, creating } = useCreateProject();
 
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
@@ -30,10 +29,6 @@ export default function ProjectsPage() {
   // Ref pattern: prevent token refresh from cascading through dependency arrays
   const accessTokenRef = useRef(session?.access_token);
   accessTokenRef.current = session?.access_token;
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
-  const routerRef = useRef(router);
-  routerRef.current = router;
   const hasInitialized = useRef(false);
 
   const getToken = useCallback(() => accessTokenRef.current, []);
@@ -53,8 +48,7 @@ export default function ProjectsPage() {
       setProjects(data.projects);
     } catch (err) {
       if (err instanceof ApiAuthError) {
-        await signOutRef.current();
-        routerRef.current.replace("/login");
+        replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
       setLoadError("Failed to load data. Please try again.");

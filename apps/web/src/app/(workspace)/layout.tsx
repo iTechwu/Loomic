@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 
@@ -9,6 +8,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { PageTransition } from "@/components/page-transition";
 import { TenantTeamNav } from "@/components/tenant-team-nav";
 import { useAuth } from "@/lib/auth-context";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 
 export default function WorkspaceLayout({
   children,
@@ -16,13 +16,12 @@ export default function WorkspaceLayout({
   children: ReactNode;
 }) {
   const { user, loading } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace("/login");
+      replaceWithSsoLogin(getBrowserReturnTo());
     }
-  }, [loading, user, router]);
+  }, [loading, user]);
 
   if (loading) {
     return <LoadingScreen />;

@@ -3,7 +3,11 @@
   "buildCommand": "pnpm --filter @loomic/shared build && pnpm --filter @loomic/web build",
   "outputDirectory": "apps/web/out",
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/login", "destination": "/api/auth/oidc/start?returnTo=%2Fhome", "permanent": false },
+    { "source": "/register", "destination": "/api/auth/oidc/start?returnTo=%2Fhome", "permanent": false }
+  ],
   "rewrites": [
-    { "source": "/((?!_next|favicon|logo|og-image|apple-touch-icon).*)", "destination": "/index.html" }
+    { "source": "/((?!api(?:/|$)|_next|favicon|logo|og-image|apple-touch-icon).*)", "destination": "/index.html" }
   ]
 }
