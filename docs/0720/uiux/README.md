@@ -406,6 +406,12 @@ stateDiagram-v2
 | 30（会话过期反馈） | AuthProvider 区分首次无 refresh cookie 与已认证会话 refresh 失效；workspace 在顶层 SSO replace 前显示可访问的“登录状态已过期”状态。 | 单测确认首次匿名访问不误报，已认证 session 失效后 user 清空并标记 `sessionExpired`。 | 已完成；下一轮收紧浏览器接收的退出地址。 |
 | 31（退出地址防御） | 浏览器只接受无凭据、`/oauth/logout` 路径且 `post_logout_redirect_uri` 精确回到当前 Lovart `/?signed_out=1` 的 Fastify logout URL。 | 单测拒绝错误路径、任意第三方回跳和凭据 URL；异常响应安全降级为本地公开已退出页。 | 已完成；下一轮完善交接加载状态的焦点语义。 |
 | 32（交接焦点语义） | callback loading 与错误状态均把焦点移至可读标题；loading status 通过 `aria-labelledby` 关联其状态名称。 | 组件测试确认进入 callback 时 loading 标题获得焦点，错误状态也能稳定获得焦点。 | 已完成；五项业务代码循环结束，进入全量复审。 |
+| 33（复审循环 F：交接触控目标） | 深度复审发现 `AuthTransferScreen` 的“重试/重新开始”按钮与“返回首页”外链均为 `h-10`（40px），低于第 4.4 节“认证异常操作触控目标至少 44px”的要求；改为 `h-11`（44px）纵向排列，外链补齐圆角与 `min-h-11`。 | 新增组件测试断言错误动作位于同一 `flex-col` 容器且高度类为 `h-11`/`min-h-11`；Web 测试 56 项通过。 | 已完成；下一轮让全屏加载与 toast 向辅助技术播报状态。 |
+| 34（复审循环 G：状态播报） | 深度复审发现工作区全屏 `LoadingScreen` 与全局 `Toast` 容器只更新可视 DOM，未向辅助技术播报；为加载屏补 `role="status"`+`aria-live` 与可读状态文本，toast 容器设为具名 region，单条通知按变体使用 `role="status"`（polite）或 `role="alert"`（assertive），装饰图标 `aria-hidden`。 | 新增 `loading-screen.test.tsx`、`toast.test.tsx` 断言 live region 与变体播报语义；Web 测试 58 项通过。 | 已完成；下一轮收敛仍为英文的导航与 404 文案至 zh-CN 契约。 |
+| 35（复审循环 H：zh-CN 文案收敛） | 深度复审发现 `app-sidebar` 的导航 label/aria-label/title、移动端 `aria-label="Main navigation"`、`ui/dialog` 关闭按钮与 `not-found` 页面仍为英文，违反 zh-CN 主语言契约；全部收敛为中文（工作台/项目/品牌资产/技能/设置/退出登录/主导航/关闭/返回首页）。`not-found` 同时改为 `min-h-[100dvh]`、`role="alert"`、挂载后聚焦标题，并回公开首页 `/` 而非受保护 `/home`。 | 新增 `not-found.test.tsx` 断言中文文案、alert 语义、焦点与返回 `/`；Web 测试 59 项通过。 | 已完成；下一轮为产品界面图片补 alt 文本。 |
+| 36（复审循环 I：图片 alt 与公开页跳转） | 复审第 35 轮“补 alt”前提：逐个多行核对产品界面 `<img>`，发现 `project-list`、`home`、`brand-kit`、`home-example-browser`、`home-discovery-gallery` 均已具备 alt（早期单行 grep 误报，故不创建虚假工作项）。真正缺陷是 `project-list` 缩略图 `alt={project.name}` 与同处一个 `<Link>` 内的文本项目名重复，导致链接可访问名被读两遍；改为装饰图 `alt=""`，与 `home` 一致。另发现公开 Landing 缺少跳转链接，键盘用户需越过浮动导航；新增“跳到主内容” skip link 与 `<main id>`。 | `projects` 测试 5 项通过，Web typecheck 通过；图片 alt 无新增未覆盖项。 | 已完成；下一轮补齐导航当前态语义并做全量复审。 |
+| 37（复审循环 J：导航当前态 + 键盘可操作 + 全量验收） | 侧边栏导航当前页只有视觉高亮，辅助技术无法感知；为桌面 `NavButton` 与移动端各项补 `aria-current="page"`。toast 此前仅 `onClick` 关闭（鼠标专属），补 `tabindex=0`、`focus-visible` 环与 Enter/Space 关闭，使其键盘可操作。顺手将装饰性导航/加载图标 `aria-hidden`，移除移动端 `<nav>` 上与原生语义冗余的 `role="navigation"`。 | Web 测试 60 项（+5 覆盖交接触控、加载/toast live region、404、toast 键盘）、Server 29 项、两端 typecheck、design token 门禁与 Web production build 全部通过。 | 已完成；五轮（33-37）a11y 与文案收敛闭环结束，进入全量复审。 |
+| 38（复审循环 K：个人资料与设置文案收敛） | 全量复审发现 `settings-layout`（设置/返回项目/Profile·Agent·Billing）与 `profile-section`（标题、说明、SSO 账户入口“Manage account and security in DoFe SSO”、显示名称/邮箱、保存按钮与成功/失败反馈）仍为英文；其中 SSO 账户入口文案与第 4.3.3 节“管理账户与安全”契约不符。全部收敛为 zh-CN（个人资料/智能体/账单、在 DoFe 账户中心管理账户与安全、显示名称、保存中…/保存等）。 | 同步更新 `profile-section` 测试断言为中文账户入口文案；Web 测试 60 项与 typecheck 通过。 | 已完成；工作区主要表面文案与 zh-CN 契约一致。 |
 
 ### 外部阻塞项
 
@@ -418,7 +424,7 @@ stateDiagram-v2
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、locale、账户入口与主题 | 已完成并自动验证 | Lovart Web 55 项、Server 29 项自动化测试、两端 type-check、token 门禁和 Web production build 已通过。 |
+| 本地身份入口、受保护深链、callback、登出、locale、账户入口与主题 | 已完成并自动验证 | Lovart Web 60 项、Server 29 项自动化测试、两端 type-check、token 门禁和 Web production build 已通过。第 33-37 轮补齐第 4.4 节代码侧 a11y：交接触控 ≥44px、加载/toast live region、404 zh-CN 与焦点、导航 `aria-current`、toast 键盘可操作、公开页 skip link。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、账户中心 | 已实现并接入 | locale、账户中心与发布的 token 包均已接入；后续版本升级使用 npm semver，不使用相对路径或生产 CSS 抓取。 |
 | 真实 Lovart SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 待受信任浏览器验收 | SSO 本身的真实登录、Lovart 证书 SAN、Nginx 路由和 Fastify API 已就绪；受控应用内浏览器不信任本地 mkcert CA，需改在已信任系统根证书的本机浏览器完成浏览器验收。这是环境验证，不是可由业务代码替代的待办。 |

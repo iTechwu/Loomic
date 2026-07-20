@@ -38,11 +38,11 @@ export function ProfileSection({
 
     try {
       await onSave(trimmed);
-      setFeedback({ type: "success", message: "Profile updated." });
+      setFeedback({ type: "success", message: "资料已更新。" });
     } catch {
       setFeedback({
         type: "error",
-        message: "Failed to update profile. Please try again.",
+        message: "更新资料失败，请重试。",
       });
     } finally {
       setSaving(false);
@@ -51,9 +51,9 @@ export function ProfileSection({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-1">Profile</h2>
+      <h2 className="text-lg font-semibold mb-1">个人资料</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Manage your personal information.
+        管理你的个人信息。
       </p>
 
       {accountUrl && (
@@ -63,26 +63,26 @@ export function ProfileSection({
           rel="noreferrer"
           className="mb-6 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Manage account and security in DoFe SSO
+          在 DoFe 账户中心管理账户与安全
         </a>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
         <div className="space-y-2">
-          <Label htmlFor="displayName">Display Name</Label>
+          <Label htmlFor="displayName">显示名称</Label>
           <Input
             id="displayName"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name"
+            placeholder="你的名称"
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">邮箱</Label>
           <Input id="email" value={email} disabled className="opacity-60" />
           <p className="text-xs text-muted-foreground">
-            Email cannot be changed.
+            邮箱无法在此更改。
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export function ProfileSection({
         )}
 
         <Button type="submit" disabled={saving || !hasChanges} size="sm">
-          {saving ? "Saving..." : "Save"}
+          {saving ? "保存中…" : "保存"}
         </Button>
       </form>
     </div>

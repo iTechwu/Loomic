@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +71,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
 
       {/* Toast container — fixed bottom-center */}
-      <div className="fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-center gap-2">
+      <div
+        className="fixed bottom-6 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-center gap-2"
+        role="region"
+        aria-label="通知"
+      >
         <AnimatePresence>
           {toasts.map((t) => (
             <ToastItem key={t.id} toast={t} onDismiss={() => remove(t.id)} />
@@ -127,19 +131,36 @@ const variantStyles: Record<ToastVariant, { bg: string; icon: ReactNode }> = {
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const { bg, icon } = variantStyles[toast.variant];
+  // 文档 4.4：错误用 assertive 即时打断，其余用 polite 礼貌播报。
+  const isAlert = toast.variant === "error";
+  const liveRole = isAlert ? "alert" : "status";
+
+  // 通知默认 3 秒自动消失；额外支持键盘 Enter/Space 提前关闭，避免只有鼠标可点的可操作性缺口。
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onDismiss();
+    }
+  }
 
   return (
     <motion.div
       layout
+      role={liveRole}
+      aria-live={isAlert ? "assertive" : "polite"}
+      aria-atomic="true"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       initial={{ opacity: 0, y: 16, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.95 }}
       transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
       onClick={onDismiss}
-      className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-medium shadow-lg backdrop-blur-sm ${bg}`}
+      className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-medium shadow-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 backdrop-blur-sm ${bg}`}
     >
-      {icon}
-      {toast.message}
+      <span aria-hidden="true">{icon}</span>
+      <span>{toast.message}</span>
+      <span className="sr-only">（点击关闭通知）</span>
     </motion.div>
   );
 }

@@ -64,13 +64,14 @@ export function AuthTransferScreen({
               </p>
             ) : null}
           </div>
+          {/* WCAG 2.2 SC 2.5.8 / 文档 4.4：认证异常操作纵向排列，触控目标至少 44px。 */}
           <div className="flex flex-col gap-3">
-            <Button type="button" className="h-10 w-full" onClick={onRetry}>
+            <Button type="button" className="h-11 w-full" onClick={onRetry}>
               {retryLabel}
             </Button>
             <a
               href="/"
-              className="inline-flex h-10 items-center justify-center text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="inline-flex h-11 min-h-11 items-center justify-center rounded-lg text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               返回首页
             </a>

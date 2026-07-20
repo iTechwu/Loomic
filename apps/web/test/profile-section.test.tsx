@@ -19,7 +19,7 @@ describe("ProfileSection", () => {
     );
 
     const link = screen.getByRole("link", {
-      name: "Manage account and security in DoFe SSO",
+      name: "在 DoFe 账户中心管理账户与安全",
     });
     expect(link).toHaveAttribute(
       "href",
@@ -40,7 +40,7 @@ describe("ProfileSection", () => {
 
     expect(
       screen.queryByRole("link", {
-        name: "Manage account and security in DoFe SSO",
+        name: "在 DoFe 账户中心管理账户与安全",
       }),
     ).not.toBeInTheDocument();
   });

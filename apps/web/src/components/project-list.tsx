@@ -96,7 +96,9 @@ export function ProjectList({
               {project.thumbnailUrl && (
                 <img
                   src={project.thumbnailUrl}
-                  alt={project.name}
+                  // 项目名以文本形式紧邻出现且同处一个链接内；缩略图设为装饰图，
+                  // 避免链接可访问名被读两遍（WCAG 1.1.1 / 4.1.2）。
+                  alt=""
                   className="h-full w-full object-cover"
                   loading="lazy"
                   onError={(e) => {

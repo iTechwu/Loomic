@@ -88,8 +88,15 @@ export default function LandingPage() {
       <Suspense fallback={null}>
         <SignedOutNotice />
       </Suspense>
+      {/* 文档 4.4：键盘顺序——公开页提供跳到主内容的快捷链接。 */}
+      <a
+        href="#landing-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-lg"
+      >
+        跳到主内容
+      </a>
       <FloatingNav />
-      <main>
+      <main id="landing-main">
         {/* Above-fold: eagerly loaded for fast LCP */}
         <HeroSection />
         <TrustBar />
