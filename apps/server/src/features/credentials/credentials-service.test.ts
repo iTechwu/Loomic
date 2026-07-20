@@ -296,11 +296,16 @@ describe("CredentialsService", () => {
     // Migration safety net: rows created before SSO-subject tracking
     // (migration 0012) have ssoUserId = null. On the first login after the
     // migration, the ready row's ssoUserId does not match the caller's, so the
-    // service falls through and re-provisions so Models owns the real SSO user.
+    // repository atomically transitions it to provisioning before the service
+    // re-provisions. This preserves the single-POST invariant under concurrency.
     const repository = makeRepository({
       lock: {
-        status: "ready",
-        row: readyRow({ ssoUserId: null }),
+        status: "locked",
+        row: readyRow({
+          ssoUserId: SSO_USER_ID,
+          provisionState: "provisioning",
+          provisionAttemptCount: 1,
+        }),
       },
     });
     vi.mocked(provisionSeedanceCredentials).mockResolvedValue({

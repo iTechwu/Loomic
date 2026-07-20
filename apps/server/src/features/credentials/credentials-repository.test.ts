@@ -118,6 +118,31 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
     );
   });
 
+  it("atomically re-locks a ready row when its Models SSO subject changed", async () => {
+    const relockedRow: Row = {
+      ...PROVISIONING_ROW,
+      sso_user_id: "s2",
+      provisioning_started_at: new Date(),
+      provision_attempt_count: 1,
+    };
+    const { pool, queries } = makeRecordingPool(READY_ROW, relockedRow);
+    const repository = createUserCredentialsRepository(pool as never);
+
+    const result = await repository.takeProvisionLock({
+      userId: "u1",
+      ssoUserId: "s2",
+      ssoTeamId: "t1",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.status).toBe("locked");
+    expect(result.row.ssoUserId).toBe("s2");
+    const upsert = queries.find((query) =>
+      /insert into user_credentials/.test(query.text),
+    );
+    expect(upsert?.params).toContain("s2");
+  });
+
   it("takes the lock and inserts a provisioning row when none exists", async () => {
     const { pool, queries } = makeRecordingPool(null, PROVISIONING_ROW);
     const repository = createUserCredentialsRepository(pool as never);

@@ -176,6 +176,14 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | 全量 CI gate 本地核验 | ✅ 完成（Cycle 14：verify:migrations / typecheck / test 71 / lint:baseline 806≤832 / build） |
 | 类型检查 / 全量测试 | ✅ `tsc` 通过，71 用例通过 |
 
+### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
+
+- **发现**：Cycle 13 将“ready 行的 `ssoUserId` 不匹配”视为一次性迁移路径，并让 service 在拿到 `ready` 后直接 fall through 发放。两个并发登录可同时读取 `ready`，分别绕过 `provisioning` 状态并发出两个非幂等 POST，与 P1 的同 user/team 单次发放不变量冲突。
+- [x] `credentials-repository.ts` 现于 `pg_advisory_xact_lock` + `FOR UPDATE` 事务内判断 Models SSO 主体：仅相同主体的 `ready` 行可复用；`null`（0012 前旧行）或不同主体会原子 upsert 为 `provisioning`，再返回 `locked`。
+- [x] `credentials-service.ts` 不再自行绕过 `ready` 锁；主体匹配策略唯一由 repository 在锁内裁决。第二个并发登录只能观察到 `in_flight`，不会额外 POST。
+- [x] 新增 repository 测试覆盖 `ready` → `locked` 的主体变更路径；更新 service characterization test 模拟真实锁语义。
+- [x] 验证：`pnpm --filter @lovart.dofe/server test src/features/credentials/credentials-repository.test.ts src/features/credentials/credentials-service.test.ts`（13 tests）和 `pnpm --filter @lovart.dofe/server typecheck` 通过。
+
 ## 待办（外部依赖解锁后）
 
 1. ~~`@dofe/models-sdk@0.2.9` 发布到 npmjs 后升级并重生成 lockfile~~ ✅ 已完成（2026-07-20，`package.json` 锁 `^0.2.9`，lockfile 解析 0.2.9）。

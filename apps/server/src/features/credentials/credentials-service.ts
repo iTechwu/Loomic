@@ -124,12 +124,12 @@ export function createCredentialsService(
         timeoutMs: inFlightTimeoutMs,
       });
 
-      // A matching ready row is reusable. Rows created before SSO subject
-      // tracking are refreshed once, so Models owns the SSO user rather than
-      // the local design profile id.
+      // Repository ownership: `takeProvisionLock` decides whether a ready row
+      // belongs to this SSO subject while holding its advisory lock. A mismatch
+      // is atomically converted to `provisioning`, preventing duplicate
+      // re-provisioning during the migration/identity-change path.
       if (lock.status === "ready") {
-        if (!ssoUserId || lock.row.ssoUserId === ssoUserId) return;
-        // SSO subject changed since last provision — fall through to re-provision.
+        return;
       } else if (lock.status === "in_flight") {
         logger.info("[credentials] ensure_skipped_in_flight", {
           attemptCount: lock.row.provisionAttemptCount,

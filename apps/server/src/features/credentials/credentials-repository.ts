@@ -136,7 +136,16 @@ export function createUserCredentialsRepository(
         );
         const row = result.rows[0];
 
-        if (row?.provision_state === "ready") {
+        // A ready row is reusable only when it belongs to the same Models SSO
+        // subject. Legacy rows (before migration 0012) have a null subject;
+        // an SSO subject change must rotate those credentials. Crucially this
+        // decision stays under the advisory lock, so concurrent logins cannot
+        // both bypass the provisioning state and mint duplicate credentials.
+        const mustReprovisionForSsoSubject =
+          row?.provision_state === "ready" &&
+          !!ssoUserId &&
+          row.sso_user_id !== ssoUserId;
+        if (row?.provision_state === "ready" && !mustReprovisionForSsoSubject) {
           return { status: "ready", row: toCamelCase(row) };
         }
 
