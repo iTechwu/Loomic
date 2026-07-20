@@ -11,6 +11,7 @@ const AUTH_PATTERN =
   /jwt|token|unauthorized|forbidden|credential|service.account/i;
 const INFRA_PATTERN =
   /econnrefused|econnreset|etimedout|dns|socket|tls|certificate/i;
+const MODEL_UNAVAILABLE_PATTERN = /model not found|unknown model|model.*(?:unavailable|not available)/i;
 
 export function sanitizeErrorForClient(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -26,6 +27,12 @@ function clientErrorResult(raw: string): {
   failureCategory: string;
   message: string;
 } {
+  if (MODEL_UNAVAILABLE_PATTERN.test(raw)) {
+    return {
+      failureCategory: "model_unavailable",
+      message: "所选模型当前不可用，请切换模型后重试。",
+    };
+  }
   if (PROVIDER_PATTERN.test(raw)) {
     return {
       failureCategory: "provider_unavailable",

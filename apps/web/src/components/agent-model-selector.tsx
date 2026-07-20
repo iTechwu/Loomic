@@ -37,14 +37,27 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const selectedModelRef = useRef(model);
   const popoverRef = useRef<HTMLDivElement>(null);
+  selectedModelRef.current = model;
 
   // Fetch available models
   useEffect(() => {
+    let active = true;
     fetchModels()
-      .then((data) => setModels(data.models))
+      .then((data) => {
+        if (!active) return;
+        setModels(data.models);
+        const selectedModel = selectedModelRef.current;
+        if (selectedModel && !data.models.some((candidate) => candidate.id === selectedModel)) {
+          setModel(null);
+        }
+      })
       .catch(() => {});
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [setModel]);
 
   // Close on outside click
   useEffect(() => {
