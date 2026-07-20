@@ -5,9 +5,10 @@ import type { NativeDataRepository, NativeProjectRow } from "../../database/nati
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 import { BootstrapError, type ViewerService } from "../bootstrap/ensure-user-foundation.js";
 import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
-import { logOperationalFailure } from "../../utils/operational-log.js";
+import { logOperationalFailure, logOperationalWarning } from "../../utils/operational-log.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
+const PROJECT_SLUG_CREATE_ATTEMPTS = 3;
 
 export type ProjectService = {
   archiveProject(user: AuthenticatedUser, projectId: string): Promise<void>;
@@ -48,19 +49,15 @@ export function createProjectService(options: { repository: NativeDataRepository
     async createProject(user, input) {
       const viewer = await foundation(options.viewerService, user, "project_create_failed");
       try {
-        const project = await options.repository.createProject({
+        const project = await createProjectWithUniqueSlug(options.repository, {
           createdBy: user.id,
           description: input.description?.trim() || null,
           name: input.name.trim(),
-          // Display names are intentionally reusable. Keep the database slug
-          // collision-free so repeatedly creating the default "Untitled"
-          // project never fails with a 409.
-          slug: `${slugify(input.name)}-${randomUUID().slice(0, 8)}`,
           workspaceId: viewer.workspace.id,
-        });
+        }, slugify(input.name));
         return mapSummary(project, viewer.workspace, options.storage);
       } catch (error) {
-        if (postgresCode(error) === "23505") throw new ProjectServiceError("project_slug_taken", "Project slug is already taken in this workspace.", 409);
+        if (error instanceof ProjectServiceError) throw error;
         logOperationalFailure(
           "[project-service] create failed",
           "project_create",
@@ -108,6 +105,24 @@ export function createProjectService(options: { repository: NativeDataRepository
       if (!updated) throw notFound();
     },
   };
+}
+
+async function createProjectWithUniqueSlug(repository: NativeDataRepository, input: Omit<Parameters<NativeDataRepository["createProject"]>[0], "slug">, slugBase: string): Promise<NativeProjectRow> {
+  for (let attempt = 1; attempt <= PROJECT_SLUG_CREATE_ATTEMPTS; attempt += 1) {
+    try {
+      // Display names are reusable, but every persisted slug must be unique across replicas.
+      return await repository.createProject({ ...input, slug: `${slugBase}-${randomUUID()}` });
+    } catch (error) {
+      if (postgresCode(error) !== "23505") throw error;
+      if (attempt < PROJECT_SLUG_CREATE_ATTEMPTS) {
+        logOperationalWarning("[project-service] slug collision; retrying", "project_slug_collision_retry");
+        continue;
+      }
+      logOperationalFailure("[project-service] slug collision retries exhausted", "project_slug_collision_exhausted");
+      throw new ProjectServiceError("project_create_failed", "Unable to create project.", 500);
+    }
+  }
+  throw new ProjectServiceError("project_create_failed", "Unable to create project.", 500);
 }
 
 async function foundation(service: ViewerService, user: AuthenticatedUser, code: "project_create_failed" | "project_query_failed") {
