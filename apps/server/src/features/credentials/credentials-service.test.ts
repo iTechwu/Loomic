@@ -310,6 +310,48 @@ describe("CredentialsService", () => {
     );
   });
 
+  it("maps an undecryptable ready row to a clean not-provisioned error", async () => {
+    // Simulates a key rotation / corrupt row: decrypt throws. The caller must
+    // see CredentialsNotProvisionedError, not a raw crypto stack trace.
+    const repository: UserCredentialsRepository = {
+      findReady: vi.fn(async () => readyRow()),
+      findAny: vi.fn(async () => readyRow()),
+      takeProvisionLock: vi.fn(),
+      saveReady: vi.fn(),
+      saveFailed: vi.fn(),
+    };
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    const service = createCredentialsService({
+      repository,
+      crypto: {
+        enabled: true,
+        encrypt: (value) => `enc:${value}`,
+        decrypt: () => {
+          throw new Error("Unsupported state or unable to authenticate data");
+        },
+      },
+      provisionConfig: {
+        baseUrl: "https://ixicai.cn/api",
+        serviceName: "lovart.dofe.ai",
+        internalApiSecret: "test-secret",
+      },
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: (message, data = {}) => logs.push({ message, data }),
+      },
+    });
+
+    await expect(service.getByUserId(LOCAL_USER_ID)).rejects.toThrow(
+      /Models credentials are not ready/,
+    );
+    // The crypto error message must not leak; only the failure category is logged.
+    const output = JSON.stringify(logs);
+    expect(output).toContain("credential_decrypt_failed");
+    expect(output).not.toContain("Unsupported state");
+    expect(output).not.toContain("secret");
+  });
+
   it("issues at most one remote POST under concurrent ensureProvisioned calls", async () => {
     // Simulate the real repository's concurrency contract: the first
     // takeProvisionLock wins ("locked"); any caller that arrives while the

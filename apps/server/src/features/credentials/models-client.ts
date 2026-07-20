@@ -189,16 +189,15 @@ export async function provisionSeedanceCredentials(
       );
     }
 
-    // Unexpected error (network, fetcher, JSON). Log a sanitized message and
-    // surface a generic HTTP failure so callers retry on the next login.
-    const message = error instanceof Error ? error.message : String(error);
+    // Unexpected error (network, fetcher, JSON) can carry request details or
+    // response text. Keep both persisted logs and callers on a stable category.
     log.error("[credentials] provision_remote_error", {
       correlationId: input.correlationId,
       latencyMs,
       statusCategory: "5xx",
-      message,
+      failureCategory: "models_provision_unexpected",
     });
-    throw new ModelsProvisionError(message, 0, "http");
+    throw new ModelsProvisionError("provision request failed", 0, "http");
   }
 }
 
@@ -218,10 +217,7 @@ function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;
   const cause = (error as { cause?: Error }).cause;
-  if (
-    cause &&
-    (cause.name === "TimeoutError" || cause.name === "AbortError")
-  )
+  if (cause && (cause.name === "TimeoutError" || cause.name === "AbortError"))
     return true;
   return false;
 }

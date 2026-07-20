@@ -213,13 +213,35 @@ export function createCredentialsService(
       if (!row || !row.apikeyCiphertext || !row.secretAccessKeyCiphertext) {
         throw new CredentialsNotProvisionedError(userId);
       }
-      return {
-        designApiKey: crypto.decrypt(row.apikeyCiphertext),
-        seedanceAccessKeyId: row.accessKeyId ?? "",
-        seedanceSecretAccessKey: crypto.decrypt(row.secretAccessKeyCiphertext),
-        modelsApiKeyId: row.modelsApiKeyId ?? "",
-        modelsCredentialId: row.modelsCredentialId ?? "",
-      };
+      try {
+        const resolved: ResolvedCredentials = {
+          designApiKey: crypto.decrypt(row.apikeyCiphertext),
+          seedanceAccessKeyId: row.accessKeyId ?? "",
+          seedanceSecretAccessKey: crypto.decrypt(
+            row.secretAccessKeyCiphertext,
+          ),
+          modelsApiKeyId: row.modelsApiKeyId ?? "",
+          modelsCredentialId: row.modelsCredentialId ?? "",
+        };
+        return resolved;
+      } catch (error) {
+        // Decrypt fails when the encryption key was rotated (rows encrypted
+        // under an old key) or a row is corrupt (GCM auth-tag mismatch).
+        // Surface a clean "not provisioned" signal with a sanitized log rather
+        // than letting a raw crypto stack trace reach the model-call path as a
+        // 500. NOTE: a ready-but-undecryptable row is not auto-re-provisioned
+        // by ensureProvisioned (it sees status 'ready'); ops must rotate the
+        // key back or clear the row. Logged distinctly for that runbook.
+        logger.error("[credentials] decrypt_failed", {
+          failureCategory: "credential_decrypt_failed",
+          cryptoEnabled: crypto.enabled,
+          message:
+            error instanceof Error
+              ? error.name
+              : "unknown",
+        });
+        throw new CredentialsNotProvisionedError(userId);
+      }
     },
   };
 }

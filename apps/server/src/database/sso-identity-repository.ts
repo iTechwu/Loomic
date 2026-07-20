@@ -47,10 +47,8 @@ export function createSsoIdentityRepository(
           ],
         );
         console.info("[sso-identity] resolved subject", {
-          dataUserId,
           source:
             dataUserId === ssoUserId ? "new_sso_user" : "legacy_email_match",
-          ssoUserId,
         });
         return dataUserId;
       });

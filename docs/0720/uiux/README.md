@@ -472,6 +472,9 @@ stateDiagram-v2
 | 95（复审循环 BK：递归输出复核） | JSONL 与 stdout 继续复用同一递归 sanitized context。 | Server 60 项测试与 typecheck 通过。 | 已完成多出口递归保护。 |
 | 96（复审循环 BL：日志边界最终对账） | 对第 92-95 轮的字段、数组、循环对象和日志出口逐项复核。 | Biome `807 <= 832`、Server typecheck 与 logger tests 通过。 | 五轮日志鲁棒性闭环完成；平台日志留存和访问权限继续由 owner 验收。 |
 | 97（复审循环 BM：数组递归日志边界） | PipelineLogger 对数组内字符串、嵌套对象、循环数组与 bigint 使用同一递归 sanitizer；数组长度和字符串长度均有上限，bigint 在 JSONL 前安全转换为字符串。 | Server 62 项测试、typecheck 和触及文件 Biome 检查通过。 | 已完成数组路径与对象路径的日志边界一致性。 |
+| 98（复审循环 BN：凭据身份日志最小化） | 凭据 provision 的 attempt、in-flight、成功、失败和落库失败日志移除 local user、SSO subject、team ID 与数据库原始错误；保留 correlation、attempt、状态分类和非密钥运维 ID。 | Server 63 项测试、typecheck 和触及文件 Biome 检查通过；回归测试覆盖远端与落库失败。 | 已完成凭据业务日志的身份与错误正文收敛。 |
+| 99（复审循环 BO：SDK 未知错误归一化） | Models SDK adapter 的网络、fetcher 与 JSON 未知异常仅记录 `models_provision_unexpected`，并向调用方返回固定 `provision request failed`，不保留第三方 response/error message。 | Server 64 项测试、typecheck 和触及文件 Biome 检查通过；测试注入含 Authorization 的异常验证日志与错误均不泄露。 | 已完成 SDK adapter 未知错误边界收敛。 |
+| 100（复审循环 BP：SSO mapping 身份日志最小化） | SSO identity mapping 完成时只记录 `new_sso_user` 或 `legacy_email_match` 来源分类，不输出本地 profile ID 或 SSO subject。 | Server 65 项测试、typecheck 和触及文件 Biome 检查通过；新增 repository 回归测试锁定该输出边界。 | 已完成 SSO identity mapping 日志收敛。 |
 
 ### 外部阻塞项
 

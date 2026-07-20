@@ -39,7 +39,6 @@ function successResponse() {
   return Response.json({ code: 0, msg: "ok", data: PROVISION_DATA });
 }
 
-
 describe("provisionSeedanceCredentials", () => {
   it("uses the SDK HMAC format compatible with models InternalAuthGuard", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
@@ -210,6 +209,43 @@ describe("provisionSeedanceCredentials", () => {
         expect(JSON.stringify(log)).not.toContain("sk-secret");
         expect(JSON.stringify(log)).not.toContain("AKSKsecret");
       }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("normalizes unknown remote errors without logging response details", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("upstream body: Authorization Bearer test-secret");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    const logger = {
+      info: () => {},
+      warn: () => {},
+      error: (message: string, data?: Record<string, unknown>) => {
+        logs.push({ message, data: data ?? {} });
+      },
+    };
+
+    try {
+      await expect(
+        provisionSeedanceCredentials(makeConfig(), {
+          userId: "user-1",
+          ssoTeamId: "team-1",
+          correlationId: CORRELATION_ID,
+          logger,
+        }),
+      ).rejects.toMatchObject({
+        code: "http",
+        message: "provision request failed",
+        status: 0,
+      });
+
+      const output = JSON.stringify(logs);
+      expect(output).toContain("models_provision_unexpected");
+      expect(output).not.toContain("Authorization");
+      expect(output).not.toContain(INTERNAL_API_SECRET);
     } finally {
       vi.unstubAllGlobals();
     }
