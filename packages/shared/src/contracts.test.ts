@@ -261,6 +261,14 @@ describe("@lovart.dofe/shared contracts", () => {
     expect(JSON.parse(JSON.stringify(applicationError))).toEqual(
       applicationError,
     );
+    expect(
+      applicationErrorResponseSchema.parse({
+        error: {
+          code: "credentials_not_provisioned",
+          message: "Models credentials are not ready.",
+        },
+      }).error.code,
+    ).toBe("credentials_not_provisioned");
   });
 
   it("rejects an empty project name in project create requests", () => {

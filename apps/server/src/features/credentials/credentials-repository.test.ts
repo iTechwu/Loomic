@@ -100,6 +100,20 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
     );
   });
 
+  it("retains the provisioning lease only when a remote outcome is unknown", async () => {
+    const { pool, queries } = makeRecordingPool(null);
+    const repository = createUserCredentialsRepository(pool as never);
+
+    await repository.saveFailed("u1", "t1", "sanitized", {
+      retainInFlight: true,
+    });
+
+    const query = queries.at(-1);
+    expect(query?.text).toContain("case when $4 then 'provisioning' else 'failed' end");
+    expect(query?.text).toContain("coalesce(user_credentials.provisioning_started_at, now())");
+    expect(query?.params).toEqual(["u1", "t1", "sanitized", true]);
+  });
+
   it("returns in_flight when an unexpired provisioning row exists", async () => {
     const { pool, queries } = makeRecordingPool(PROVISIONING_ROW);
     const repository = createUserCredentialsRepository(pool as never);

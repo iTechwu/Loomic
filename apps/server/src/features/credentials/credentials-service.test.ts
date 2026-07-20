@@ -203,10 +203,11 @@ describe("CredentialsService", () => {
       },
     });
     vi.mocked(provisionSeedanceCredentials).mockRejectedValueOnce(
-      Object.assign(new Error("provision HTTP 503"), {
-        status: 503,
-        code: "http",
-      }),
+      new (await import("./models-client.js")).ModelsProvisionError(
+        "provision HTTP 503",
+        503,
+        "http",
+      ),
     );
     vi.mocked(provisionSeedanceCredentials).mockResolvedValueOnce({
       apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
@@ -229,6 +230,7 @@ describe("CredentialsService", () => {
     // The persisted error must not leak response body or secrets — only the
     // classification and a correlation handle.
     expect(failure[2]).toMatch(/models provision http \(5xx\) corr=/);
+    expect(failure[3]).toEqual({ retainInFlight: false });
 
     // Second attempt: lock returns locked again, provision succeeds.
     repository.setLock({
@@ -248,6 +250,45 @@ describe("CredentialsService", () => {
     await expect(service.getByUserId(LOCAL_USER_ID)).resolves.toMatchObject({
       designApiKey: "sk-secret",
     });
+  });
+
+  it("retains the in-flight lease after a timeout to prevent an immediate replay", async () => {
+    const repository = makeRepository({
+      lock: {
+        status: "locked",
+        row: readyRow({
+          provisionState: "provisioning",
+          provisionAttemptCount: 1,
+          apikeyCiphertext: null,
+        }),
+      },
+    });
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    vi.mocked(provisionSeedanceCredentials).mockRejectedValueOnce(
+      new (await import("./models-client.js")).ModelsProvisionError(
+        "provision request timed out",
+        0,
+        "timeout",
+      ),
+    );
+
+    await makeService(repository, {
+      info: () => {},
+      warn: (message, data = {}) => logs.push({ message, data }),
+      error: () => {},
+    }).ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    expect(repository.saveFailed).toHaveBeenCalledWith(
+      LOCAL_USER_ID,
+      TEAM_ID,
+      expect.stringMatching(/models provision timeout \(timeout\) corr=/),
+      { retainInFlight: true },
+    );
+    expect(JSON.stringify(logs)).toContain("models_provision_outcome_unknown");
   });
 
   it("does not write local identity, SSO identity, team, or storage errors to logs", async () => {

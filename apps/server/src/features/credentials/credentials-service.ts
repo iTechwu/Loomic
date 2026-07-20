@@ -195,10 +195,24 @@ export function createCredentialsService(
           status,
           latencyMs: Math.round(performance.now() - startedAt),
         });
+        // `status === 0` means we do not know whether Models received the
+        // non-idempotent POST. Keep the database lease until its TTL expires;
+        // an immediate retry could mint duplicate credentials. Known HTTP
+        // responses (including 5xx) can safely move to `failed` and retry.
+        const retainInFlight = code === "timeout" || status === 0;
+        if (retainInFlight) {
+          logger.warn("[credentials] provision_retry_deferred", {
+            correlationId,
+            attemptCount,
+            failureCategory: "models_provision_outcome_unknown",
+          });
+        }
         // Record the failure so it shows up in ops queries; swallow save errors
         // so a DB hiccup never propagates into the login path.
         await repository
-          .saveFailed(userId, resolvedTeamId, sanitizedError)
+          .saveFailed(userId, resolvedTeamId, sanitizedError, {
+            retainInFlight,
+          })
           .catch(() => {
             logger.error("[credentials] save_failed_error", {
               correlationId,

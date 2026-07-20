@@ -163,7 +163,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 
 | 项 | 状态 |
 | --- | --- |
-| P0 SDK 认证收敛 + 互操作测试 | ✅ 完成（`@dofe/models-sdk@^0.2.9`，lockfile 已解析到 0.2.9） |
+| P0 SDK 认证收敛 + 互操作测试 | ✅ 完成（当前 `@dofe/models-sdk@^0.2.10`，lockfile 已解析到 0.2.10；0.2.9 为初始接入版本） |
 | P1 并发互斥（advisory lock + in-flight 状态） | ✅ 完成 |
 | P1 correlation ID / 脱敏日志 / 超时 fail closed | ✅ 完成 |
 | P1 严格 no-fallback | ✅ 保持 |
@@ -174,7 +174,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
 | 全量 CI gate 本地核验 | ✅ 完成（Cycle 14：verify:migrations / typecheck / test 71 / lint:baseline 806≤832 / build） |
-| 类型检查 / 全量测试 | ✅ `tsc` 通过，71 用例通过 |
+| 类型检查 / 全量测试 | ✅ Cycle 19 全量质量门通过（server 79 / web 73 / shared 24 用例） |
 
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 
@@ -183,6 +183,37 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - [x] `credentials-service.ts` 不再自行绕过 `ready` 锁；主体匹配策略唯一由 repository 在锁内裁决。第二个并发登录只能观察到 `in_flight`，不会额外 POST。
 - [x] 新增 repository 测试覆盖 `ready` → `locked` 的主体变更路径；更新 service characterization test 模拟真实锁语义。
 - [x] 验证：`pnpm --filter @lovart.dofe/server test src/features/credentials/credentials-repository.test.ts src/features/credentials/credentials-service.test.ts`（13 tests）和 `pnpm --filter @lovart.dofe/server typecheck` 通过。
+
+### Cycle 16 — 深审修复：结果未知时禁止立即重放（2026-07-20）
+
+- **发现**：原 `saveFailed` 对所有失败清空 `provisioning_started_at`。SDK timeout、连接中断或未分类的 `status=0` 不能证明 Models 未收到 POST，下一次 ensure 会立刻重新发放，违反 P1 “不可盲目重放”。
+- [x] `UserCredentialsRepository.saveFailed` 增加 `retainInFlight` 选项：结果未知时保持 `provision_state='provisioning'` 和原始租约起点；已知 HTTP 响应则转换为 `failed`，可按既有策略重试。
+- [x] `CredentialsService` 以 `ModelsProvisionError.code === 'timeout'` 或 `status === 0` 判定结果未知，写入既有脱敏错误和 `models_provision_outcome_unknown` 日志；TTL 到期后才可由 stale-takeover 恢复。未增加任何本地伪造的 models 查询协议。
+- [x] 测试区分 503（`retainInFlight: false`）和 timeout（`retainInFlight: true`），并校验 repository SQL 使用条件状态迁移。
+- [x] 验证：`pnpm --filter @lovart.dofe/server test src/features/credentials/credentials-repository.test.ts src/features/credentials/credentials-service.test.ts`（15 tests）和 `pnpm --filter @lovart.dofe/server typecheck` 通过。
+
+### Cycle 17 — 深审修复：凭据未就绪的 API 与队列语义（2026-07-20）
+
+- **发现**：图片直调虽会先解析凭据，但把 `CredentialsNotProvisionedError` 泛化为 502；视频接口甚至先入队、轮询，最终才由 worker 因凭据缺失失败。这既不向用户准确表达 models 依赖未就绪，也消耗无意义的队列重试。
+- [x] `POST /api/agent/generate-image` 和 `POST /api/agent/generate-video` 统一捕获 `CredentialsNotProvisionedError` 并返回 `424` + `credentials_not_provisioned`；视频在 `createJob` 前预检租户凭据，严格无回退。
+- [x] 共享 `applicationErrorCodeSchema` 增加稳定错误码，Web generation error handler 显示“模型凭据尚未就绪，请稍后重试”，不暴露内部发放或密钥细节。
+- [x] 新增 Fastify 路由测试，断言两个端点均返回结构化 424，且视频路径不会调用 `createJob`。
+- [x] 验证：`pnpm --filter @lovart.dofe/shared build`（server 测试依赖 shared `dist` exports）后，`pnpm --filter @lovart.dofe/shared test`（24 tests）、`pnpm --filter @lovart.dofe/server test src/http/generate.test.ts`（2 tests）、`pnpm typecheck` 及本轮 app 文件 Biome 检查通过。
+
+### Cycle 18 — 深审修复：generation task 合同边界与错误脱敏（2026-07-20）
+
+- **发现**：`dofe-generation.ts` 将 `/generation/tasks` 的 JSON 直接断言为 `TaskResponse`，缺失 `status` 的响应可被 poller 误判为终态；同时 createTask 会把远端 4xx/5xx 正文截断后透传，可能使 provider 错误或敏感上下文进入 API、任务表和日志。
+- [x] adapter 现统一解析 models `{code,msg,data}` 信封或既有 plain task 形状，强制 `taskId/localTaskId` 和 `status` 存在；无效响应返回稳定 `api_contract_error`，无效 asset 不进入下游存储。
+- [x] POST/GET 传输失败映射为不含底层异常文本的 `transport_error`；非 2xx 只返回 HTTP 状态，不读取/传播 response body；失败 task 不再传播远端 `errorMessage`。
+- [x] 新增 provider 测试覆盖 502 response body 不泄漏和 malformed task response 在进入 poller 前被拒绝。
+- [x] 验证：`pnpm --filter @lovart.dofe/server test src/generation/providers/dofe-generation.test.ts`（3 tests）、`pnpm --filter @lovart.dofe/server typecheck` 和本轮文件 Biome 检查通过。
+
+### Cycle 19 — 全量质量门与待实施项复审（2026-07-20）
+
+- [x] 执行完整质量门：`pnpm run verify:migrations`（13 migrations）、`pnpm test`（server 23 files / 79 tests，web 23 files / 73 tests，shared 24 tests）、`pnpm run lint:baseline`（782 <= 832）及 `pnpm build` 全部通过。
+- [x] 包边界审查：`@dofe/models-sdk` 仅由服务端 `features/credentials/models-client.ts` 引用；`apps/web/src` 和 `apps/web/out` 未检出 `node:crypto`、`INTERNAL_API_SECRET`、`LOVART_CREDENTIAL_ENCRYPTION_KEY`、`designApiKey` 或 `secretAccessKey`。
+- [x] SDK 0.2.10 类型面复核：`seedanceCredentials` 仍只有 `create`，没有按 `(ssoUserId, ssoTeamId)` 查询、list 或 get 方法，因此剩余远端状态校验不能在 Lovart 本地伪造实现。
+- [x] 修正最终状态表中的历史版本与测试数，确保文档与当前 `package.json` / lockfile / CI 结果一致。
 
 ## 待办（外部依赖解锁后）
 

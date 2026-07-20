@@ -206,7 +206,9 @@ function buildContent(
   return parts.map((part, order) => ({
     part,
     order,
-    ...(part.type === "text" ? { role: "prompt" as const } : { role: "reference" as const }),
+    ...(part.type === "text"
+      ? { role: "prompt" as const }
+      : { role: "reference" as const }),
   }));
 }
 
@@ -233,15 +235,24 @@ async function createTask(
     params?: Record<string, unknown>;
   },
 ): Promise<TaskResponse> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${TASK_PATH}`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ ...body, metadata: { source: "lovart.dofe.ai" } }),
-    signal: AbortSignal.timeout(30_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/$/, "")}${TASK_PATH}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ ...body, metadata: { source: "lovart.dofe.ai" } }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new GenerationError(
+      "dofe",
+      "transport_error",
+      "DoFe createTask request did not complete.",
+    );
+  }
   if (response.status === 401 || response.status === 403) {
     throw new GenerationError(
       "dofe",
@@ -250,35 +261,13 @@ async function createTask(
     );
   }
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
     throw new GenerationError(
       "dofe",
       "api_error",
-      `DoFe createTask HTTP ${response.status}: ${detail.slice(0, 500)}`,
+      `DoFe createTask failed with HTTP ${response.status}.`,
     );
   }
-  const payload = (await response.json()) as unknown;
-  // models envelope: { code, msg, data } — accept either.
-  const data =
-    (isRecord(payload) && isRecord(payload.data)
-      ? payload.data
-      : isRecord(payload)
-        ? payload
-        : {}) ?? {};
-  const taskId =
-    typeof data.taskId === "string"
-      ? data.taskId
-      : typeof data.localTaskId === "string"
-        ? data.localTaskId
-        : "";
-  if (!taskId) {
-    throw new GenerationError(
-      "dofe",
-      "api_error",
-      "DoFe createTask returned no taskId.",
-    );
-  }
-  return data as unknown as TaskResponse;
+  return parseTaskResponse(await response.json(), "createTask");
 }
 
 async function getTask(
@@ -286,13 +275,22 @@ async function getTask(
   apiKey: string,
   taskId: string,
 ): Promise<TaskResponse> {
-  const response = await fetch(
-    `${baseUrl.replace(/\/$/, "")}${TASK_PATH}/${encodeURIComponent(taskId)}`,
-    {
-      headers: { authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(20_000),
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `${baseUrl.replace(/\/$/, "")}${TASK_PATH}/${encodeURIComponent(taskId)}`,
+      {
+        headers: { authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+  } catch {
+    throw new GenerationError(
+      "dofe",
+      "transport_error",
+      "DoFe getTask request did not complete.",
+    );
+  }
   if (!response.ok) {
     throw new GenerationError(
       "dofe",
@@ -300,14 +298,47 @@ async function getTask(
       `DoFe getTask HTTP ${response.status} for task ${taskId}.`,
     );
   }
-  const payload = (await response.json()) as unknown;
+  return parseTaskResponse(await response.json(), "getTask");
+}
+
+/**
+ * The generation endpoint is outside the SDK data client. Validate its
+ * published task shape at the adapter boundary so malformed gateway responses
+ * cannot be mistaken for terminal successes by the poller.
+ */
+function parseTaskResponse(payload: unknown, operation: string): TaskResponse {
+  // Models responses are enveloped as `{ code, msg, data }`; accept a plain
+  // task object too because the established task endpoint returns that shape in
+  // some deployments. This is shape compatibility, not a local endpoint type.
   const data =
-    (isRecord(payload) && isRecord(payload.data)
+    isRecord(payload) && isRecord(payload.data)
       ? payload.data
       : isRecord(payload)
         ? payload
-        : {}) ?? {};
-  return data as unknown as TaskResponse;
+        : undefined;
+  const taskId =
+    typeof data?.taskId === "string"
+      ? data.taskId
+      : typeof data?.localTaskId === "string"
+        ? data.localTaskId
+        : undefined;
+  if (!data || !taskId || typeof data.status !== "string") {
+    throw new GenerationError(
+      "dofe",
+      "api_contract_error",
+      `DoFe ${operation} returned an invalid task response.`,
+    );
+  }
+  return {
+    taskId,
+    status: data.status,
+    ...(Array.isArray(data.outputAssets)
+      ? { outputAssets: data.outputAssets.filter(isTaskAsset) }
+      : {}),
+    ...(typeof data.errorCode === "string"
+      ? { errorCode: data.errorCode }
+      : {}),
+  };
 }
 
 async function pollUntilTerminal(
@@ -336,7 +367,7 @@ async function pollUntilTerminal(
     throw new GenerationError(
       "dofe",
       "task_failed",
-      `DoFe task ${task.taskId} ended in ${task.status}: ${task.errorMessage ?? task.errorCode ?? "no details"}.`,
+      `DoFe task ${task.taskId} ended in ${task.status}.`,
     );
   }
   return task;
@@ -364,6 +395,17 @@ function delay(ms: number): Promise<void> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTaskAsset(value: unknown): value is TaskAsset {
+  return (
+    isRecord(value) &&
+    typeof value.assetId === "string" &&
+    typeof value.url === "string" &&
+    (value.mimeType === undefined || typeof value.mimeType === "string") &&
+    (value.durationSeconds === undefined ||
+      typeof value.durationSeconds === "number")
+  );
 }
 
 // ─── Providers ───────────────────────────────────────────────────────────────

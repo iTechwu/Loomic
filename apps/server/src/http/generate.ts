@@ -6,14 +6,18 @@ import {
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
 
-import { generateImage } from "../generation/image-generation.js";
-import { resolveImageProviderName } from "../generation/providers/registry.js";
-import type { JobService } from "../features/jobs/job-service.js";
-import { JobServiceError } from "../features/jobs/job-service.js";
+import type {
+  AuthenticatedUser,
+  RequestAuthenticator,
+} from "../auth/sso-authenticator.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type { CredentialsService } from "../features/credentials/credentials-service.js";
+import { CredentialsNotProvisionedError } from "../features/credentials/credentials-service.js";
+import type { JobService } from "../features/jobs/job-service.js";
+import { JobServiceError } from "../features/jobs/job-service.js";
 import type { UploadService } from "../features/uploads/upload-service.js";
-import type { AuthenticatedUser, RequestAuthenticator } from "../auth/sso-authenticator.js";
+import { generateImage } from "../generation/image-generation.js";
+import { resolveImageProviderName } from "../generation/providers/registry.js";
 
 const generateImageRequestSchema = z.object({
   prompt: z.string().min(1),
@@ -117,6 +121,13 @@ export async function registerGenerateRoutes(
         height: result.height,
       });
     } catch (error) {
+      if (error instanceof CredentialsNotProvisionedError) {
+        return reply.code(error.statusCode).send(
+          applicationErrorResponseSchema.parse({
+            error: { code: error.code, message: error.message },
+          }),
+        );
+      }
       const message =
         error instanceof Error ? error.message : "Image generation failed.";
 
@@ -175,7 +186,8 @@ export async function registerGenerateRoutes(
         applicationErrorResponseSchema.parse({
           error: {
             code: "service_unavailable",
-            message: "Video generation is not available (job service not configured).",
+            message:
+              "Video generation is not available (job service not configured).",
           },
         }),
       );
@@ -189,6 +201,13 @@ export async function registerGenerateRoutes(
       const viewer = await options.viewerService.ensureViewer(user);
       const workspaceId = viewer.workspace.id;
 
+      // Fail before enqueueing: a job without a ready tenant credential cannot
+      // be fulfilled by the DoFe-only generation plane. This mirrors the image
+      // route and avoids a predictable worker retry/dead-letter cycle.
+      if (options.credentialsService) {
+        await options.credentialsService.getByUserId(user.id);
+      }
+
       // ── Create job ──
       const job = await options.jobService.createJob(user, {
         workspaceId,
@@ -198,9 +217,7 @@ export async function registerGenerateRoutes(
           model,
           ...(payload.duration != null ? { duration: payload.duration } : {}),
           ...(payload.resolution ? { resolution: payload.resolution } : {}),
-          ...(payload.aspectRatio
-            ? { aspect_ratio: payload.aspectRatio }
-            : {}),
+          ...(payload.aspectRatio ? { aspect_ratio: payload.aspectRatio } : {}),
           ...(payload.inputImages?.length
             ? { input_images: payload.inputImages }
             : {}),
@@ -243,6 +260,13 @@ export async function registerGenerateRoutes(
         durationSeconds: result.duration_seconds,
       });
     } catch (error) {
+      if (error instanceof CredentialsNotProvisionedError) {
+        return reply.code(error.statusCode).send(
+          applicationErrorResponseSchema.parse({
+            error: { code: error.code, message: error.message },
+          }),
+        );
+      }
       if (error instanceof JobServiceError) {
         return reply.code(error.statusCode).send(
           applicationErrorResponseSchema.parse({
@@ -341,7 +365,10 @@ async function downloadAndUpload(
   const buffer = Buffer.from(await response.arrayBuffer());
 
   const ext = mimeType === "image/webp" ? "webp" : "png";
-  const slug = prompt.slice(0, 40).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = prompt
+    .slice(0, 40)
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   const fileName = `gen-${slug}-${Date.now()}.${ext}`;
 
   const viewer = await deps.viewerService.ensureViewer(user);

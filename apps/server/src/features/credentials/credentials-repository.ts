@@ -56,7 +56,18 @@ export type UserCredentialsRepository = {
     timeoutMs: number;
   }): Promise<ProvisionLockResult>;
   saveReady(input: SaveReadyInput): Promise<void>;
-  saveFailed(userId: string, ssoTeamId: string, error: string): Promise<void>;
+  /**
+   * Persist a sanitized failure. When `retainInFlight` is set, the remote
+   * request may have reached Models but its outcome is unknown (timeout or
+   * transport break). Keep the original lease until its TTL expires so callers
+   * do not immediately replay the non-idempotent POST.
+   */
+  saveFailed(
+    userId: string,
+    ssoTeamId: string,
+    error: string,
+    options?: { retainInFlight?: boolean },
+  ): Promise<void>;
 };
 
 const SELECT_COLS =
@@ -225,16 +236,27 @@ export function createUserCredentialsRepository(
       );
     },
 
-    async saveFailed(userId, ssoTeamId, error) {
+    async saveFailed(userId, ssoTeamId, error, options) {
+      const retainInFlight = options?.retainInFlight === true;
       await pool.query(
-        `insert into user_credentials (user_id, sso_team_id, provision_state, last_provision_error)
-         values ($1, $2, 'failed', $3)
+        `insert into user_credentials (
+           user_id, sso_team_id, provision_state, last_provision_error,
+           provisioning_started_at
+         ) values (
+           $1, $2,
+           case when $4 then 'provisioning' else 'failed' end,
+           $3,
+           case when $4 then now() else null end
+         )
          on conflict (user_id, sso_team_id) do update set
-           provision_state = 'failed',
+           provision_state = case when $4 then 'provisioning' else 'failed' end,
            last_provision_error = excluded.last_provision_error,
-           provisioning_started_at = null,
+           provisioning_started_at = case
+             when $4 then coalesce(user_credentials.provisioning_started_at, now())
+             else null
+           end,
            updated_at = now()`,
-        [userId, ssoTeamId, error],
+        [userId, ssoTeamId, error, retainInFlight],
       );
     },
   };
