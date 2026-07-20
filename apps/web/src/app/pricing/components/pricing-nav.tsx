@@ -24,13 +24,13 @@ export function PricingNav() {
 
         <div className="flex items-center gap-2">
           <a
-            href={buildSsoStartHref("/home")}
+            href={buildSsoStartHref("/pricing")}
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
             登录
           </a>
           <a
-            href={buildSsoStartHref("/home")}
+            href={buildSsoStartHref("/pricing")}
             className={buttonVariants({ size: "sm" })}
           >
             免费开始

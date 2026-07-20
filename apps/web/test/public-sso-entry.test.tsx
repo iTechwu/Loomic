@@ -24,17 +24,17 @@ describe("public SSO entry points", () => {
     const { rerender } = render(<PricingNav />);
     expect(screen.getByRole("link", { name: "登录" })).toHaveAttribute(
       "href",
-      "/api/auth/oidc/start?returnTo=%2Fhome",
+      "/api/auth/oidc/start?returnTo=%2Fpricing",
     );
     expect(screen.getByRole("link", { name: "免费开始" })).toHaveAttribute(
       "href",
-      "/api/auth/oidc/start?returnTo=%2Fhome",
+      "/api/auth/oidc/start?returnTo=%2Fpricing",
     );
 
     rerender(<PricingCTA />);
     expect(screen.getByRole("link", { name: "免费开始" })).toHaveAttribute(
       "href",
-      "/api/auth/oidc/start?returnTo=%2Fhome",
+      "/api/auth/oidc/start?returnTo=%2Fpricing",
     );
   });
 });

@@ -1,6 +1,6 @@
 # Lovart.DoFe UI/UX 与统一 SSO 优化方案
 
-> 状态：待评审
+> 状态：本仓库实施完成，待外部环境验收
 >
 > 范围：`apps/web` 的产品体验、视觉系统和身份入口；身份认证仍由 `sso.ixicai.cn` 唯一承担。
 >
@@ -25,14 +25,14 @@
 - `returnTo` 继续仅接受同源相对路径，拒绝 `//` 和 `/\\`，防止开放重定向。
 - `sso_user_mappings` 的 subject-to-profile 映射、首次 `ensureViewer`、租户/团队上下文及 Bearer JWT 校验均保持不变。
 
-### 1.3 证据与前提
+### 1.3 实施前证据与前提
 
 | 已核实 | 证据 | 设计含义 |
 | --- | --- | --- |
 | Lovart 已有完整 OIDC 框架 | `apps/server/src/http/oidc-auth.ts` | 不引入新的 auth SDK 或第二套用户库。 |
 | SSO 支持 `authorization_code`、PKCE `S256`、refresh token、登出端点和 `ui_locales` | `https://sso.ixicai.cn/api/.well-known/openid-configuration`（2026-07-20 核验） | 可做直接跳转、无感续期及中英语言对齐。 |
-| `/login` 及 `/register` 是本地中转界面 | `apps/web/src/app/login/page.tsx`、`apps/web/src/app/register/page.tsx` | 这是要移除的体验层，而非替换 OIDC 协议。 |
-| 登录表单已在挂载后自动调用 `beginSsoLogin` | `apps/web/src/components/login-form.tsx` | 现状已经证明本地登录页没有业务价值，只增加一次闪现和失败分叉。 |
+| `/login` 及 `/register` 曾是本地中转界面 | 实施前的 `apps/web/src/app/login/page.tsx`、`apps/web/src/app/register/page.tsx` | 已移除登录 UI；当前仅保留零 UI 静态 fallback 和生产代理 302。 |
+| 登录表单曾在挂载后自动调用 `beginSsoLogin` | 实施前的 `apps/web/src/components/login-form.tsx` | 该组件已删除，证实本地登录页没有业务价值，只增加一次闪现和失败分叉。 |
 | 两端均使用 Geist / shadcn 风格的语义类名 | SSO 公共页面与 `apps/web/src/app/globals.css` | 先建立上游 token 契约，再做视觉收敛，避免通过截图猜色值。 |
 
 **待 SSO 产品/前端确认，未确认前不得实现为假设：**
@@ -212,9 +212,10 @@ Lovart 的现有 `background`、`foreground`、`primary`、`muted`、`border`、
 统一使用以下构造函数，避免散落硬编码 URL：
 
 ```ts
-// 概念 API，最终放在 apps/web/src/lib/sso-auth.ts
-buildSsoStartHref(returnTo: string, locale?: "zh-CN" | "en-US"): string
-redirectToSso(returnTo: string): never
+// 已实现于 apps/web/src/lib/sso-auth.ts
+buildSsoStartHref(returnTo: string): string
+beginSsoLogin(returnTo: string): void
+replaceWithSsoLogin(returnTo: string): void
 getCurrentReturnTo(pathname: string, search: string, hash: string): string
 ```
 
@@ -249,7 +250,7 @@ getCurrentReturnTo(pathname: string, search: string, hash: string): string
 | 部署模式 | `/login`、`/register` 兼容方案 | 验收要求 |
 | --- | --- | --- |
 | Nginx + Fastify（当前本地参考） | 在 Nginx 以精确 location 302 到 `/api/auth/oidc/start?returnTo=...`，或由 Fastify 提供兼容端点 | `curl -I` 不返回 HTML。 |
-| 静态托管 + API 同域 | 在 CDN/Vercel rewrite/redirect 层配置 302，保留 `/api` 不被 SPA fallback 吞掉 | 生产 headers 与本地一致。 |
+| 静态托管 + API 同域 | 在 CDN 302；Vercel 必须先提供同源 Fastify proxy/function，并保留 `/api` 不被 SPA fallback 吞掉 | 当前 Vercel 配置只完成 `/api` 排除，尚无 API proxy，不能作为可用生产路径。 |
 | 改为 Next SSR | 用 server component/route handler 307，并用 search params 构造安全目的地 | 不再使用 `output: "export"`，需评估成本。 |
 
 这里推荐前两种，保持 Web 静态部署与 Fastify 的现有所有权。将 `/login` 改为 client `useEffect` 自动跳转不满足目标，因为它仍会先渲染本地页面。
@@ -326,7 +327,7 @@ stateDiagram-v2
 | Visual regression | 公开页、工作区、callback loading/error，light/dark，320/768/1440 | token、文本、焦点、布局无回归。 |
 | A11y | auth transfer 与核心工作区 | axe 无严重问题；键盘和 `prefers-reduced-motion` 人工通过。 |
 
-现有 `apps/web/test/login.test.tsx` 和 `register.test.tsx` 验证的是即将移除的中转 UI，应替换为“直接 navigation 不渲染页面”的测试。保留 `apps/server/src/http/oidc-auth.test.ts` 中的 PKCE 与 cookie 覆盖，并扩展登出和 returnTo case。
+原 `apps/web/test/login.test.tsx` 和 `register.test.tsx` 已随本地中转 UI 删除；现由 `sso-auth.test.ts`、`public-sso-entry.test.tsx`、`auth-callback.test.tsx` 覆盖安全回跳、直接入口和异常交接。保留并扩展 `apps/server/src/http/oidc-auth.test.ts` 的 PKCE、cookie、登出和 request ID 覆盖。
 
 ### 7.2 发布验收清单
 
@@ -377,6 +378,11 @@ stateDiagram-v2
 | 4 | 新增 `AuthTransferScreen`；callback 成功仍完成 exchange/viewer bootstrap 并回原路径，取消、缺 state、超时、exchange 和 bootstrap 失败均停留在可恢复的交接错误状态。 | 已移除 `loginErrorUrl()` 与所有 callback -> `/login?error=` 跳转。错误状态具有 `role="alert"`、标题焦点、重试与返回首页；加载状态具有 `role="status"` 和 live region。 | 已完成；下一轮清除本地登录/注册页面，并完成 proxy、logout 与测试部署兼容。 |
 | 5 | 删除本地表单、AuthShell 及过期测试；Nginx 对历史 URL 在静态页面前执行 SSO redirect；logout 改回 `/?signed_out=1` 并记录 `revocationAttempted`；Landing 显示可访问的退出状态。`/login`、`/register` 仅保留无 UI 的静态 preview fallback。 | SSO logout endpoint、refresh cookie 清理和公开回跳已有服务端单测。Nginx 保留 API 端点所有权，避免 SPA fallback 吞掉历史身份 URL；fallback 不渲染任何登录内容。 | 已完成；本仓库内的五轮实施闭环结束。 |
 | 6（审查修复） | 统一 Brand Kit、删除项目、Settings、Skills 的 401 进入 SSO；重试使用 sessionStorage 中经同源校验的原始目的地；logout 失败也回公开已退出页；OIDC 日志仅保留 route、hash identity 与失败类别；callback 显示安全 request ID；退出提示支持关闭并清理 query。 | 不再有业务层 `ApiAuthError -> signOut()`；callback 重试保留深链，OIDC 日志不再写入 raw return query、user ID 或异常对象。Vercel SPA rewrite 已排除 `/api`。 | 已完成；Vercel 仍需要同源 Fastify proxy/function，见外部/环境验收项。 |
+| 7（复审循环 A） | PKCE cookie/state 不匹配的 400 响应也返回 Fastify `requestId`，并同步写入 `x-request-id`。 | 测试确认 JSON 只含稳定错误码和支持关联 ID，header 与 JSON ID 一致，不含 code、state、cookie 或异常文本。 | 已完成；下一轮收敛默认语言。 |
+| 8（复审循环 B） | RootLayout 默认 `lang`、页面 description、Open Graph 和 Twitter description 均收敛为 `zh-CN` 的 DoFe 产品语义。 | 不添加未获 SSO 确认的 `ui_locales`、theme 或注册参数；用户可选语言与跨站同步仍是外部协议阻塞。 | 已完成；下一轮实现减少动态效果。 |
+| 9（复审循环 C） | 在全局样式加入 `prefers-reduced-motion: reduce` 规则，并以根 `MotionConfig reducedMotion="user"` 覆盖 Framer Motion。 | 测试确认 Provider 将用户偏好传给 Framer Motion；用户请求减少动态效果时，保留最终可读状态和必要的状态文本。 | 已完成；下一轮校正 Pricing 回跳目的地。 |
+| 10（复审循环 D） | Pricing nav 和 CTA 的 SSO start href 改为 `/pricing`，不再固定回 `/home`。 | 组件测试验证三个 Pricing 认证入口均保留来源页面；Landing 入口仍正确指向创作首页。 | 已完成；下一轮收敛 metadata 与方案契约。 |
+| 11（复审循环 E） | 设置生产 `metadataBase`，将文档状态、helper 签名、Vercel 路径和测试计数与当前代码对齐。 | Next 静态构建不再出现 Open Graph/Twitter URL 基准告警；方案不再把外部 Vercel API 能力标记为已完成。 | 已完成；本轮可本地实施项已全部闭合。 |
 
 ### 外部阻塞项
 
@@ -388,7 +394,7 @@ stateDiagram-v2
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、Nginx 历史 URL 部署规则 | 已完成并自动验证 | Web/Server 自动化测试、两端 typecheck 与 Next 静态构建已通过。 |
+| 本地身份入口、受保护深链、callback、登出、Nginx 历史 URL 部署规则 | 已完成并自动验证 | Web 40 项、Server 26 项自动化测试、两端 typecheck 与 Next 静态构建已通过。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、主题与账户中心 | 外部阻塞 | 需要 SSO owner 发布正式 token/URL/protocol，不能通过推测或抓取生产页面实现。 |
 | 真实 SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 待环境验收 | 需要被白名单的 SSO 测试 client、部署环境和真实浏览器会话；已有自动化验收条目可直接执行。 |

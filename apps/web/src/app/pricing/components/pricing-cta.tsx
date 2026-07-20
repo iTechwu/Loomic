@@ -29,7 +29,7 @@ export function PricingCTA() {
         <div className="mt-8 flex items-center justify-center gap-4">
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
             <a
-              href={buildSsoStartHref("/home")}
+              href={buildSsoStartHref("/pricing")}
               className={cn(
                 buttonVariants({ size: "lg" }),
                 "bg-accent text-accent-foreground hover:bg-accent/90",

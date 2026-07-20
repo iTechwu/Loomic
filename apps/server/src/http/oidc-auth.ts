@@ -156,7 +156,10 @@ export async function registerOidcAuthRoutes(
         { hasCode: Boolean(code), hasState: Boolean(state) },
         "oidc_callback_rejected",
       );
-      return reply.code(400).send({ error: "invalid_callback" });
+      return reply
+        .header("x-request-id", request.id)
+        .code(400)
+        .send({ error: "invalid_callback", requestId: request.id });
     }
 
     try {
@@ -202,6 +205,7 @@ export async function registerOidcAuthRoutes(
         "oidc_exchange_failed",
       );
       return reply
+        .header("x-request-id", request.id)
         .code(401)
         .send({ error: "authentication_failed", requestId: request.id });
     }

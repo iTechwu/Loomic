@@ -100,6 +100,29 @@ describe("OIDC auth routes", () => {
     expect(response.headers["set-cookie"]).toContain("SameSite=None");
   });
 
+  it("returns a support-safe request ID when the callback transaction is invalid", async () => {
+    const app = createTestApp(configuredEnv);
+    await registerOidcAuthRoutes(app, {
+      env: configuredEnv,
+      identities: {
+        resolve: async () => "00000000-0000-4000-8000-000000000001",
+      },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      payload: { code: "authorization-code", state: "missing-cookie-state" },
+      url: "/api/auth/oidc/exchange",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: "invalid_callback",
+      requestId: expect.any(String),
+    });
+    expect(response.headers["x-request-id"]).toBe(response.json().requestId);
+  });
+
   it("returns users to the public signed-out state after SSO logout", async () => {
     const app = createTestApp(configuredEnv);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
