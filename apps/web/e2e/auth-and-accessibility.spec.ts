@@ -69,7 +69,9 @@ test("legacy login uses the same-origin OIDC entry before the provider redirect"
   await expect(page).toHaveURL(/\/oauth\/authorize/);
 });
 
-test("credentialed SSO login returns to Lovart", async ({ page }) => {
+test("credentialed SSO restores a deep link, refreshes after reload, and completes global logout", async ({
+  page,
+}) => {
   const username = process.env.E2E_SSO_USERNAME;
   const password = process.env.E2E_SSO_PASSWORD;
   const usernameSelector = process.env.E2E_SSO_USERNAME_SELECTOR;
@@ -98,11 +100,30 @@ test("credentialed SSO login returns to Lovart", async ({ page }) => {
     );
   }
 
-  await page.goto("/login", { waitUntil: "networkidle" });
-  await page.locator(usernameSelector).fill(username);
-  await page.locator(passwordSelector).fill(password);
-  await page.locator(submitSelector).click();
+  await page.goto(
+    "/api/auth/oidc/start?returnTo=%2Fprojects%3Ffilter%3Dmine%23recent",
+    { waitUntil: "networkidle" },
+  );
+  const usernameField = page.locator(usernameSelector);
+  if (await usernameField.isVisible().catch(() => false)) {
+    await usernameField.fill(username);
+    await page.locator(passwordSelector).fill(password);
+    await page.locator(submitSelector).click();
+  }
 
-  await expect(page).toHaveURL(/\/home(?:[?#]|$)/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/projects\?filter=mine#recent$/, {
+    timeout: 30_000,
+  });
   await expect(page.locator("main")).toBeVisible();
+
+  // A full reload discards the in-memory token. The workspace must therefore
+  // restore solely through the HttpOnly refresh cookie, without re-showing SSO.
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page).toHaveURL(/\/projects\?filter=mine#recent$/, {
+    timeout: 30_000,
+  });
+  await expect(page.locator("main")).toBeVisible();
+
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await expect(page).toHaveURL(/\/?\?signed_out=1$/, { timeout: 30_000 });
 });

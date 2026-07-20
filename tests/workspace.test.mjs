@@ -124,7 +124,9 @@ test("same-origin runtime and browser quality gates are versioned", async () => 
 
 test("deployment and CI keep the same-origin edge versioned", async () => {
   const compose = await readText("deploy/docker-compose.yml");
+  const composeSmoke = await readText("deploy/docker-compose.smoke.yml");
   const runtimeNginx = await readText("deploy/nginx/lovart-runtime.conf");
+  const runtimeCheck = await readText("scripts/verify-compose-runtime.mjs");
   const workflow = await readText(".github/workflows/quality-gates.yml");
 
   assert.match(compose, /dockerfile: apps\/web\/Dockerfile/);
@@ -132,5 +134,9 @@ test("deployment and CI keep the same-origin edge versioned", async () => {
   assert.match(compose, /SERVICE_MODE: worker/);
   assert.match(runtimeNginx, /proxy_pass http:\/\/server:3105/);
   assert.match(runtimeNginx, /Content-Security-Policy/);
+  assert.match(composeSmoke, /DATABASE_URL/);
+  assert.match(composeSmoke, /profiles: \[worker\]/);
+  assert.match(runtimeCheck, /lovart-dofe-server/);
+  assert.match(workflow, /verify:compose-runtime/);
   assert.match(workflow, /test:e2e:static/);
 });

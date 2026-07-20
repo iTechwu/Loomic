@@ -1,0 +1,37 @@
+services:
+  # This override is CI-only. Production receives its database, object storage
+  # and Redis values from the deployment secret store instead.
+  server:
+    build:
+      args:
+        NODE_BASE_IMAGE: node:25-alpine
+        NPM_REGISTRY: https://registry.npmjs.org
+    environment:
+      DATABASE_URL: postgresql://smoke:smoke@database.invalid:5432/lovart_smoke
+      REDIS_URL: ""
+      TOS_ACCESS_KEY: smoke-access-key
+      TOS_SECRET_KEY: smoke-secret-key
+      TOS_REGION: smoke-region
+      TOS_ENDPOINT: https://object-storage.invalid
+      TOS_INTERNAL_ENDPOINT: https://object-storage.invalid
+      TOS_BUCKET: lovart-smoke
+      TOS_BUCKET_DOMAIN: https://cdn.invalid
+      TOS_INTERNAL_BUCKET_DOMAIN: https://cdn.internal.invalid
+
+  worker:
+    profiles: [worker]
+    build:
+      args:
+        NODE_BASE_IMAGE: node:25-alpine
+        NPM_REGISTRY: https://registry.npmjs.org
+    environment:
+      DATABASE_URL: postgresql://smoke:smoke@database.invalid:5432/lovart_smoke
+      REDIS_URL: ""
+      TOS_ACCESS_KEY: smoke-access-key
+      TOS_SECRET_KEY: smoke-secret-key
+      TOS_REGION: smoke-region
+      TOS_ENDPOINT: https://object-storage.invalid
+      TOS_INTERNAL_ENDPOINT: https://object-storage.invalid
+      TOS_BUCKET: lovart-smoke
+      TOS_BUCKET_DOMAIN: https://cdn.invalid
+      TOS_INTERNAL_BUCKET_DOMAIN: https://cdn.internal.invalid

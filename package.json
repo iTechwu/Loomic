@@ -7,6 +7,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "verify:design-tokens": "node scripts/verify-design-tokens.mjs",
+    "verify:compose-runtime": "node scripts/verify-compose-runtime.mjs",
     "verify:same-origin-runtime": "node scripts/verify-same-origin-runtime.mjs",
     "lint": "biome check .",
     "test:workspace": "node --test tests/workspace.test.mjs",

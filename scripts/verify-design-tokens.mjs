@@ -21,6 +21,41 @@ if (manifest.version !== expectedVersion) {
   );
 }
 
+if (
+  !manifest.font?.sans ||
+  !manifest.font?.mono ||
+  !manifest.radius?.control ||
+  !manifest.themes?.light?.primary ||
+  !manifest.themes?.dark?.primary
+) {
+  throw new Error(
+    "@dofe/design-tokens manifest is missing required font, radius, or light/dark primary roles.",
+  );
+}
+
+const tokenCss = readFileSync(
+  webRequire.resolve("@dofe/design-tokens/styles.css"),
+  "utf8",
+);
+if (!tokenCss.includes(`--dofe-token-version: "${expectedVersion}"`)) {
+  throw new Error(
+    "@dofe/design-tokens styles.css does not declare the pinned token version.",
+  );
+}
+
+for (const role of [
+  "background",
+  "foreground",
+  "primary",
+  "primary-foreground",
+  "border",
+  "ring",
+]) {
+  if (!tokenCss.includes(`--${role}:`)) {
+    throw new Error(`@dofe/design-tokens styles.css is missing the ${role} role.`);
+  }
+}
+
 const globalCss = readFileSync(resolve(root, "apps/web/src/app/globals.css"), "utf8");
 if (!globalCss.includes('@import "@dofe/design-tokens/styles.css";')) {
   throw new Error("Lovart globals.css must import @dofe/design-tokens/styles.css.");

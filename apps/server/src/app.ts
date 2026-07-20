@@ -48,6 +48,7 @@ import {
 } from "./features/uploads/upload-service.js";
 import { type ServerEnv, loadServerEnv, resolveDefaultAgentModel } from "./config/env.js";
 import { createRabbitMqClient } from "./queue/rabbitmq-client.js";
+import { createRedisClient } from "./cache/redis-client.js";
 import { createNativeJobRepository } from "./database/job-repository.js";
 import { createNativeChatRepository } from "./database/chat-repository.js";
 import { createNativeSettingsRepository } from "./database/settings-repository.js";
@@ -62,7 +63,10 @@ import { registerCanvasRoutes } from "./http/canvases.js";
 import { registerChatRoutes } from "./http/chat.js";
 import { registerGenerateRoutes } from "./http/generate.js";
 import { registerHealthRoutes } from "./http/health.js";
-import { registerAuthTransferTelemetryRoute } from "./http/auth-transfer-telemetry.js";
+import {
+  registerAuthTransferTelemetryReadiness,
+  registerAuthTransferTelemetryRoute,
+} from "./http/auth-transfer-telemetry.js";
 import { registerImageProxyRoute } from "./http/image-proxy.js";
 import { registerModelRoutes } from "./http/models.js";
 import { registerOidcAuthRoutes } from "./http/oidc-auth.js";
@@ -208,8 +212,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const uploadService =
     options.uploadService ?? createUploadService({ repository: dataRepository, storage: objectStorage });
   const rabbitMq = env.rabbitMqUrl ? createRabbitMqClient(env.rabbitMqUrl) : undefined;
+  const telemetryRedis = env.redisUrl ? createRedisClient(env.redisUrl) : undefined;
   const jobRepository = createNativeJobRepository(databasePool);
   if (rabbitMq) app.addHook("onClose", async () => rabbitMq.close());
+  if (telemetryRedis) app.addHook("onClose", async () => telemetryRedis.close());
+  registerAuthTransferTelemetryReadiness(app, telemetryRedis?.connection);
   const jobService =
     options.jobService ??
     (rabbitMq
@@ -268,7 +275,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
-  void registerAuthTransferTelemetryRoute(app);
+  void registerAuthTransferTelemetryRoute(app, {
+    ...(telemetryRedis ? { redis: telemetryRedis.connection } : {}),
+  });
   void registerOidcAuthRoutes(app, {
     env,
     identities,
