@@ -292,6 +292,44 @@ describe("CredentialsService", () => {
     expect(output).toContain("credential_failure_state_persist");
   });
 
+  it("re-provisions when a ready row was recorded under a different SSO subject", async () => {
+    // Migration safety net: rows created before SSO-subject tracking
+    // (migration 0012) have ssoUserId = null. On the first login after the
+    // migration, the ready row's ssoUserId does not match the caller's, so the
+    // service falls through and re-provisions so Models owns the real SSO user.
+    const repository = makeRepository({
+      lock: {
+        status: "ready",
+        row: readyRow({ ssoUserId: null }),
+      },
+    });
+    vi.mocked(provisionSeedanceCredentials).mockResolvedValue({
+      apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
+      assetCredential: {
+        id: "acid",
+        accessKeyId: "AKtest",
+        secretAccessKey: "AKSKsecret",
+      },
+    });
+    const service = makeService(repository);
+
+    await service.ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    // Re-provisioned with the real SSO subject, and the new row persists it.
+    expect(provisionSeedanceCredentials).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: SSO_USER_ID }),
+    );
+    expect(repository.saveReady).toHaveBeenCalledTimes(1);
+    await expect(repository.findReady(LOCAL_USER_ID)).resolves.toMatchObject({
+      ssoUserId: SSO_USER_ID,
+    });
+  });
+
   it("does not fall back when credentials are not ready", async () => {
     const repository = makeRepository({
       lock: {

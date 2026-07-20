@@ -194,3 +194,10 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - **背景**：`ensureProvisioned` 此前对同一 `userId` 连续调用两次 `repository.findAny`（分别恢复 `ssoTeamId` 与 `ssoUserId`），产生两次 DB 往返；且 OIDC 路径（两者都已提供）也照查不误。
 - [x] `credentials-service.ts` 改为：仅当 `ssoTeamId` 或 `ssoUserId` 缺失时才调用一次 `findAny`，复用同一行恢复两者。OIDC 路径（两者齐全）零 `findAny` 调用，ensureViewer 兜底路径（仅 userId）一次调用。
 - [x] 行为等价、严格更省；`typecheck` ✅、`credentials-service.test.ts` 7 用例 ✅（含并发用例：两者齐全时不触发 findAny，mock 仍兼容）。
+
+### Cycle 13 — 深审补强：SSO 主体变更重签路径审查（2026-07-20）
+
+- **审查结论**：`ensureProvisioned` 在 `lock.status === 'ready'` 但 `ssoUserId` 不匹配时 fall through 重签。该路径是**一次性迁移安全网**——0012 迁移前 `ssoUserId = null` 的旧行在首次登录后被重签为真实 SSO subject；正常运行中该路径实质失效。
+- **接受的限制**：迁移窗口内并发重签理论上可能对 models 端发起两次 POST（行仍为 `ready`，未重入 `provisioning`），产生一个孤立凭据；最新结果经 upsert 胜出，非安全/正确性事故。为该近不可能边缘场景新增 `force` 重锁属过度工程，按第一性原理不予引入。
+- [x] 新增 characterization 测试：ready 行 `ssoUserId = null` + 调用方带真实 `ssoUserId` → 触发重签，`saveReady` 以真实 SSO subject 持久化。锁定该迁移行为防回归。
+- [x] `credentials-service.test.ts` 8 用例 ✅。

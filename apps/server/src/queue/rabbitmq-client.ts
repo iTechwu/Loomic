@@ -1,5 +1,10 @@
 import amqp, { type Channel, type ConsumeMessage } from "amqplib";
 
+import {
+  logOperationalFailure,
+  logOperationalWarning,
+} from "../utils/operational-log.js";
+
 export type RabbitMessage<T = Record<string, unknown>> = {
   deliveryTag: number;
   payload: T;
@@ -24,9 +29,11 @@ export function createRabbitMqClient(url: string): RabbitMqClient {
   async function getPublisher() {
     if (publisher) return publisher;
     connection = await amqp.connect(url);
-    connection.on("error", (error) => console.error("[rabbitmq] connection error", { message: error.message }));
+    connection.on("error", () =>
+      logOperationalFailure("[rabbitmq] connection error", "rabbitmq_connection"),
+    );
     connection.on("close", () => {
-      console.warn("[rabbitmq] connection closed");
+      logOperationalWarning("[rabbitmq] connection closed", "rabbitmq_connection_closed");
       connection = undefined;
       publisher = undefined;
     });
@@ -63,8 +70,11 @@ export function createRabbitMqClient(url: string): RabbitMqClient {
             const payload = JSON.parse(raw.content.toString("utf8")) as Record<string, unknown>;
             await handler({ deliveryTag: raw.fields.deliveryTag, payload: payload as never, raw });
             channel.ack(raw);
-          } catch (error) {
-            console.error("[rabbitmq] message failed", { message: error instanceof Error ? error.message : String(error), queue });
+          } catch {
+            logOperationalFailure(
+              "[rabbitmq] message failed",
+              "rabbitmq_message_handler",
+            );
             // Job status and retry policy are authoritative in PostgreSQL. A failed
             // message is requeued only while the worker handling it is alive.
             channel.nack(raw, false, true);

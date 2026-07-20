@@ -5,6 +5,7 @@ import type { NativeDataRepository, NativeProjectRow } from "../../database/nati
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 import { BootstrapError, type ViewerService } from "../bootstrap/ensure-user-foundation.js";
 import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
 
@@ -60,7 +61,10 @@ export function createProjectService(options: { repository: NativeDataRepository
         return mapSummary(project, viewer.workspace, options.storage);
       } catch (error) {
         if (postgresCode(error) === "23505") throw new ProjectServiceError("project_slug_taken", "Project slug is already taken in this workspace.", 409);
-        console.error("[project-service] create failed", { message: error instanceof Error ? error.message : String(error), userId: user.id });
+        logOperationalFailure(
+          "[project-service] create failed",
+          "project_create",
+        );
         throw new ProjectServiceError("project_create_failed", "Unable to create project.", 500);
       }
     },
@@ -68,8 +72,11 @@ export function createProjectService(options: { repository: NativeDataRepository
       const viewer = await foundation(options.viewerService, user, "project_query_failed");
       try {
         return (await options.repository.listProjects(user.id)).map((project) => mapSummary(project, viewer.workspace, options.storage));
-      } catch (error) {
-        console.error("[project-service] list failed", { message: error instanceof Error ? error.message : String(error), userId: user.id });
+      } catch {
+        logOperationalFailure(
+          "[project-service] list failed",
+          "project_query",
+        );
         throw new ProjectServiceError("project_query_failed", "Unable to load projects.", 500);
       }
     },
@@ -84,7 +91,10 @@ export function createProjectService(options: { repository: NativeDataRepository
         return { thumbnailUrl: options.storage.createReadUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS) };
       } catch (error) {
         if (error instanceof ProjectServiceError) throw error;
-        console.error("[project-service] thumbnail save failed", { message: error instanceof Error ? error.message : String(error), projectId });
+        logOperationalFailure(
+          "[project-service] thumbnail save failed",
+          "project_thumbnail_persist",
+        );
         throw new ProjectServiceError("project_create_failed", "Unable to save project thumbnail.", 500);
       }
     },

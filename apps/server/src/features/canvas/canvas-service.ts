@@ -3,6 +3,10 @@ import type { CanvasContent, CanvasDetail } from "@lovart.dofe/shared";
 import type { NativeDataRepository } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
+import {
+  logOperationalFailure,
+  logOperationalWarning,
+} from "../../utils/operational-log.js";
 
 const TOS_MARKER_PREFIX = "tos://";
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
@@ -38,7 +42,10 @@ export function createCanvasService(options: { repository: NativeDataRepository;
         }
       } catch (error) {
         if (error instanceof CanvasServiceError) throw error;
-        console.error("[canvas-service] save failed", { canvasId, message: error instanceof Error ? error.message : String(error), userId: user.id });
+        logOperationalFailure(
+          "[canvas-service] save failed",
+          "canvas_save",
+        );
         throw new CanvasServiceError("canvas_save_failed", "Unable to save canvas.", 500);
       }
     },
@@ -57,9 +64,12 @@ async function extractFiles(storage: TosObjectStorage, canvasId: string, content
       const key = `canvas-files/${canvasId}/${fileId}.${mimeToExt(mimeType)}`;
       await storage.put({ body: buffer, contentType: mimeType, key });
       updated[fileId] = { ...file, dataURL: `${TOS_MARKER_PREFIX}${key}` };
-    } catch (error) {
+    } catch {
       // Retaining an inline file is safer than losing an asset when the object store is unavailable.
-      console.warn("[canvas-service] file extraction deferred", { canvasId, fileId, message: error instanceof Error ? error.message : String(error) });
+      logOperationalWarning(
+        "[canvas-service] file extraction deferred",
+        "canvas_file_extract",
+      );
       updated[fileId] = file;
     }
   }));

@@ -3,6 +3,7 @@ import type { BackgroundJob, BackgroundJobStatus, BackgroundJobType } from "@lov
 import type { NativeJobRepository, JobRow } from "../../database/job-repository.js";
 import type { RabbitMqClient } from "../../queue/rabbitmq-client.js";
 import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 
 const QUEUE_MAP: Record<BackgroundJobType, string> = { image_generation: "image_generation_jobs", video_generation: "video_generation_jobs" };
 
@@ -29,7 +30,14 @@ export function createJobService(options: { repository: NativeJobRepository; rab
       const job = await options.repository.create({ ...input, createdBy: user.id, queueName });
       if (!job) throw new JobServiceError("job_create_failed", "Failed to create job record.", 500);
       try { await options.rabbitMq.publish(queueName, { job_id: job.id, job_type: job.job_type, workspace_id: job.workspace_id, ...(job.canvas_id ? { canvas_id: job.canvas_id } : {}), ...(job.session_id ? { session_id: job.session_id } : {}) }); }
-      catch (error) { await options.repository.delete(job.id); console.error("[job-service] RabbitMQ publish failed", { jobId: job.id, message: error instanceof Error ? error.message : String(error) }); throw new JobServiceError("job_create_failed", "Failed to enqueue job.", 500); }
+      catch {
+        await options.repository.delete(job.id);
+        logOperationalFailure(
+          "[job-service] RabbitMQ publish failed",
+          "job_queue_publish",
+        );
+        throw new JobServiceError("job_create_failed", "Failed to enqueue job.", 500);
+      }
       return mapJob(job);
     },
     async getJob(user, jobId) { const job = await options.repository.findForUser(user.id, jobId); if (!job) throw notFound(); return mapJob(job); },

@@ -477,6 +477,7 @@ stateDiagram-v2
 | 100（复审循环 BP：SSO mapping 身份日志最小化） | SSO identity mapping 完成时只记录 `new_sso_user` 或 `legacy_email_match` 来源分类，不输出本地 profile ID 或 SSO subject。 | Server 65 项测试、typecheck 和触及文件 Biome 检查通过；新增 repository 回归测试锁定该输出边界。 | 已完成 SSO identity mapping 日志收敛。 |
 | 101（复审循环 BQ：错误 sanitizer 名实一致） | `sanitizeErrorForClient` 不再将 raw message、cause、provider response body、details 或 stack 写入 console；仅记录稳定 failureCategory，且保持既有客户端友好文案。 | Server 67 项测试、typecheck 和触及文件 Biome 检查通过；测试注入 Authorization、prompt 与 response token 验证零泄露。 | 已完成 agent/runtime 共用错误 sanitizer 的日志边界收敛。 |
 | 102（复审循环 BR：全仓复核与遗留日志建账） | 完整复核确认第 97-101 轮行为、SDK 契约与测试数字；同时扫描出 33 个仍有直接 console 的 Server 文件，其中 18 处同时输出身份标识或原始错误文本。 | `pnpm test` 通过（workspace 15、Web 73、Server 67），全 workspace typecheck、token gate 与 Biome `805 <= 832` 通过。 | 本轮五项业务代码实施已闭环；将 projects/canvas/uploads、worker/queue/database 和 provider/agent runtime 的 18 处旧式日志列为本地 P1，必须迁移至 allowlisted failureCategory 日志后才可宣称全应用日志治理完成。 |
+| 103（复审循环 BS：创作资源日志最小化） | 新增不接收任意 context 的 operational log 接口；projects、canvas、uploads 的创建、查询、缩略图、文件提取、上传、删除和 orphan cleanup 只输出稳定 failureCategory。 | Server 71 项测试、typecheck 与 operational-log 单测通过；静态复核确认三个服务不再向 console 传 user/resource/object path 或原始错误。 | 已完成创作资源域日志收敛；下一轮处理 job 与消息队列域。 |
 
 ### 外部阻塞项
 
