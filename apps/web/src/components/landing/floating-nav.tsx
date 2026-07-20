@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { SsoEntryLink } from "@/components/auth/sso-entry-link";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, Moon, Sun, X } from "lucide-react";
@@ -108,7 +108,7 @@ function NavCTA() {
     <SsoEntryLink
       returnTo="/home"
       className={cn(
-        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
+        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
         glowActive && "landing-nav-cta-glow",
       )}
     >

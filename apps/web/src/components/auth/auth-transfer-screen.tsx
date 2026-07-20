@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 
 import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
 import { Button } from "@/components/ui/button";
@@ -33,11 +33,9 @@ export function AuthTransferScreen({
   retryLabel?: string;
   supportId?: string;
 }) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, [error]);
+  const focusHeading = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus();
+  }, []);
 
   if (error) {
     return (
@@ -50,7 +48,7 @@ export function AuthTransferScreen({
           <LovartDofeLogo className="mx-auto size-10 text-foreground" />
           <div className="space-y-2">
             <h1
-              ref={headingRef}
+              ref={focusHeading}
               id="auth-transfer-error-title"
               tabIndex={-1}
               className="text-xl font-semibold outline-none"
@@ -68,7 +66,11 @@ export function AuthTransferScreen({
           </div>
           {/* WCAG 2.2 SC 2.5.8 / 文档 4.4：认证异常操作纵向排列，触控目标至少 44px。 */}
           <div className="flex flex-col gap-3">
-            <Button type="button" className="h-11 w-full" onClick={onRetry}>
+            <Button
+              type="button"
+              className="h-11 w-full text-foreground"
+              onClick={onRetry}
+            >
               {retryLabel}
             </Button>
             <a
@@ -84,25 +86,24 @@ export function AuthTransferScreen({
   }
 
   return (
-    <main
-      className="flex min-h-screen items-center justify-center bg-background px-6 py-12"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-labelledby="auth-transfer-loading-title"
-    >
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+      <output className="sr-only" aria-labelledby="auth-transfer-loading-title">
+        正在验证 DoFe 账户
+      </output>
       <div className="flex flex-col items-center gap-4 text-center">
         <LovartDofeLogo className="size-10 text-foreground" />
         <div className="space-y-1">
           <h1
-            ref={headingRef}
+            ref={focusHeading}
             id="auth-transfer-loading-title"
             tabIndex={-1}
             className="text-base font-semibold outline-none"
           >
             正在验证 DoFe 账户
           </h1>
-          <p className="text-sm text-muted-foreground">请稍候，正在打开你的工作区。</p>
+          <p className="text-sm text-muted-foreground">
+            请稍候，正在打开你的工作区。
+          </p>
         </div>
       </div>
     </main>

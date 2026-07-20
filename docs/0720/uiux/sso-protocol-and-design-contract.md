@@ -78,12 +78,15 @@ SSO now carries the space-delimited `ui_locales` request through its shared Zod 
 | Shared token package | Done | Lovart locks `@dofe/design-tokens@0.1.0`, imports its CSS entry, and its production build passes without local base-token overrides. |
 | Locale handoff | Done | Lovart selects the first supported browser language and Fastify forwards only `zh-CN` or `en`; SSO e2e and Web regression tests cover both sides. |
 | SSO account centre entry | Done | `NEXT_PUBLIC_SSO_ACCOUNT_URL` is validated before Lovart renders the Profile link. |
-| Cross-origin Lovart E2E | Pending trusted-browser validation | A real SSO login, local SAN certificate, Fastify and Nginx routes are ready. The isolated test browser does not inherit the system mkcert trust root; validate login, refresh, global logout, invalid callback and 320/768/1440 px visuals in a browser that trusts the local CA. |
+| Same-origin Fastify runtime | Done | `verify:same-origin-runtime` checks HTTPS health, legacy `/login` same-origin redirect and the configured provider origin with Node explicitly trusting the mkcert root. |
+| Production visual and accessibility gate | Done | Playwright runs axe and committed visual baselines for Landing and callback service-unavailable state on Chromium desktop and Pixel 5 against the static export. |
+| Auth-transfer measurement | Done in application code | Browser beacon emits only random flow ID, state, entry point and duration bucket; Fastify rejects unknown fields and logs `auth_transfer_viewed`. Dashboard retention and alerts remain an observability operation. |
+| Cross-origin Lovart E2E | Pending trusted-browser validation | The credentialed test is versioned and requires explicit non-production account/selector variables. A real SSO login, local SAN certificate, Fastify and Nginx routes are ready, but the isolated test browser does not inherit the system mkcert trust root; validate login, refresh, global logout and invalid callback in a browser that trusts the local CA. |
 | Lovart theme first frame | Done | ThemeProvider defaults to `system`, disables transition flashes, and preserves reduced-motion behavior. |
 | Authorization log minimization | Done | SSO authorization logs retain only session source and outcome category, never a raw user ID or lookup error text. |
 | Published token upgrade gate | Done | Web build validates the installed package version, manifest version and CSS entry before Next compiles. |
 | PKCE return path budget | Done | Both browser and Fastify reject `returnTo` values over 2048 characters before writing the transaction cookie. |
-| Callback loading accessibility | Done | Loading and error headings receive focus; the loading status has an accessible name. |
+| Callback loading accessibility | Done | Loading and error headings receive focus; a native `<output>` supplies the implicit named status live region. |
 | Self-service registration | Intentionally unavailable | Lovart never passes a registration hint; SSO redirects its disabled registration route to login. |
 
 ## 6. Operational Checks
@@ -94,3 +97,5 @@ SSO now carries the space-delimited `ui_locales` request through its shared Zod 
 4. On logout, confirm the SSO request has `id_token_hint` and returns to the registered `/?signed_out=1` URL.
 5. On a legacy/no-ID-token session, confirm logout remains at Lovart public home and does not present the SSO login page.
 6. For local browser E2E, ensure the certificate SAN covers `lovart.local.dofe.ai`, start Fastify, enable the Lovart Nginx virtual host and use a browser that trusts the local mkcert CA before opening the local OIDC start endpoint; do not disable TLS verification to compensate for a hostname mismatch.
+7. Before credentialed E2E, set `E2E_SAME_ORIGIN=1` plus the explicit non-production account and selector variables; never put credentials in Playwright source, snapshots or logs.
+8. Send `auth_transfer_viewed` to the approved log pipeline, then establish a seven-day baseline for callback failure and duration buckets before setting alert thresholds.

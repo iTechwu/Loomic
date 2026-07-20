@@ -1,21 +1,23 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-const authTransferEventSchema = z.object({
-  durationMsBucket: z.enum(["lt_1s", "1_to_5s", "5_to_10s", "over_10s"]),
-  entryPoint: z.enum(["callback", "workspace"]),
-  flowId: z.string().regex(/^[a-zA-Z0-9_-]{8,64}$/),
-  state: z.enum([
-    "authorized",
-    "callback_invalid",
-    "cancelled",
-    "checking",
-    "exchange_failed",
-    "service_unavailable",
-    "timeout",
-    "viewer_bootstrap_failed",
-  ]),
-}).strict();
+const authTransferEventSchema = z
+  .object({
+    durationMsBucket: z.enum(["lt_1s", "1_to_5s", "5_to_10s", "over_10s"]),
+    entryPoint: z.enum(["callback", "workspace"]),
+    flowId: z.string().regex(/^[a-zA-Z0-9_-]{8,64}$/),
+    state: z.enum([
+      "authorized",
+      "callback_invalid",
+      "cancelled",
+      "checking",
+      "exchange_failed",
+      "service_unavailable",
+      "timeout",
+      "viewer_bootstrap_failed",
+    ]),
+  })
+  .strict();
 
 /**
  * Accepts only non-identifying auth-transition measurements. The event is

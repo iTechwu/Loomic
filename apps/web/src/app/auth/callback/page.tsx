@@ -8,12 +8,12 @@ import {
   AuthTransferScreen,
 } from "../../../components/auth/auth-transfer-screen";
 import { useAuth } from "../../../lib/auth-context";
-import { fetchViewer } from "../../../lib/server-api";
 import {
+  type AuthTransferTelemetryState,
   createAuthTransferFlowId,
   reportAuthTransferEvent,
-  type AuthTransferTelemetryState,
 } from "../../../lib/auth-transfer-telemetry";
+import { fetchViewer } from "../../../lib/server-api";
 import {
   SsoExchangeError,
   type SsoSession,

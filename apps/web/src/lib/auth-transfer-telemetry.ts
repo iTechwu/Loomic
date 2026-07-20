@@ -41,9 +41,12 @@ export function reportAuthTransferEvent(
 
   // Beacon survives the callback navigation and sends no credentials beyond
   // same-origin cookies already scoped to this relying party.
-  if (navigator.sendBeacon?.(AUTH_TRANSFER_TELEMETRY_PATH, new Blob([body], {
-    type: "application/json",
-  }))) {
+  if (
+    navigator.sendBeacon?.(
+      AUTH_TRANSFER_TELEMETRY_PATH,
+      new Blob([body], { type: "application/json" }),
+    )
+  ) {
     return;
   }
   void fetch(AUTH_TRANSFER_TELEMETRY_PATH, {
@@ -57,7 +60,9 @@ export function reportAuthTransferEvent(
   });
 }
 
-function toDurationBucket(durationMs: number): AuthTransferTelemetryEvent["durationMsBucket"] {
+function toDurationBucket(
+  durationMs: number,
+): AuthTransferTelemetryEvent["durationMsBucket"] {
   if (durationMs < 1_000) return "lt_1s";
   if (durationMs < 5_000) return "1_to_5s";
   if (durationMs < 10_000) return "5_to_10s";
