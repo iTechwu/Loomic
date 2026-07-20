@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 
@@ -21,6 +20,12 @@ import type { CanvasEventBuffer } from "./event-buffer.js";
 import type { ChatService } from "../features/chat/chat-service.js";
 import type { ContentBlock, ToolBlock } from "@lovart.dofe/shared";
 import { createPipelineLogger } from "./logger.js";
+import {
+  parseWebSocketAuthRequest,
+  selectWebSocketAuthProtocol,
+} from "./auth-protocol.js";
+
+export { selectWebSocketAuthProtocol } from "./auth-protocol.js";
 
 type RegisterWsOptions = {
   agentRuns: AgentRunService;
@@ -41,22 +46,38 @@ export async function registerWsRoute(
   const { agentRuns, connectionManager } = options;
 
   app.get("/api/ws", { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
-    const url = new URL(request.url, `http://${request.headers.host}`);
-    const token = url.searchParams.get("token");
+    const credentials = parseWebSocketAuthRequest(
+      request.url,
+      request.headers["sec-websocket-protocol"],
+    );
 
-    if (!token || !options.auth) {
+    const authenticator = options.auth;
+    if (!credentials || !authenticator) {
+      request.log.warn(
+        { failureCategory: "invalid_websocket_auth" },
+        "websocket_connection_rejected",
+      );
       socket.close(4001, "Unauthorized");
       return;
     }
 
-    void authenticateAndBind(socket, token, request, options, agentRuns, connectionManager);
+    void authenticateAndBind(
+      socket,
+      credentials.accessToken,
+      credentials.connectionId,
+      authenticator,
+      options,
+      agentRuns,
+      connectionManager,
+    );
   });
 }
 
 async function authenticateAndBind(
   socket: WebSocket,
   token: string,
-  _request: FastifyRequest,
+  connectionId: string,
+  authenticator: RequestAuthenticator,
   options: RegisterWsOptions,
   agentRuns: AgentRunService,
   connectionManager: ConnectionManager,
@@ -68,7 +89,7 @@ async function authenticateAndBind(
     const fakeRequest = {
       headers: { authorization: `Bearer ${token}` },
     } as unknown as FastifyRequest;
-    const user = await options.auth!.authenticate(fakeRequest);
+    const user = await authenticator.authenticate(fakeRequest);
     if (!user) {
       log.warn("auth_rejected", { reason: "invalid_token" });
       socket.close(4001, "Unauthorized");
@@ -84,9 +105,6 @@ async function authenticateAndBind(
 
   if (socket.readyState !== 1) return;
 
-  // Use client-provided connectionId for reconnect identity; fallback to server UUID
-  const urlForParams = new URL(_request.url, `http://${_request.headers.host}`);
-  const connectionId = urlForParams.searchParams.get("connectionId") || randomUUID();
   connectionManager.register(connectionId, authenticatedUser.id, socket);
 
   // Heartbeat with pong timeout (spec §1.3: 60s no-pong → disconnect)
@@ -131,7 +149,7 @@ async function authenticateAndBind(
     }
 
     if (obj.type === "command") {
-      let msg;
+      let msg: ReturnType<typeof wsCommandSchema.parse>;
       try {
         msg = wsCommandSchema.parse(parsed);
       } catch {
@@ -141,7 +159,9 @@ async function authenticateAndBind(
 
       if (msg.action === "agent.run") {
         const p = msg.payload;
-        const runToken = p.accessToken ?? token;
+        // The authenticated handshake is the sole credential authority. A
+        // message payload must not replace it with a token from another user.
+        const runToken = token;
         void handleRunCommand(
           {
             ...authenticatedUser,

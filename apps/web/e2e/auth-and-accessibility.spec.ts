@@ -71,7 +71,12 @@ test("legacy login uses the same-origin OIDC entry before the provider redirect"
 
 test("credentialed SSO restores a deep link, refreshes after reload, and re-authenticates after global logout", async ({
   page,
-}) => {
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Credentialed SSO is deliberately exercised once to avoid cross-project account-session interference.",
+  );
+
   const username = process.env.E2E_SSO_USERNAME;
   const password = process.env.E2E_SSO_PASSWORD;
   const usernameSelector = process.env.E2E_SSO_USERNAME_SELECTOR;

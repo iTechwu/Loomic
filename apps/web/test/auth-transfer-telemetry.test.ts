@@ -47,6 +47,26 @@ describe("auth transfer telemetry", () => {
     });
   });
 
+  it("reports each transition at most once for the active tab flow", () => {
+    const sendBeacon = vi.fn<(url: string, data: Blob) => boolean>(() => true);
+    Object.defineProperty(navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeacon,
+    });
+
+    const event = {
+      entryPoint: "callback" as const,
+      flowId: "flow_12345678",
+      startedAt: 0,
+      state: "viewer_bootstrap_failed" as const,
+    };
+    reportAuthTransferEvent(event);
+    reportAuthTransferEvent(event);
+    reportAuthTransferEvent({ ...event, state: "authorized" });
+
+    expect(sendBeacon).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a random flow only for the current tab across the SSO callback", () => {
     const sendBeacon = vi.fn<(url: string, data: Blob) => boolean>(() => true);
     Object.defineProperty(navigator, "sendBeacon", {
@@ -75,7 +95,8 @@ describe("auth transfer telemetry", () => {
     const flow = beginAuthTransferFlow("workspace");
     now.mockReturnValue(7_500);
 
-    expect(createAuthTransferTelemetryEvent({ ...flow, state: "authorized" }))
-      .toMatchObject({ durationMsBucket: "5_to_10s" });
+    expect(
+      createAuthTransferTelemetryEvent({ ...flow, state: "authorized" }),
+    ).toMatchObject({ durationMsBucket: "5_to_10s" });
   });
 });

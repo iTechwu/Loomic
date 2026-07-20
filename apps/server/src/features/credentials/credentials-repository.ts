@@ -37,7 +37,10 @@ export type ProvisionLockResult =
   | { status: "locked"; row: UserCredentialRow };
 
 export type UserCredentialsRepository = {
-  findReady(userId: string, ssoTeamId?: string): Promise<UserCredentialRow | null>;
+  findReady(
+    userId: string,
+    ssoTeamId?: string,
+  ): Promise<UserCredentialRow | null>;
   /** Latest row of any state — used to recover ssoTeamId for retry when the
    * caller (e.g. ensureViewer) doesn't carry it. */
   findAny(userId: string): Promise<UserCredentialRow | null>;

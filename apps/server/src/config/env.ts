@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { parseTosConfig, type TosConfig } from "../storage/tos-config.js";
+import { type TosConfig, parseTosConfig } from "../storage/tos-config.js";
 
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
@@ -49,6 +49,8 @@ export type ServerEnv = {
   port: number;
   replicateApiToken?: string;
   rabbitMqUrl?: string;
+  /** When true, fail startup unless managed TLS Redis is configured. */
+  requireRedis?: boolean;
   redisUrl?: string;
   internalApiSecret?: string;
   ssoApiUrl?: string;
@@ -99,9 +101,11 @@ export function loadServerEnv(
   const openAIApiKey =
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
   const dofeModelBaseUrl =
-    overrides.dofeModelBaseUrl ?? normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
+    overrides.dofeModelBaseUrl ??
+    normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
   const dofeModelApiKey =
-    overrides.dofeModelApiKey ?? normalizeOptionalString(source.DOFE_MODEL_API_KEY);
+    overrides.dofeModelApiKey ??
+    normalizeOptionalString(source.DOFE_MODEL_API_KEY);
 
   if (!!dofeModelBaseUrl !== !!dofeModelApiKey) {
     throw new Error(
@@ -164,6 +168,10 @@ export function loadServerEnv(
     overrides.rabbitMqUrl ?? normalizeOptionalString(source.RABBITMQ_URL);
   const redisUrl =
     overrides.redisUrl ?? normalizeOptionalString(source.REDIS_URL);
+  const requireRedis =
+    overrides.requireRedis ??
+    parseBoolean(source.LOVART_DOFE_REQUIRE_REDIS, false);
+  if (requireRedis) validateRequiredRedisUrl(redisUrl);
   const volcesApiKey =
     overrides.volcesApiKey ?? normalizeOptionalString(source.VOLCES_API_KEY);
   const volcesBaseUrl =
@@ -181,29 +189,29 @@ export function loadServerEnv(
   const workerConcurrency =
     overrides.workerConcurrency ??
     (source.WORKER_CONCURRENCY
-      ? parseInt(source.WORKER_CONCURRENCY, 10)
+      ? Number.parseInt(source.WORKER_CONCURRENCY, 10)
       : undefined);
   const workerImageConcurrency =
     overrides.workerImageConcurrency ??
     (source.WORKER_IMAGE_CONCURRENCY
-      ? parseInt(source.WORKER_IMAGE_CONCURRENCY, 10)
+      ? Number.parseInt(source.WORKER_IMAGE_CONCURRENCY, 10)
       : undefined);
   const workerVideoConcurrency =
     overrides.workerVideoConcurrency ??
     (source.WORKER_VIDEO_CONCURRENCY
-      ? parseInt(source.WORKER_VIDEO_CONCURRENCY, 10)
+      ? Number.parseInt(source.WORKER_VIDEO_CONCURRENCY, 10)
       : undefined);
   const workerId =
     overrides.workerId ?? normalizeOptionalString(source.WORKER_ID);
   const workerPollIntervalMs =
     overrides.workerPollIntervalMs ??
     (source.WORKER_POLL_INTERVAL_MS
-      ? parseInt(source.WORKER_POLL_INTERVAL_MS, 10)
+      ? Number.parseInt(source.WORKER_POLL_INTERVAL_MS, 10)
       : undefined);
   const workerMaxBatchSize =
     overrides.workerMaxBatchSize ??
     (source.WORKER_MAX_BATCH_SIZE
-      ? parseInt(source.WORKER_MAX_BATCH_SIZE, 10)
+      ? Number.parseInt(source.WORKER_MAX_BATCH_SIZE, 10)
       : undefined);
 
   // Resolve default agent model based on available provider keys.
@@ -259,6 +267,7 @@ export function loadServerEnv(
     ...(googleVertexVideoLocation ? { googleVertexVideoLocation } : {}),
     ...(replicateApiToken ? { replicateApiToken } : {}),
     ...(rabbitMqUrl ? { rabbitMqUrl } : {}),
+    requireRedis,
     ...(redisUrl ? { redisUrl } : {}),
     ...(volcesApiKey ? { volcesApiKey } : {}),
     ...(volcesBaseUrl ? { volcesBaseUrl } : {}),
@@ -298,6 +307,37 @@ function parseAgentModel(rawModel: string | undefined) {
 function normalizeOptionalString(value: string | undefined) {
   const normalizedValue = value?.trim();
   return normalizedValue || undefined;
+}
+
+function parseBoolean(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return defaultValue;
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  throw new Error("LOVART_DOFE_REQUIRE_REDIS must be true or false.");
+}
+
+function validateRequiredRedisUrl(redisUrl: string | undefined): void {
+  if (!redisUrl) {
+    throw new Error(
+      "REDIS_URL is required when LOVART_DOFE_REQUIRE_REDIS is enabled.",
+    );
+  }
+
+  let url: URL;
+  try {
+    url = new URL(redisUrl);
+  } catch {
+    throw new Error("REDIS_URL must be an absolute rediss URL when required.");
+  }
+  if (url.protocol !== "rediss:" || !url.hostname) {
+    throw new Error(
+      "REDIS_URL must use rediss when LOVART_DOFE_REQUIRE_REDIS is enabled.",
+    );
+  }
 }
 
 /**

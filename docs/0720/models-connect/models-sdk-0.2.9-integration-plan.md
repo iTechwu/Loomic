@@ -113,6 +113,32 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   - 结论：0.2.9 **未**新增 `seedanceCredentials.create` typed method，P2 替换条件仍未满足；adapter 手写 `fetch` 按 P2 规约继续保留，Lovart 不自行声明兼容类型绕过 models 发布步骤。
   - 该核验结论固化于此，后续无需重复排查 0.2.9；待 0.3.x+ 发布且 grep 命中 `seedanceCredentials` 时再启动 P2 实施。
 
+### Cycle 7 — 验收补强与部署迁移接线（2026-07-20）
+
+- [x] **并发 provision 测试（验收 #3）**：在 `credentials-service.test.ts` 新增“并发 `ensureProvisioned` 最多一次远端 POST”用例——两个并发调用共享一个模拟真实 advisory-lock + in-flight 行为的 repository（首个拿 `locked`、in-flight 期间第二个拿 `in_flight`、`saveReady` 后拿 `ready`），通过可控的 hanging Promise 串行化，断言 `provisionSeedanceCredentials` 恰好调用 1 次、`saveReady` 恰好 1 次。覆盖原顺序测试无法证明的并发不变量。
+- [x] **API 启动时自动迁移（部署风险 #3）**：审查发现 `deploy/`、`.github/workflows/`、`apps/server/Dockerfile`、`docker-compose.yml` 均无 `db:migrate` 步骤——`0014` 新增列（`provisioning_started_at` / `provision_attempt_count`）若未应用会导致 `takeProvisionLock` 运行时报“列不存在”。
+  - 重构 `database/migrate.ts`：导出 `migrate()`，并用 `import.meta.url === pathToFileURL(process.argv[1]).href` 的 isMainModule 守卫包裹 CLI 自执行块，使其被 import 时不重复跑。
+  - `server.ts`（API 入口）在 `buildApp` 前 `await migrate()`：幂等且 checksum-guarded，每次启动安全；仅 API 跑（worker 不 import server.ts，避免多副本迁移竞态）；`LOVART_RUN_MIGRATIONS_ON_BOOT=0` 可 opt out。
+  - 迁移文件名唯一性已复核：14 个迁移 4 位前缀无重复（曾险些出现重复 `0013`，已重命名为 `0014`）。
+- [x] `pnpm typecheck` 通过；`pnpm test` 17 文件 / 54 用例全过。
+
+### Cycle 8 — CI 迁移安全门 + 全量 CI gate 本地核验（2026-07-20）
+
+- [x] **新增迁移安全门** `scripts/verify-migrations.mjs` + `pnpm run verify:migrations`，并接入 `.github/workflows/quality-gates.yml`（`pnpm install` 后第一步）：
+  - 强制 `apps/server/migrations/*.sql` 文件名匹配 `^\d+_.+\.sql$`（否则 runner 静默跳过）；
+  - **数字前缀唯一**（硬失败，防 0013/0014 重复编号重演）；
+  - 文件非空；
+  - 哨兵：`0014_user_credentials_provisioning_tracking.sql` 必须存在（防部分 cherry-pick 只带代码不带迁移导致 `takeProvisionLock` 运行时报列缺失）；
+  - 允许编号空洞（0005 已被有意删除），只在危险情形失败。
+- [x] **本地跑通真实 CI gate 全序列**（此前只跑了 typecheck/test，未跑 lint:baseline 与 build）：
+  - `pnpm run verify:migrations` ✅（13 迁移，前缀 0001..0014）
+  - `pnpm --filter @lovart.dofe/server typecheck` ✅
+  - `pnpm --filter @lovart.dofe/server test` ✅ 18 文件 / 58 用例
+  - `pnpm run lint:baseline` ✅ 813 ≤ 832（无回归；对新增/改动文件跑 `biome check --write` 修正格式，移除测试中 4 处 `!` 非空断言）
+  - `pnpm build` ✅
+  - 浏览器包零泄漏 ✅
+- [x] 未引入新 biome 错误（`migrate.ts` 残留 2 处为历史遗留 noNonNullAssertion/noUnusedTemplateLiteral，已在基线内，非本次引入）。
+
 ## 最终状态汇总
 
 | 项 | 状态 |
@@ -121,14 +147,18 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | P1 并发互斥（advisory lock + in-flight 状态） | ✅ 完成 |
 | P1 correlation ID / 脱敏日志 / 超时 fail closed | ✅ 完成 |
 | P1 严格 no-fallback | ✅ 保持 |
-| P2 适配器 fetch 替换 | ⏳ 条件未满足，保留 `fetch`，条件已在 Cycle 5 落地 |
+| P2 适配器 fetch 替换 | ⏳ 条件未满足（0.2.9 核验无 `seedanceCredentials`），保留 `fetch`，条件已在 Cycle 5/6 落地 |
 | 远端凭据状态校验（防超时重复发放） | ⏳ 待 models 提供查询端点 |
 | 浏览器包零泄漏 | ✅ 验证通过 |
-| 类型检查 / 全量测试 | ✅ `tsc` 通过，53 用例通过 |
+| 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
+| 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
+| CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 8：verify:migrations / typecheck / test 58 / lint:baseline 813≤832 / build） |
+| 类型检查 / 全量测试 | ✅ `tsc` 通过，58 用例通过 |
 
 ## 待办（外部依赖解锁后）
 
 1. ~~`@dofe/models-sdk@0.2.9` 发布到 npmjs 后升级并重生成 lockfile~~ ✅ 已完成（2026-07-20，`package.json` 锁 `^0.2.9`，lockfile 解析 0.2.9）。
 2. models 发布 `seedanceCredentials.create` typed method 后，替换 adapter `fetch`（见 Cycle 5 条件）。
 3. models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。
-4. 部署前确保 `pnpm --filter @lovart.dofe/server db:migrate` 已应用 `0014` 迁移。
+4. ~~部署前确保 `pnpm --filter @lovart.dofe/server db:migrate` 已应用 `0014` 迁移~~ ✅ 已改为 API 启动自动迁移（Cycle 7）；如部署环境用外部迁移作业，设 `LOVART_RUN_MIGRATIONS_ON_BOOT=0` opt out。

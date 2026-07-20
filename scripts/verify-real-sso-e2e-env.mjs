@@ -15,17 +15,27 @@ if (missing.length > 0) {
   );
 }
 
-for (const name of ["E2E_BASE_URL", "E2E_SSO_ORIGIN"]) {
+function parseHttpsOrigin(name) {
   const url = new URL(process.env[name]);
-  if (url.protocol !== "https:" || url.username || url.password) {
-    throw new Error(`${name} must be a credential-free HTTPS URL.`);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      `${name} must be a credential-free HTTPS origin without a path, query, or hash.`,
+    );
   }
+  return url;
 }
 
-if (
-  new URL(process.env.E2E_BASE_URL).origin ===
-  new URL(process.env.E2E_SSO_ORIGIN).origin
-) {
+const baseUrl = parseHttpsOrigin("E2E_BASE_URL");
+const ssoOrigin = parseHttpsOrigin("E2E_SSO_ORIGIN");
+
+if (baseUrl.origin === ssoOrigin.origin) {
   throw new Error("E2E_BASE_URL and E2E_SSO_ORIGIN must be distinct origins.");
 }
 

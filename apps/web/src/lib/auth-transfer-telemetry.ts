@@ -26,6 +26,8 @@ export type AuthTransferTelemetryEvent = {
 
 const AUTH_TRANSFER_TELEMETRY_PATH = "/api/telemetry/auth-transfer";
 const AUTH_TRANSFER_FLOW_KEY = "lovart.dofe:auth-transfer-flow";
+const AUTH_TRANSFER_REPORTED_STATES_KEY =
+  "lovart.dofe:auth-transfer-reported-states";
 const TERMINAL_STATES = new Set<AuthTransferTelemetryState>([
   "authorized",
   "callback_invalid",
@@ -65,19 +67,23 @@ export function beginAuthTransferFlow(
 
 /** Returns the active same-tab funnel, or a callback-only fallback. */
 export function getOrCreateAuthTransferFlow(): AuthTransferFlow {
-  return (
-    readAuthTransferFlow() ?? {
-      entryPoint: "callback",
-      flowId: createAuthTransferFlowId(),
-      startedAt: Date.now(),
-    }
-  );
+  const existing = readAuthTransferFlow();
+  if (existing) return existing;
+
+  const fallback = {
+    entryPoint: "callback" as const,
+    flowId: createAuthTransferFlowId(),
+    startedAt: Date.now(),
+  };
+  writeAuthTransferFlow(fallback);
+  return fallback;
 }
 
 export function clearAuthTransferFlow(): void {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.removeItem(AUTH_TRANSFER_FLOW_KEY);
+    window.sessionStorage.removeItem(AUTH_TRANSFER_REPORTED_STATES_KEY);
   } catch {
     // Storage access is optional; the event remains safe without correlation.
   }
@@ -95,6 +101,8 @@ export function reportAuthTransferEvent(
   },
 ): void {
   if (typeof navigator === "undefined") return;
+  if (hasReportedAuthTransferState(event.flowId, event.state)) return;
+  markAuthTransferStateReported(event.flowId, event.state);
 
   const payload = createAuthTransferTelemetryEvent(event);
   const body = JSON.stringify(payload);
@@ -165,6 +173,59 @@ function writeAuthTransferFlow(flow: AuthTransferFlow): void {
     window.sessionStorage.setItem(AUTH_TRANSFER_FLOW_KEY, JSON.stringify(flow));
   } catch {
     // Telemetry correlation is best-effort and must not block SSO navigation.
+  }
+}
+
+function hasReportedAuthTransferState(
+  flowId: string,
+  state: AuthTransferTelemetryState,
+): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.sessionStorage.getItem(
+      AUTH_TRANSFER_REPORTED_STATES_KEY,
+    );
+    if (!raw) return false;
+    const value = JSON.parse(raw) as {
+      flowId?: unknown;
+      states?: unknown;
+    };
+    return (
+      value.flowId === flowId &&
+      Array.isArray(value.states) &&
+      value.states.includes(state)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function markAuthTransferStateReported(
+  flowId: string,
+  state: AuthTransferTelemetryState,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.sessionStorage.getItem(
+      AUTH_TRANSFER_REPORTED_STATES_KEY,
+    );
+    const previous = raw
+      ? (JSON.parse(raw) as { flowId?: unknown; states?: unknown })
+      : undefined;
+    const states =
+      previous?.flowId === flowId && Array.isArray(previous.states)
+        ? previous.states.filter(
+            (value): value is AuthTransferTelemetryState =>
+              typeof value === "string",
+          )
+        : [];
+    if (!states.includes(state)) states.push(state);
+    window.sessionStorage.setItem(
+      AUTH_TRANSFER_REPORTED_STATES_KEY,
+      JSON.stringify({ flowId, states }),
+    );
+  } catch {
+    // Storage access is optional; duplicate suppression remains best-effort.
   }
 }
 

@@ -25,12 +25,40 @@ describe("DoFe model router environment", () => {
   });
 
   it("uses the router-safe default model when configured", () => {
-    const env = loadServerEnv({}, {
-      DOFE_MODEL_API_KEY: "router-key",
-      DOFE_MODEL_BASE_URL: "https://ixicai.cn",
-    });
+    const env = loadServerEnv(
+      {},
+      {
+        DOFE_MODEL_API_KEY: "router-key",
+        DOFE_MODEL_BASE_URL: "https://ixicai.cn",
+      },
+    );
 
     expect(env.agentModel).toBe(DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL);
     expect(env.dofeModelBaseUrl).toBe("https://ixicai.cn/api");
+  });
+
+  it("fails closed when production telemetry requires managed TLS Redis", () => {
+    expect(() =>
+      loadServerEnv({}, { LOVART_DOFE_REQUIRE_REDIS: "true" }),
+    ).toThrow("REDIS_URL is required");
+    expect(() =>
+      loadServerEnv(
+        {},
+        {
+          LOVART_DOFE_REQUIRE_REDIS: "true",
+          REDIS_URL: "redis://redis.internal:6379/5",
+        },
+      ),
+    ).toThrow("must use rediss");
+
+    expect(
+      loadServerEnv(
+        {},
+        {
+          LOVART_DOFE_REQUIRE_REDIS: "true",
+          REDIS_URL: "rediss://redis.internal:6380/5",
+        },
+      ).requireRedis,
+    ).toBe(true);
   });
 });

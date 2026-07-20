@@ -30,6 +30,7 @@ services:
       - ${LOVART_ENV_FILE:-.env.production}
     environment:
       HOST: 0.0.0.0
+      LOVART_DOFE_REQUIRE_REDIS: "true"
       SERVICE_MODE: api
     expose:
       - "3105"

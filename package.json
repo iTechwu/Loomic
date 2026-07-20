@@ -10,6 +10,7 @@
     "verify:compose-runtime": "node scripts/verify-compose-runtime.mjs",
     "lint:baseline": "node scripts/verify-biome-baseline.mjs",
     "verify:real-sso-e2e-env": "node scripts/verify-real-sso-e2e-env.mjs",
+    "verify:migrations": "node scripts/verify-migrations.mjs",
     "verify:same-origin-runtime": "node scripts/verify-same-origin-runtime.mjs",
     "lint": "biome check .",
     "test:workspace": "node --test tests/workspace.test.mjs",

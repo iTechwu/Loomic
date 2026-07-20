@@ -139,12 +139,23 @@ test("deployment and CI keep the same-origin edge versioned", async () => {
   assert.match(compose, /SERVICE_MODE: api/);
   assert.match(compose, /SERVICE_MODE: worker/);
   assert.match(runtimeNginx, /proxy_pass http:\/\/server:3105/);
+  assert.match(
+    runtimeNginx,
+    /location = \/api\/ws\s*\{\s*# Auth now travels[\s\S]*access_log off/,
+  );
+  assert.match(
+    runtimeNginx,
+    /Sec-WebSocket-Protocol \$http_sec_websocket_protocol/,
+  );
   assert.match(runtimeNginx, /Content-Security-Policy/);
+  assert.match(runtimeNginx, /Strict-Transport-Security/);
   assert.match(composeSmoke, /DATABASE_URL/);
   assert.match(composeSmoke, /NGINX_BASE_IMAGE/);
   assert.match(composeSmoke, /NPM_REGISTRY/);
   assert.match(composeSmoke, /profiles: \[worker\]/);
   assert.match(runtimeCheck, /lovart-dofe-server/);
+  assert.match(runtimeCheck, /Fastify ownership of \/api\/ws/);
+  assert.match(runtimeCheck, /strict-transport-security/);
   assert.match(workflow, /verify:compose-runtime/);
   assert.match(workflow, /test:e2e:static/);
   assert.match(workflow, /lint:baseline/);
@@ -153,8 +164,23 @@ test("deployment and CI keep the same-origin edge versioned", async () => {
 test("credentialed SSO workflow rejects a missing protected environment", async () => {
   const workflow = await readText(".github/workflows/real-sso-e2e.yml");
   const preflight = await readText("scripts/verify-real-sso-e2e-env.mjs");
+  const e2e = await readText("apps/web/e2e/auth-and-accessibility.spec.ts");
 
   assert.match(workflow, /verify-real-sso-e2e-env/);
   assert.match(preflight, /E2E_SSO_PASSWORD/);
   assert.match(preflight, /must be distinct origins/);
+  assert.match(e2e, /Credentialed SSO is deliberately exercised once/);
+});
+
+test("WebSocket commands cannot override the authenticated handshake token", async () => {
+  const websocketHandler = await readText("apps/server/src/ws/handler.ts");
+  const websocketClient = await readText("apps/web/src/hooks/use-websocket.ts");
+
+  assert.match(websocketHandler, /const runToken = token/);
+  assert.doesNotMatch(websocketHandler, /accessToken \?\? token/);
+  assert.match(
+    websocketClient,
+    /accessToken: _accessToken, \.\.\.commandPayload/,
+  );
+  assert.doesNotMatch(websocketClient, /\/api\/ws\?token=/);
 });

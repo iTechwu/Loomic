@@ -48,14 +48,8 @@ describe("provisionSeedanceCredentials", () => {
       });
 
       const call = fetchMock.mock.calls[0] as unknown as [
-
-
         string,
-
-
         { headers: Record<string, string> },
-
-
       ];
       const authorization = call[1].headers.authorization;
       const timestampSec = 1_700_000_000;
@@ -94,14 +88,8 @@ describe("provisionSeedanceCredentials", () => {
       });
 
       const call = fetchMock.mock.calls[0] as unknown as [
-
-
         string,
-
-
         { headers: Record<string, string> },
-
-
       ];
       expect(call[1].headers["x-service-name"]).toBe(SERVICE_NAME);
       expect(call[1].headers["x-correlation-id"]).toBe(CORRELATION_ID);
@@ -111,20 +99,18 @@ describe("provisionSeedanceCredentials", () => {
   });
 
   it("fails closed when internalApiSecret is missing", async () => {
-    const fetchMock = vi.fn(async () => Response.json({ data: {} }, { status: 200 }),
+    const fetchMock = vi.fn(async () =>
+      Response.json({ data: {} }, { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     try {
       await expect(
-        provisionSeedanceCredentials(
-          makeConfig({ internalApiSecret: "" }),
-          {
-            userId: "user-1",
-            ssoTeamId: "team-1",
-            correlationId: CORRELATION_ID,
-          },
-        ),
+        provisionSeedanceCredentials(makeConfig({ internalApiSecret: "" }), {
+          userId: "user-1",
+          ssoTeamId: "team-1",
+          correlationId: CORRELATION_ID,
+        }),
       ).rejects.toThrow(
         new ModelsProvisionError("internalApiSecret is required", 0, "sdk"),
       );
@@ -135,7 +121,8 @@ describe("provisionSeedanceCredentials", () => {
   });
 
   it("fails closed when serviceName is empty", async () => {
-    const fetchMock = vi.fn(async () => Response.json({ data: {} }, { status: 200 }),
+    const fetchMock = vi.fn(async () =>
+      Response.json({ data: {} }, { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -155,40 +142,38 @@ describe("provisionSeedanceCredentials", () => {
     }
   });
 
-  it.each([401, 403])(
-    "fails closed on HTTP %i",
-    async (status) => {
-      const fetchMock = vi.fn(async () => new Response("Unauthorized", { status }),
-      );
-      vi.stubGlobal("fetch", fetchMock);
+  it.each([401, 403])("fails closed on HTTP %i", async (status) => {
+    const fetchMock = vi.fn(
+      async () => new Response("Unauthorized", { status }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
-      try {
-        await expect(
-          provisionSeedanceCredentials(makeConfig(), {
-            userId: "user-1",
-            ssoTeamId: "team-1",
-            correlationId: CORRELATION_ID,
-          }),
-        ).rejects.toThrow(ModelsProvisionError);
-
-        let thrown: unknown;
-        await provisionSeedanceCredentials(makeConfig(), {
+    try {
+      await expect(
+        provisionSeedanceCredentials(makeConfig(), {
           userId: "user-1",
           ssoTeamId: "team-1",
           correlationId: CORRELATION_ID,
-        }).catch((e: unknown) => {
-          thrown = e;
-        });
-        const error = thrown as ModelsProvisionError;
-        expect(error.status).toBe(status);
-        expect(error.code).toBe("http");
-        // The error message must not leak the response body.
-        expect(error.message).toBe(`provision HTTP ${status}`);
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    },
-  );
+        }),
+      ).rejects.toThrow(ModelsProvisionError);
+
+      let thrown: unknown;
+      await provisionSeedanceCredentials(makeConfig(), {
+        userId: "user-1",
+        ssoTeamId: "team-1",
+        correlationId: CORRELATION_ID,
+      }).catch((e: unknown) => {
+        thrown = e;
+      });
+      const error = thrown as ModelsProvisionError;
+      expect(error.status).toBe(status);
+      expect(error.code).toBe("http");
+      // The error message must not leak the response body.
+      expect(error.message).toBe(`provision HTTP ${status}`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("fails closed on timeout without leaking secrets", async () => {
     const fetchMock = vi.fn(async () => {

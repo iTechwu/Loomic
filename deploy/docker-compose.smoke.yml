@@ -16,6 +16,7 @@ services:
     environment:
       DATABASE_URL: postgresql://smoke:smoke@database.invalid:5432/lovart_smoke
       REDIS_URL: ""
+      LOVART_DOFE_REQUIRE_REDIS: "false"
       TOS_ACCESS_KEY: smoke-access-key
       TOS_SECRET_KEY: smoke-secret-key
       TOS_REGION: smoke-region

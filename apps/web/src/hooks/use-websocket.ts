@@ -9,6 +9,7 @@ import type {
   RunCreateRequest,
 } from "@lovart.dofe/shared";
 import { getServerBaseUrl } from "../lib/env";
+import { createWebSocketAuthProtocol } from "../lib/websocket-auth";
 
 type EventCallback = (event: StreamEvent) => void;
 type RPCHandler = (
@@ -79,11 +80,13 @@ export function useWebSocket(
     }
 
     const serverBase = getServerBaseUrl();
-    const wsUrl =
-      serverBase.replace(/^http/, "ws") +
-      `/api/ws?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(connectionIdRef.current)}`;
+    const wsUrl = `${serverBase.replace(/^http/, "ws")}/api/ws`;
+    const authProtocol = createWebSocketAuthProtocol(
+      token,
+      connectionIdRef.current,
+    );
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, authProtocol);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -239,9 +242,12 @@ export function useWebSocket(
       if (onAck) {
         ackListeners.current.set("agent.run", onAck);
       }
+      // The socket is already authenticated by its handshake subprotocol. Do
+      // not duplicate the browser access token in every command frame.
+      const { accessToken: _accessToken, ...commandPayload } = payload;
       const sent = sendCommand(
         "agent.run",
-        payload as unknown as Record<string, unknown>,
+        commandPayload as Record<string, unknown>,
       );
       if (!sent) {
         // Remove the dangling ack listener so callers don't hang forever

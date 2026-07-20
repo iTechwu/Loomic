@@ -11,7 +11,10 @@ type RecordedQuery = { text: string; params: unknown[] };
 type Row = Record<string, unknown>;
 
 type FakeClient = {
-  query: (text: string, params?: unknown[]) => Promise<{
+  query: (
+    text: string,
+    params?: unknown[],
+  ) => Promise<{
     rows: unknown[];
     rowCount: number;
   }>;
@@ -92,9 +95,9 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
     expect(texts.some((t) => t.includes("pg_advisory_xact_lock"))).toBe(true);
     expect(texts.some((t) => t.includes("for update"))).toBe(true);
     // A ready row must not trigger the provisioning upsert.
-    expect(
-      texts.some((t) => /insert into user_credentials/.test(t)),
-    ).toBe(false);
+    expect(texts.some((t) => /insert into user_credentials/.test(t))).toBe(
+      false,
+    );
   });
 
   it("returns in_flight when an unexpired provisioning row exists", async () => {
@@ -110,9 +113,9 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
 
     expect(result.status).toBe("in_flight");
     const texts = queries.map((q) => q.text);
-    expect(
-      texts.some((t) => /insert into user_credentials/.test(t)),
-    ).toBe(false);
+    expect(texts.some((t) => /insert into user_credentials/.test(t))).toBe(
+      false,
+    );
   });
 
   it("takes the lock and inserts a provisioning row when none exists", async () => {
@@ -132,10 +135,10 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
       /insert into user_credentials/.test(q.text),
     );
     expect(upsert).toBeDefined();
-    expect(upsert!.text).toContain("provisioning_started_at = now()");
-    expect(upsert!.text).toContain(
+    expect(upsert?.text).toContain("provisioning_started_at = now()");
+    expect(upsert?.text).toContain(
       "provision_attempt_count = excluded.provision_attempt_count",
     );
-    expect(upsert!.params).toContain(1);
+    expect(upsert?.params).toContain(1);
   });
 });

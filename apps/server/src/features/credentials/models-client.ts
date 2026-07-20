@@ -199,11 +199,7 @@ export async function provisionSeedanceCredentials(
 
 function validateConfig(config: ModelsProvisionConfig): void {
   if (!config.internalApiSecret?.trim()) {
-    throw new ModelsProvisionError(
-      "internalApiSecret is required",
-      0,
-      "sdk",
-    );
+    throw new ModelsProvisionError("internalApiSecret is required", 0, "sdk");
   }
   if (!config.serviceName?.trim()) {
     throw new ModelsProvisionError("serviceName is required", 0, "sdk");
@@ -215,8 +211,7 @@ function validateConfig(config: ModelsProvisionConfig): void {
 
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  if (error.name === "TimeoutError" || error.name === "AbortError")
-    return true;
+  if (error.name === "TimeoutError" || error.name === "AbortError") return true;
   // Node fetch/undici may throw AbortError with a cause that is a TimeoutError.
   const cause = (error as { cause?: Error }).cause;
   if (cause && (cause.name === "TimeoutError" || cause.name === "AbortError"))

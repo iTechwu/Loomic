@@ -93,10 +93,7 @@ export function createCredentialsService(
   const logger = options.logger ?? consoleLogger;
   const inFlightTimeoutMs =
     options.inFlightTimeoutMs ??
-    Math.max(
-      provisionConfig.timeoutMs ?? 8_000,
-      DEFAULT_IN_FLIGHT_TIMEOUT_MS,
-    );
+    Math.max(provisionConfig.timeoutMs ?? 8_000, DEFAULT_IN_FLIGHT_TIMEOUT_MS);
 
   return {
     async ensureProvisioned({ userId, ssoUserId, ssoTeamId }) {
@@ -110,9 +107,7 @@ export function createCredentialsService(
         return;
       }
       const resolvedSsoUserId =
-        ssoUserId ??
-        (await repository.findAny(userId))?.ssoUserId ??
-        undefined;
+        ssoUserId ?? (await repository.findAny(userId))?.ssoUserId ?? undefined;
       if (!resolvedSsoUserId) {
         logger.warn("[credentials] ensure_skipped_no_sso_subject", {
           userId,
@@ -193,12 +188,9 @@ export function createCredentialsService(
       } catch (error) {
         const code =
           error instanceof ModelsProvisionError ? error.code : "http";
-        const status =
-          error instanceof ModelsProvisionError ? error.status : 0;
+        const status = error instanceof ModelsProvisionError ? error.status : 0;
         const statusCategory =
-          code === "timeout"
-            ? "timeout"
-            : `${Math.floor(status / 100) || 5}xx`;
+          code === "timeout" ? "timeout" : `${Math.floor(status / 100) || 5}xx`;
         // Sanitized error: correlationId + classification only, never the raw
         // message (which may carry response fragments) or any secret.
         const sanitizedError = `models provision ${code} (${statusCategory}) corr=${correlationId}`;

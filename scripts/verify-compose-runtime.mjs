@@ -1,4 +1,6 @@
-const baseUrl = new URL(process.env.COMPOSE_RUNTIME_BASE_URL ?? "http://127.0.0.1:8080");
+const baseUrl = new URL(
+  process.env.COMPOSE_RUNTIME_BASE_URL ?? "http://127.0.0.1:8080",
+);
 
 async function request(path) {
   return fetch(new URL(path, baseUrl), { redirect: "manual" });
@@ -44,9 +46,14 @@ for (const legacyPath of ["/login", "/register"]) {
 
 const landing = await request("/");
 const requiredHeaderValues = {
-  "content-security-policy": ["default-src 'self'", "object-src 'none'", "frame-ancestors 'self'"],
+  "content-security-policy": [
+    "default-src 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+  ],
   "permissions-policy": ["camera=()", "microphone=()"],
   "referrer-policy": ["strict-origin-when-cross-origin"],
+  "strict-transport-security": ["max-age=31536000", "includeSubDomains"],
   "x-content-type-options": ["nosniff"],
 };
 for (const [header, fragments] of Object.entries(requiredHeaderValues)) {
@@ -54,6 +61,17 @@ for (const [header, fragments] of Object.entries(requiredHeaderValues)) {
   if (!value || !fragments.every((fragment) => value.includes(fragment))) {
     throw new Error(`Compose runtime landing response is missing ${header}.`);
   }
+}
+
+// A plain HTTP request is not a WebSocket handshake, so Fastify may return a
+// 4xx response. The important boundary is that Nginx proxies it to Fastify
+// rather than falling through to static index.html.
+const websocketProbe = await request("/api/ws");
+const websocketBody = await websocketProbe.text();
+if (websocketProbe.status === 200 || /<html[\s>]/i.test(websocketBody)) {
+  throw new Error(
+    "Compose runtime did not retain Fastify ownership of /api/ws.",
+  );
 }
 
 console.log(`Verified Compose Nginx + Fastify runtime at ${baseUrl.origin}.`);

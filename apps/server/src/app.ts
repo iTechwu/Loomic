@@ -81,7 +81,7 @@ import { registerMarketplaceRoutes } from "./http/skills-marketplace.js";
 import { registerViewerRoutes } from "./http/viewer.js";
 import { CanvasEventBuffer } from "./ws/event-buffer.js";
 import { ConnectionManager } from "./ws/connection-manager.js";
-import { registerWsRoute } from "./ws/handler.js";
+import { registerWsRoute, selectWebSocketAuthProtocol } from "./ws/handler.js";
 import { createDatabasePool } from "./database/pool.js";
 import { createNativeDataRepository } from "./database/native-data-repository.js";
 import { createNativeSkillRepository } from "./database/skill-repository.js";
@@ -129,7 +129,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     limits: { fileSize: 10 * 1024 * 1024 },
   });
   void app.register(async (instance) => {
-    await instance.register(websocket);
+    await instance.register(websocket, {
+      options: { handleProtocols: selectWebSocketAuthProtocol },
+    });
     await registerWsRoute(instance, {
       agentRuns,
       agentRunMetadataService,

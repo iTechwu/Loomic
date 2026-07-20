@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createCredentialsService } from "./credentials-service.js";
 import type {
   ProvisionLockResult,
   UserCredentialRow,
   UserCredentialsRepository,
 } from "./credentials-repository.js";
+import { createCredentialsService } from "./credentials-service.js";
 import { provisionSeedanceCredentials } from "./models-client.js";
 
 vi.mock("./models-client.js", async (importOriginal) => ({
@@ -222,7 +222,8 @@ describe("CredentialsService", () => {
       ssoTeamId: TEAM_ID,
     });
     expect(repository.saveFailed).toHaveBeenCalledTimes(1);
-    const failure = vi.mocked(repository.saveFailed).mock.calls[0]!;
+    const failure = vi.mocked(repository.saveFailed).mock.calls[0];
+    if (!failure) throw new Error("expected saveFailed to have been called");
     // The persisted error must not leak response body or secrets — only the
     // classification and a correlation handle.
     expect(failure[2]).toMatch(/models provision http \(5xx\) corr=/);
@@ -273,42 +274,45 @@ describe("CredentialsService", () => {
     // callers see "ready".
     let provisioning = false;
     let readyCommitted = false;
-    let resolveProvision: (() => void) | null = null;
+    let resolveProvision: () => void = () => {};
     const lockCalls: Array<{ userId: string; ssoTeamId: string }> = [];
 
     const repository: UserCredentialsRepository = {
       findReady: vi.fn(async () =>
-        readyCommitted
-          ? readyRow({ provisionAttemptCount: 0 })
-          : null,
+        readyCommitted ? readyRow({ provisionAttemptCount: 0 }) : null,
       ),
       findAny: vi.fn(async () => null),
-      takeProvisionLock: vi.fn(async ({ userId, ssoTeamId }) => {
-        lockCalls.push({ userId, ssoTeamId });
-        if (readyCommitted) {
-          return { status: "ready", row: readyRow({ provisionAttemptCount: 0 }) };
-        }
-        if (provisioning) {
+      takeProvisionLock: vi.fn(
+        async ({ userId, ssoTeamId }): Promise<ProvisionLockResult> => {
+          lockCalls.push({ userId, ssoTeamId });
+          if (readyCommitted) {
+            return {
+              status: "ready",
+              row: readyRow({ provisionAttemptCount: 0 }),
+            };
+          }
+          if (provisioning) {
+            return {
+              status: "in_flight",
+              row: readyRow({
+                provisionState: "provisioning",
+                provisionAttemptCount: 1,
+                provisioningStartedAt: new Date(),
+                apikeyCiphertext: null,
+              }),
+            };
+          }
+          provisioning = true;
           return {
-            status: "in_flight",
+            status: "locked",
             row: readyRow({
               provisionState: "provisioning",
               provisionAttemptCount: 1,
-              provisioningStartedAt: new Date(),
               apikeyCiphertext: null,
             }),
           };
-        }
-        provisioning = true;
-        return {
-          status: "locked",
-          row: readyRow({
-            provisionState: "provisioning",
-            provisionAttemptCount: 1,
-            apikeyCiphertext: null,
-          }),
-        };
-      }),
+        },
+      ),
       saveReady: vi.fn(async () => {
         readyCommitted = true;
         provisioning = false;
@@ -354,13 +358,16 @@ describe("CredentialsService", () => {
     // Yield so both callers reach takeProvisionLock before the POST resolves.
     await Promise.resolve();
     await Promise.resolve();
-    resolveProvision?.();
+    resolveProvision();
     await pending;
 
     // Both callers consulted the lock; exactly one remote POST was issued.
     expect(lockCalls).toHaveLength(2);
-    expect(lockCalls.every((c) => c.userId === LOCAL_USER_ID && c.ssoTeamId === TEAM_ID))
-      .toBe(true);
+    expect(
+      lockCalls.every(
+        (c) => c.userId === LOCAL_USER_ID && c.ssoTeamId === TEAM_ID,
+      ),
+    ).toBe(true);
     expect(provisionSeedanceCredentials).toHaveBeenCalledTimes(1);
     expect(repository.saveReady).toHaveBeenCalledTimes(1);
   });
