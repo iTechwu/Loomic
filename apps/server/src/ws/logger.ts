@@ -68,7 +68,10 @@ export function sanitizePipelineLogContext(
         : Array.isArray(value)
           ? value.map((item) =>
               item && typeof item === "object"
-                ? sanitizePipelineLogContext(item as Record<string, unknown>, seen)
+                ? sanitizePipelineLogContext(
+                    item as Record<string, unknown>,
+                    seen,
+                  )
                 : item,
             )
           : value && typeof value === "object"

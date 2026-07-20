@@ -28,8 +28,8 @@ importers:
   apps/server:
     dependencies:
       '@dofe/models-sdk':
-        specifier: ^0.2.9
-        version: 0.2.9
+        specifier: ^0.2.10
+        version: 0.2.10
       '@fastify/multipart':
         specifier: ^9.4.0
         version: 9.4.0
@@ -530,8 +530,8 @@ packages:
   '@dofe/design-tokens@0.1.0':
     resolution: {integrity: sha512-pON6ypSdAmyJZRpa2/HyAJR8Cs+D3gIrpji4eMZGBQ6CSdtQTUpFR1siFrr2hzrMPsCEuJ+xVPXaBBnSDqyR6Q==}
 
-  '@dofe/models-sdk@0.2.9':
-    resolution: {integrity: sha512-7p5LgetvebnUibe9E/VofD6g4yUBSff8drOipDeGfvmuluSE0DxqQbnJ59mgPuUV9WZ1coqGnc6mAunpDdg46Q==}
+  '@dofe/models-sdk@0.2.10':
+    resolution: {integrity: sha512-eE+4hQmV2akoOigwtdWUsxROiXMzgP7nJbgBu3/v29GEE2E//Hr3i2GfgUqJGZVpVFtE/bvh05shcAqrXjPcyA==}
     engines: {node: '>=18.0.0'}
 
   '@dotenvx/dotenvx@1.57.2':
@@ -5247,7 +5247,7 @@ snapshots:
 
   '@dofe/design-tokens@0.1.0': {}
 
-  '@dofe/models-sdk@0.2.9': {}
+  '@dofe/models-sdk@0.2.10': {}
 
   '@dotenvx/dotenvx@1.57.2':
     dependencies:

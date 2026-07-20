@@ -466,6 +466,11 @@ stateDiagram-v2
 | 89（复审循环 BE：多出口一致性） | logger 在构造 JSONL entry 与 stdout 文本前均使用同一 sanitized base/context，避免仅保护文件或仅保护控制台。 | 类型检查与 logger 单测通过。 | 已完成日志出口一致性。 |
 | 90（复审循环 BF：脱敏回归测试） | 新增纯函数测试锁定 userId、prompt、token 与稳定 failureCategory 的输出边界。 | Server 59 项测试通过。 | 已完成可回归的日志隐私契约。 |
 | 91（复审循环 BG：日志治理对账） | 对 pipeline 调用点与基础设施规则复核，确认日志治理不替代业务持久化、用户可见错误或平台审计责任。 | Server typecheck、logger 测试及 Biome `807 <= 832` 通过。 | 五轮日志基础设施闭环完成；平台留存/访问控制仍待 observability owner 验收。 |
+| 92（复审循环 BH：运行标识基础设施脱敏） | PipelineLogger sensitive-key 规则加入 runId。 | Logger 单测通过。 | 已完成运行标识默认保护。 |
+| 93（复审循环 BI：数组 context 脱敏） | 日志 sanitizer 递归遍历数组内对象，connectionId 等敏感键不会通过批量 context 泄露。 | Logger 单测覆盖。 | 已完成容器字段一致性。 |
+| 94（复审循环 BJ：循环 context 容错） | sanitizer 使用 WeakSet 检测循环对象并以 redacted 标记替代，日志不会成为业务异常源。 | 新增循环对象测试通过。 | 已完成日志路径容错。 |
+| 95（复审循环 BK：递归输出复核） | JSONL 与 stdout 继续复用同一递归 sanitized context。 | Server 60 项测试与 typecheck 通过。 | 已完成多出口递归保护。 |
+| 96（复审循环 BL：日志边界最终对账） | 对第 92-95 轮的字段、数组、循环对象和日志出口逐项复核。 | Biome `807 <= 832`、Server typecheck 与 logger tests 通过。 | 五轮日志鲁棒性闭环完成；平台日志留存和访问权限继续由 owner 验收。 |
 
 ### 外部阻塞项
 
