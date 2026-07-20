@@ -1,9 +1,10 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { ServerEnv } from "../config/env.js";
 import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
 import { ssoProfileEmail } from "../sso-identity-email.js";
 import {
   type SsoTenantTeamContext,
@@ -12,9 +13,14 @@ import {
 
 const PKCE_COOKIE = "lovart_oidc_pkce";
 const REFRESH_COOKIE = "lovart_oidc_refresh";
+const ID_TOKEN_COOKIE = "lovart_oidc_id";
 const OIDC_TIMEOUT_MS = 10_000;
 const PKCE_MAX_AGE_SECONDS = 10 * 60;
 const REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const MAX_RETURN_TO_LENGTH = 2_048;
+// SSO ID Tokens expire after ten minutes. Never retain a logout hint longer
+// than the credential whose identity it represents.
+const ID_TOKEN_MAX_AGE_SECONDS = 10 * 60;
 
 type PkceState = {
   codeVerifier: string;
@@ -69,6 +75,7 @@ export async function registerOidcAuthRoutes(
   options: {
     env: ServerEnv;
     identities: SsoIdentityRepository;
+    credentialsService?: CredentialsService;
   },
 ) {
   const config = tryLoadOidcConfig(options.env);
@@ -89,10 +96,10 @@ export async function registerOidcAuthRoutes(
   }
 
   app.get("/api/auth/oidc/start", async (request, reply) => {
-    if (!config) return sendSsoNotConfigured(reply);
-    const returnTo = safeReturnTo(
-      (request.query as { returnTo?: string }).returnTo,
-    );
+    if (!config) return sendSsoNotConfigured(request, reply);
+    const query = request.query as { returnTo?: string; uiLocale?: string };
+    const returnTo = safeReturnTo(query.returnTo);
+    const uiLocale = safeSsoUiLocale(query.uiLocale);
     const state = randomUrlValue(32);
     const nonce = randomUrlValue(32);
     const codeVerifier = randomUrlValue(64);
@@ -113,6 +120,7 @@ export async function registerOidcAuthRoutes(
     authorizationUrl.searchParams.set("nonce", nonce);
     authorizationUrl.searchParams.set("code_challenge", codeChallenge);
     authorizationUrl.searchParams.set("code_challenge_method", "S256");
+    if (uiLocale) authorizationUrl.searchParams.set("ui_locales", uiLocale);
 
     setCookie(
       reply,
@@ -126,12 +134,15 @@ export async function registerOidcAuthRoutes(
         secure: isSecureCookieRequired(options.env.webOrigin),
       },
     );
-    request.log.info({ returnTo }, "oidc_authorization_started");
+    request.log.info(
+      { entryRoute: routeOnly(returnTo), ...(uiLocale ? { uiLocale } : {}) },
+      "oidc_authorization_started",
+    );
     return reply.redirect(authorizationUrl.toString(), 302);
   });
 
   app.post("/api/auth/oidc/exchange", async (request, reply) => {
-    if (!config || !remoteJwks) return sendSsoNotConfigured(reply);
+    if (!config || !remoteJwks) return sendSsoNotConfigured(request, reply);
     const body = request.body as
       | { code?: unknown; state?: unknown }
       | undefined;
@@ -151,7 +162,10 @@ export async function registerOidcAuthRoutes(
         { hasCode: Boolean(code), hasState: Boolean(state) },
         "oidc_callback_rejected",
       );
-      return reply.code(400).send({ error: "invalid_callback" });
+      return reply
+        .header("x-request-id", request.id)
+        .code(400)
+        .send({ error: "invalid_callback", requestId: request.id });
     }
 
     try {
@@ -171,6 +185,7 @@ export async function registerOidcAuthRoutes(
         tokens,
         options.identities,
         config,
+        options.credentialsService,
       );
 
       if (tokens.refresh_token) {
@@ -181,17 +196,30 @@ export async function registerOidcAuthRoutes(
           secure: isSecureCookieRequired(options.env.webOrigin),
         });
       }
+      persistIdTokenCookie(reply, tokens.id_token, options.env.webOrigin);
 
-      request.log.info({ userId: identity.id }, "oidc_exchange_completed");
+      request.log.info(
+        {
+          hasTenantContext: Boolean(session.tenantContext),
+          userIdHash: hashIdentityId(identity.id),
+        },
+        "oidc_exchange_completed",
+      );
       return reply.code(200).send({ ...session, returnTo: pkce.returnTo });
-    } catch (error) {
-      request.log.warn({ err: error }, "oidc_exchange_failed");
-      return reply.code(401).send({ error: "authentication_failed" });
+    } catch {
+      request.log.warn(
+        { failureCategory: "token_or_identity_validation" },
+        "oidc_exchange_failed",
+      );
+      return reply
+        .header("x-request-id", request.id)
+        .code(401)
+        .send({ error: "authentication_failed", requestId: request.id });
     }
   });
 
   app.post("/api/auth/oidc/refresh", async (request, reply) => {
-    if (!config || !remoteJwks) return sendSsoNotConfigured(reply);
+    if (!config || !remoteJwks) return sendSsoNotConfigured(request, reply);
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     if (!refreshToken) {
       return reply.code(401).send({ error: "session_expired" });
@@ -208,6 +236,7 @@ export async function registerOidcAuthRoutes(
         tokens,
         options.identities,
         config,
+        options.credentialsService,
       );
       if (tokens.refresh_token) {
         setCookie(reply, REFRESH_COOKIE, tokens.refresh_token, {
@@ -217,41 +246,70 @@ export async function registerOidcAuthRoutes(
           secure: isSecureCookieRequired(options.env.webOrigin),
         });
       }
+      persistIdTokenCookie(reply, tokens.id_token, options.env.webOrigin);
 
-      request.log.info({ userId: identity.id }, "oidc_session_refreshed");
+      request.log.info(
+        { userIdHash: hashIdentityId(identity.id) },
+        "oidc_session_refreshed",
+      );
       return reply.code(200).send(session);
-    } catch (error) {
+    } catch {
       clearCookie(
         reply,
         REFRESH_COOKIE,
         "/api/auth/oidc",
         options.env.webOrigin,
       );
-      request.log.warn({ err: error }, "oidc_refresh_failed");
+      request.log.warn(
+        { failureCategory: "token_or_identity_validation" },
+        "oidc_refresh_failed",
+      );
       return reply.code(401).send({ error: "session_expired" });
     }
   });
 
   app.post("/api/auth/oidc/logout", async (request, reply) => {
-    if (!config) return sendSsoNotConfigured(reply);
+    if (!config) return sendSsoNotConfigured(request, reply);
     const refreshToken = readCookie(request, REFRESH_COOKIE);
+    const idTokenHint = readCookie(request, ID_TOKEN_COOKIE);
     clearCookie(reply, REFRESH_COOKIE, "/api/auth/oidc", options.env.webOrigin);
+    clearCookie(
+      reply,
+      ID_TOKEN_COOKIE,
+      "/api/auth/oidc/logout",
+      options.env.webOrigin,
+    );
 
     if (refreshToken) {
       try {
         await revokeToken(config, refreshToken);
-      } catch (error) {
-        request.log.warn({ err: error }, "oidc_revocation_failed");
+      } catch {
+        request.log.warn(
+          { failureCategory: "revocation_failed" },
+          "oidc_revocation_failed",
+        );
       }
     }
 
     const logoutUrl = new URL("oauth/logout", withTrailingSlash(config.apiUrl));
     logoutUrl.searchParams.set(
       "post_logout_redirect_uri",
-      `${options.env.webOrigin.replace(/\/+$/, "")}/login`,
+      `${options.env.webOrigin.replace(/\/+$/, "")}/?signed_out=1`,
     );
-    request.log.info("oidc_logout_completed");
-    return reply.code(200).send({ logoutUrl: logoutUrl.toString() });
+    if (idTokenHint) logoutUrl.searchParams.set("id_token_hint", idTokenHint);
+    request.log.info(
+      {
+        globalLogoutRequested: Boolean(idTokenHint),
+        revocationAttempted: Boolean(refreshToken),
+      },
+      "oidc_logout_completed",
+    );
+    // Old sessions created before ID-token storage still receive a successful
+    // local logout. Do not navigate them to SSO's GET logout, which correctly
+    // refuses cookie-only logout requests and would otherwise show its login UI.
+    return reply.code(200).send({
+      logoutUrl: idTokenHint ? logoutUrl.toString() : null,
+    });
   });
 }
 
@@ -279,8 +337,17 @@ function tryLoadOidcConfig(env: ServerEnv) {
 
 type OidcConfig = NonNullable<ReturnType<typeof tryLoadOidcConfig>>;
 
-function sendSsoNotConfigured(reply: FastifyReply) {
-  return reply.code(503).send({ error: "sso_not_configured" });
+function sendSsoNotConfigured(request: FastifyRequest, reply: FastifyReply) {
+  // Keep the browser-visible error stable while retaining a correlation handle
+  // for deployment/configuration incidents. Never expose missing env names.
+  request.log.warn(
+    { failureCategory: "sso_not_configured" },
+    "oidc_request_unavailable",
+  );
+  return reply
+    .header("x-request-id", request.id)
+    .code(503)
+    .send({ error: "sso_not_configured", requestId: request.id });
 }
 
 async function exchangeToken(
@@ -373,6 +440,7 @@ async function createDataSession(
   tokens: SsoTokenResponse,
   identities: SsoIdentityRepository,
   config: OidcConfig,
+  credentialsService?: CredentialsService,
 ): Promise<BrowserSession> {
   if (!isUuid(identity.id))
     throw new Error("SSO subject must be a UUID for the current data schema");
@@ -392,6 +460,23 @@ async function createDataSession(
         : {}),
     }).catch(() => undefined),
   ]);
+
+  // Provision per-user models credentials. The OIDC path is the only one that
+  // carries the real SSO team id, so it owns first-time provisioning;
+  // ensureViewer handles retries on later requests. Fire-and-forget so a models
+  // outage never blocks login.
+  const ssoTeamId = tenantContext?.teams?.[0]?.id;
+  if (credentialsService && ssoTeamId) {
+    void credentialsService
+      .ensureProvisioned({
+        userId: dataUserId,
+        ssoUserId: identity.id,
+        ssoTeamId,
+      })
+      .catch(() => {
+        /* provisioning failures are logged inside ensureProvisioned */
+      });
+  }
 
   return {
     accessToken: tokens.access_token,
@@ -430,12 +515,25 @@ function withTrailingSlash(url: string) {
 function safeReturnTo(value: unknown): string {
   if (
     typeof value !== "string" ||
+    value.length > MAX_RETURN_TO_LENGTH ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.startsWith("/\\")
   )
     return "/home";
   return value;
+}
+
+function safeSsoUiLocale(value: unknown): "zh-CN" | "en" | undefined {
+  return value === "zh-CN" || value === "en" ? value : undefined;
+}
+
+function routeOnly(returnTo: string): string {
+  return returnTo.split(/[?#]/, 1)[0] ?? "/home";
+}
+
+function hashIdentityId(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
 function isUuid(value: string): boolean {
@@ -514,6 +612,20 @@ function clearCookie(
     maxAge: 0,
     path,
     sameSite,
+    secure: isSecureCookieRequired(webOrigin),
+  });
+}
+
+function persistIdTokenCookie(
+  reply: FastifyReply,
+  idToken: string | undefined,
+  webOrigin: string,
+) {
+  if (!idToken) return;
+  setCookie(reply, ID_TOKEN_COOKIE, idToken, {
+    httpOnly: true,
+    maxAge: ID_TOKEN_MAX_AGE_SECONDS,
+    path: "/api/auth/oidc/logout",
     secure: isSecureCookieRequired(webOrigin),
   });
 }

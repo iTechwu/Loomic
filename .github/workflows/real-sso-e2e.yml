@@ -1,0 +1,58 @@
+name: Real SSO E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  credentialed-sso:
+    runs-on: ubuntu-latest
+    environment: sso-e2e
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lovart.dofe/web exec playwright install --with-deps chromium
+      - name: Validate protected E2E environment
+        run: node scripts/verify-real-sso-e2e-env.mjs
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          E2E_SSO_ORIGIN: ${{ vars.E2E_SSO_ORIGIN }}
+          E2E_SSO_PASSWORD: ${{ secrets.E2E_SSO_PASSWORD }}
+          E2E_SSO_PASSWORD_SELECTOR: ${{ secrets.E2E_SSO_PASSWORD_SELECTOR }}
+          E2E_SSO_SUBMIT_SELECTOR: ${{ secrets.E2E_SSO_SUBMIT_SELECTOR }}
+          E2E_SSO_USERNAME: ${{ secrets.E2E_SSO_USERNAME }}
+          E2E_SSO_USERNAME_SELECTOR: ${{ secrets.E2E_SSO_USERNAME_SELECTOR }}
+      - run: pnpm run verify:same-origin-runtime
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          E2E_REQUIRE_SECURITY_HEADERS: "1"
+          E2E_REQUIRE_EXPECTED_SSO_ORIGIN: "1"
+          E2E_SSO_ORIGIN: ${{ vars.E2E_SSO_ORIGIN }}
+      - run: pnpm --filter @lovart.dofe/web test:e2e
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          E2E_SSO_ORIGIN: ${{ vars.E2E_SSO_ORIGIN }}
+          E2E_SAME_ORIGIN: "1"
+          E2E_SSO_PASSWORD: ${{ secrets.E2E_SSO_PASSWORD }}
+          E2E_SSO_PASSWORD_SELECTOR: ${{ secrets.E2E_SSO_PASSWORD_SELECTOR }}
+          E2E_SSO_SUBMIT_SELECTOR: ${{ secrets.E2E_SSO_SUBMIT_SELECTOR }}
+          E2E_SSO_USERNAME: ${{ secrets.E2E_SSO_USERNAME }}
+          E2E_SSO_USERNAME_SELECTOR: ${{ secrets.E2E_SSO_USERNAME_SELECTOR }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: real-sso-playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore

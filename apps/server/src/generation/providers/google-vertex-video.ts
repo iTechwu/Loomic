@@ -8,6 +8,10 @@ import type {
   VideoProvider,
 } from "../types.js";
 import { fetchAsBase64, GenerationError } from "../utils.js";
+import {
+  logOperationalFailure,
+  logOperationalInfo,
+} from "../../utils/operational-log.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -271,7 +275,10 @@ export class GoogleVertexVideoProvider implements VideoProvider {
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.error(`[google-vertex-video] generateVideos API error:`, detail);
+      logOperationalFailure(
+        "[google-vertex-video] generateVideos API error",
+        "vertex_video_generate",
+      );
       if (detail.includes("PERMISSION_DENIED") || detail.includes("403") || detail.includes("SERVICE_DISABLED")) {
         throw new GenerationError(
           PROVIDER_NAME,
@@ -303,7 +310,10 @@ export class GoogleVertexVideoProvider implements VideoProvider {
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        console.error(`[google-vertex-video] polling error:`, detail);
+        logOperationalFailure(
+          "[google-vertex-video] polling error",
+          "vertex_video_poll",
+        );
         throw new GenerationError(
           PROVIDER_NAME,
           "api_error",
@@ -314,7 +324,10 @@ export class GoogleVertexVideoProvider implements VideoProvider {
 
     // Check for operation-level errors.
     if (operation.error) {
-      console.error(`[google-vertex-video] operation error:`, JSON.stringify(operation.error));
+      logOperationalFailure(
+        "[google-vertex-video] operation error",
+        "vertex_video_operation",
+      );
       throw new GenerationError(
         PROVIDER_NAME,
         "api_error",
@@ -355,8 +368,10 @@ export class GoogleVertexVideoProvider implements VideoProvider {
     // Vertex AI returns videoBytes (base64 inline data) instead of a download URI.
     // Developer API returns a URI; Vertex AI returns the raw bytes directly.
     if (video?.videoBytes) {
-      const sizeKB = Math.round(video.videoBytes.length * 0.75 / 1024);
-      console.log(`[google-vertex-video] Got inline video: ${mimeType}, ~${sizeKB}KB`);
+      logOperationalInfo(
+        "[google-vertex-video] inline video received",
+        "vertex_video_inline",
+      );
       const dataUri = `data:${mimeType};base64,${video.videoBytes}`;
       return { url: dataUri, mimeType, width, height, durationSeconds };
     }
@@ -373,8 +388,11 @@ export class GoogleVertexVideoProvider implements VideoProvider {
         }
         const separator = video.uri.includes("?") ? "&" : "?";
         authenticatedUrl = `${video.uri}${separator}access_token=${accessToken}`;
-      } catch (err) {
-        console.error(`[google-vertex-video] Failed to get access token for video download:`, err);
+      } catch {
+        logOperationalFailure(
+          "[google-vertex-video] download token unavailable",
+          "vertex_video_download_token",
+        );
         authenticatedUrl = video.uri;
       }
       return { url: authenticatedUrl, mimeType, width, height, durationSeconds };

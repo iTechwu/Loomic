@@ -1,0 +1,111 @@
+"use client";
+
+import { useCallback } from "react";
+
+import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
+import { Button } from "@/components/ui/button";
+
+export type AuthTransferError =
+  | "cancelled"
+  | "callback_invalid"
+  | "exchange_failed"
+  | "viewer_bootstrap_failed"
+  | "service_unavailable"
+  | "timeout";
+
+const ERROR_COPY: Record<AuthTransferError, string> = {
+  callback_invalid: "登录信息不完整或已失效，请重新开始。",
+  cancelled: "你已取消 DoFe 账户授权。",
+  exchange_failed: "DoFe 无法验证此次授权，请重新开始。",
+  timeout: "身份验证耗时过长，请重新开始。",
+  viewer_bootstrap_failed: "账户已验证，但工作区暂时无法打开。",
+  service_unavailable: "统一身份服务暂时不可用，请稍后重试。",
+};
+
+export function AuthTransferScreen({
+  error,
+  onRetry,
+  retryLabel = "重新开始",
+  supportId,
+}: {
+  error?: AuthTransferError;
+  onRetry?: () => void;
+  retryLabel?: string;
+  supportId?: string;
+}) {
+  const focusHeading = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus();
+  }, []);
+
+  if (error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+        <section
+          className="w-full max-w-sm space-y-6 text-center"
+          role="alert"
+          aria-labelledby="auth-transfer-error-title"
+        >
+          <LovartDofeLogo className="mx-auto size-10 text-foreground" />
+          <div className="space-y-2">
+            <h1
+              ref={focusHeading}
+              id="auth-transfer-error-title"
+              tabIndex={-1}
+              className="text-xl font-semibold outline-none"
+            >
+              无法完成 DoFe 账户授权
+            </h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {ERROR_COPY[error]}
+            </p>
+            {supportId ? (
+              <p className="font-mono text-xs text-muted-foreground">
+                支持编号：{supportId}
+              </p>
+            ) : null}
+          </div>
+          {/* WCAG 2.2 SC 2.5.8 / 文档 4.4：认证异常操作纵向排列，触控目标至少 44px。 */}
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              className="h-11 w-full text-foreground"
+              onClick={onRetry}
+            >
+              {retryLabel}
+            </Button>
+            <a
+              href="/"
+              className="inline-flex h-11 min-h-11 items-center justify-center rounded-lg text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              返回首页
+            </a>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+      <output className="sr-only" aria-labelledby="auth-transfer-loading-title">
+        正在验证 DoFe 账户
+      </output>
+      <div className="flex flex-col items-center gap-4 text-center">
+        <LovartDofeLogo className="size-10 text-foreground" />
+        <div className="space-y-1">
+          <h1
+            ref={focusHeading}
+            id="auth-transfer-loading-title"
+            tabIndex={-1}
+            className="text-base font-semibold outline-none"
+          >
+            正在验证 DoFe 账户
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            请稍候，正在打开你的工作区。
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}

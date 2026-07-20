@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { VideoGenerationPreference } from "@lovart.dofe/shared";
 
 const STORAGE_KEY = "lovart.dofe:video-model-preference";
-const DEFAULT_MODEL = "google/veo-3.1";
+const DEFAULT_MODEL = "seedance-2.0";
 
 export type VideoModelPreference = VideoGenerationPreference;
 

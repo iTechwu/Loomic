@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AgentSection } from "@/components/agent-section";
 import { ProfileSection } from "@/components/profile-section";
@@ -15,6 +15,11 @@ import {
   updateProfile,
   updateWorkspaceSettings,
 } from "@/lib/server-api";
+import {
+  getBrowserReturnTo,
+  getSsoAccountUrl,
+  replaceWithSsoLogin,
+} from "@/lib/sso-auth";
 
 type SettingsTab = "profile" | "agent";
 
@@ -63,7 +68,7 @@ export default function SettingsPage() {
       setDefaultModel(settings.settings.defaultModel);
     } catch (err) {
       if (err instanceof ApiAuthError) {
-        // Workspace layout handles auth redirect
+        replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
     } finally {
@@ -140,6 +145,7 @@ export default function SettingsPage() {
       <div className="max-w-xl">
         {activeTab === "profile" ? (
           <ProfileSection
+            accountUrl={getSsoAccountUrl()}
             displayName={profile.displayName}
             email={profile.email}
             onSave={handleProfileSave}

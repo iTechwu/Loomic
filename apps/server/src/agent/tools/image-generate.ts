@@ -10,7 +10,7 @@ import {
   type AvailableModel,
 } from "../../generation/providers/registry.js";
 
-const DEFAULT_MODEL = "black-forest-labs/flux-kontext-pro";
+const DEFAULT_MODEL = "flux-kontext-pro";
 
 /**
  * Build the zod schema dynamically from the models available in the registry.

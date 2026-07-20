@@ -1,4 +1,5 @@
 import type { ServerEnv } from "../config/env.js";
+import { logOperationalWarning } from "../utils/operational-log.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
 
@@ -7,15 +8,24 @@ export type DofeModelProtocol = "anthropic" | "gemini" | "openai";
 export type DofeRouterModel = {
   id: string;
   ownedBy?: string;
+  modelType?: string;
+  capabilities?: string[];
 };
 
 type OpenAIModelListResponse = {
   data?: Array<{ id?: unknown; owned_by?: unknown }>;
 };
 
+type ModelCapabilitiesResponse = {
+  model_type?: unknown;
+  capabilities?: Array<{ capabilityName?: unknown }>;
+};
+
 type FetchLike = typeof fetch;
 export type DofeModelCatalog = {
   listChatModels(): Promise<DofeRouterModel[]>;
+  listImageModels(): Promise<DofeRouterModel[]>;
+  listVideoModels(): Promise<DofeRouterModel[]>;
 };
 
 export function hasDofeModelRouter(
@@ -25,9 +35,9 @@ export function hasDofeModelRouter(
 }
 
 /**
- * The gateway catalog returns API-key-scoped aliases. It currently omits
- * capability metadata, so known asynchronous image/video aliases are excluded
- * from the Agent picker until that public contract includes modalities.
+ * The gateway catalog is the only model-id authority. `/v1/models` supplies
+ * the API-key-scoped aliases and the capability endpoint classifies each one,
+ * including asynchronous image and video models.
  */
 export function createDofeModelCatalog(
   env: Pick<ServerEnv, "dofeModelApiKey" | "dofeModelBaseUrl">,
@@ -44,27 +54,68 @@ export function createDofeModelCatalog(
   let pending: Promise<DofeRouterModel[]> | undefined;
 
   async function refresh() {
-    const response = await fetchFn(`${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    const response = await fetchFn(
+      `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      },
+    );
     if (!response.ok) {
-      throw new Error(`DoFe model catalog request failed with HTTP ${response.status}`);
+      throw new Error(
+        `DoFe model catalog request failed with HTTP ${response.status}`,
+      );
     }
 
-    const payload = await response.json() as OpenAIModelListResponse;
+    const payload = (await response.json()) as OpenAIModelListResponse;
     if (!Array.isArray(payload.data)) {
-      throw new Error("DoFe model catalog response did not contain a model list");
+      throw new Error(
+        "DoFe model catalog response did not contain a model list",
+      );
     }
 
-    const models = payload.data
-      .flatMap((entry): DofeRouterModel[] => {
-        if (typeof entry.id !== "string" || !isChatModelAlias(entry.id)) return [];
-        return [{
-          id: entry.id,
-          ...(typeof entry.owned_by === "string" ? { ownedBy: entry.owned_by } : {}),
-        }];
-      })
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const aliases = payload.data.flatMap(
+      (entry): Array<{ id: string; ownedBy?: string }> => {
+        if (typeof entry.id !== "string") return [];
+        return [
+          {
+            id: entry.id,
+            ...(typeof entry.owned_by === "string"
+              ? { ownedBy: entry.owned_by }
+              : {}),
+          },
+        ];
+      },
+    );
+    const models = (
+      await Promise.all(
+        aliases.map(async (entry): Promise<DofeRouterModel> => {
+          const capabilityResponse = await fetchFn(
+            `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models/${encodeURIComponent(entry.id)}/capabilities`,
+            { headers: { Authorization: `Bearer ${apiKey}` } },
+          );
+          if (!capabilityResponse.ok) {
+            throw new Error(
+              `DoFe capability request failed for ${entry.id} with HTTP ${capabilityResponse.status}`,
+            );
+          }
+          const capability =
+            (await capabilityResponse.json()) as ModelCapabilitiesResponse;
+          return {
+            ...entry,
+            ...(typeof capability.model_type === "string"
+              ? { modelType: capability.model_type }
+              : {}),
+            capabilities: Array.isArray(capability.capabilities)
+              ? capability.capabilities.flatMap((item) =>
+                  typeof item?.capabilityName === "string"
+                    ? [item.capabilityName]
+                    : [],
+                )
+              : [],
+          };
+        }),
+      )
+    ).sort((left, right) => left.id.localeCompare(right.id));
 
     cache = { models, expiresAt: now() + cacheTtlMs };
     console.info("[model-router] catalog_refreshed", {
@@ -76,24 +127,43 @@ export function createDofeModelCatalog(
 
   return {
     async listChatModels() {
-      if (cache && cache.expiresAt > now()) return cache.models;
-      if (pending) return pending;
+      const models = await getModels();
+      return models.filter(
+        (model) => model.modelType !== "image" && model.modelType !== "video",
+      );
+    },
+    async listImageModels() {
+      return (await getModels()).filter(
+        (model) =>
+          model.modelType === "image" &&
+          model.capabilities?.includes("text_to_image"),
+      );
+    },
+    async listVideoModels() {
+      return (await getModels()).filter((model) => model.modelType === "video");
+    },
+  };
 
-      pending = refresh().catch((error: unknown) => {
+  async function getModels() {
+    if (cache && cache.expiresAt > now()) return cache.models;
+    if (pending) return pending;
+
+    pending = refresh()
+      .catch((error: unknown) => {
         if (cache) {
-          console.warn("[model-router] catalog_refresh_failed_using_stale_cache", {
-            endpoint: baseUrl,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logOperationalWarning(
+            "[model-router] catalog refresh failed using stale cache",
+            "model_catalog_stale_cache",
+          );
           return cache.models;
         }
         throw error;
-      }).finally(() => {
+      })
+      .finally(() => {
         pending = undefined;
       });
-      return pending;
-    },
-  };
+    return pending;
+  }
 }
 
 export function resolveDofeModelProtocol(modelId: string): DofeModelProtocol {
@@ -117,9 +187,11 @@ export function dofeModelProtocolBaseUrl(
   }
 }
 
-/** Known asynchronous image/video aliases returned by the generic /v1/models list. */
+/** @deprecated Use `DofeModelCatalog` model types from the gateway instead. */
 export function isChatModelAlias(modelId: string): boolean {
-  return !/(?:^|[-_/])(imagen|image|seedream|seedance|veo|sora|kling|wan|hailuo)(?:[-_/]|$)/i.test(modelId);
+  return !/(?:^|[-_/])(imagen|image|seedream|seedance|veo|sora|kling|wan|hailuo)(?:[-_/]|$)/i.test(
+    modelId,
+  );
 }
 
 /**
@@ -132,7 +204,12 @@ export function toDofeRouterModelId(specifier: string): string {
   if (separator <= 0) return specifier;
 
   const provider = specifier.slice(0, separator);
-  if (provider === "dofe" || provider === "openai" || provider === "google" || provider === "anthropic") {
+  if (
+    provider === "dofe" ||
+    provider === "openai" ||
+    provider === "google" ||
+    provider === "anthropic"
+  ) {
     return specifier.slice(separator + 1);
   }
   return specifier;

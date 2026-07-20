@@ -8,7 +8,14 @@
  */
 export function LoadingScreen() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {/* 文档 4.4：屏幕阅读器状态播报。可见动画对辅助技术不可读，补充可读状态文本。 */}
+      <span className="sr-only">正在打开 lovart.dofe 工作区，请稍候。</span>
       <div className="flex flex-col items-center gap-5">
         <div className="animate-logo-float">
           <svg
@@ -16,6 +23,7 @@ export function LoadingScreen() {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             className="size-14 text-foreground"
+            aria-hidden="true"
           >
             {/* 6-petal blob */}
             <path

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/toast";
 import { ApiAuthError, deleteProject } from "@/lib/server-api";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 
 /**
  * Shared hook for deleting a project with confirmation dialog state.
@@ -12,13 +13,10 @@ import { ApiAuthError, deleteProject } from "@/lib/server-api";
 export function useDeleteProject(opts?: {
   onDeleted?: (projectId: string) => void;
 }) {
-  const { session, signOut } = useAuth();
+  const { session } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
 
   /** Step 1: open confirm dialog */
   const requestDelete = useCallback((projectId: string) => {
@@ -37,7 +35,7 @@ export function useDeleteProject(opts?: {
       opts?.onDeleted?.(pendingId);
     } catch (err) {
       if (err instanceof ApiAuthError) {
-        await signOutRef.current();
+        replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
       toastError("项目删除失败");

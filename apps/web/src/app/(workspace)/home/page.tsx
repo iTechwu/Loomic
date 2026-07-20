@@ -30,6 +30,7 @@ import {
   type HomeExampleSelection,
 } from "@/lib/home-example-seeds";
 import { ApiAuthError, fetchProjects } from "@/lib/server-api";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 import { formatDate } from "@/lib/utils";
 
 /** Maximum number of recent projects shown on the home page. */
@@ -66,7 +67,7 @@ const cardItem = {
 // Home Page
 // ---------------------------------------------------------------------------
 export default function HomePage() {
-  const { session, signOut } = useAuth();
+  const { session } = useAuth();
   const router = useRouter();
 
   const { create: createNewProject, creating } = useCreateProject();
@@ -102,8 +103,6 @@ export default function HomePage() {
     isUploading,
     readyAttachments,
   } = useImageAttachments(session?.access_token ?? "");
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
   const routerRef = useRef(router);
   routerRef.current = router;
   const hasInitialized = useRef(false);
@@ -122,8 +121,7 @@ export default function HomePage() {
       setProjects(data.projects.slice(0, RECENT_PROJECTS_LIMIT));
     } catch (err) {
       if (err instanceof ApiAuthError) {
-        await signOutRef.current();
-        routerRef.current.replace("/login");
+        replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
       // Silently fail — the section just stays empty.
@@ -257,6 +255,7 @@ export default function HomePage() {
         <motion.div variants={fadeUp} custom={3} className="w-full">
           <HomePrompt
             ref={promptRef}
+            accessToken={session?.access_token}
             onSubmit={handlePromptSubmit}
             disabled={creating}
             attachments={imageAttachments}

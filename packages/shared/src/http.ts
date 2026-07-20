@@ -119,6 +119,7 @@ export const applicationErrorCodeSchema = z.enum([
   "variant_not_found",
   "checkout_failed",
   "generation_failed",
+  "credentials_not_provisioned",
 ]);
 
 export const applicationErrorResponseSchema = z.object({

@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
+  RunCreateRequest,
   StreamEvent,
   WsCommandAck,
   WsRpcRequest,
-  RunCreateRequest,
 } from "@lovart.dofe/shared";
 import { getServerBaseUrl } from "../lib/env";
+import { createWebSocketAuthProtocol } from "../lib/websocket-auth";
 
 type EventCallback = (event: StreamEvent) => void;
 type RPCHandler = (
@@ -27,35 +28,18 @@ export type WebSocketHandle = {
   resumeCanvas: (canvasId: string, onAck?: (ack: WsCommandAck) => void) => void;
 };
 
-export function useWebSocket(
-  getToken: () => string | null,
-): WebSocketHandle {
+export function useWebSocket(getToken: () => string | null): WebSocketHandle {
   const wsRef = useRef<WebSocket | null>(null);
-  const connectionIdRef = useRef(
-    (() => {
-      if (typeof sessionStorage !== "undefined") {
-        const stored = sessionStorage.getItem("ws_connection_id");
-        if (stored) return stored;
-        const id = typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        sessionStorage.setItem("ws_connection_id", id);
-        return id;
-      }
-      return typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    })(),
-  );
+  const connectionIdRef = useRef(createWebSocketConnectionId());
   const [connected, setConnected] = useState(false);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disposed = useRef(false);
 
   const eventListeners = useRef<Set<EventCallback>>(new Set());
-  const ackListeners = useRef<
-    Map<string, (ack: WsCommandAck) => void>
-  >(new Map());
+  const ackListeners = useRef<Map<string, (ack: WsCommandAck) => void>>(
+    new Map(),
+  );
   const rpcHandlers = useRef<Map<string, RPCHandler>>(new Map());
 
   const connect = useCallback(() => {
@@ -79,11 +63,13 @@ export function useWebSocket(
     }
 
     const serverBase = getServerBaseUrl();
-    const wsUrl =
-      serverBase.replace(/^http/, "ws") +
-      `/api/ws?token=${encodeURIComponent(token)}&connectionId=${encodeURIComponent(connectionIdRef.current)}`;
+    const wsUrl = `${serverBase.replace(/^http/, "ws")}/api/ws`;
+    const authProtocol = createWebSocketAuthProtocol(
+      token,
+      connectionIdRef.current,
+    );
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, authProtocol);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -147,10 +133,7 @@ export function useWebSocket(
       }
 
       if (!disposed.current) {
-        const delay = Math.min(
-          30_000,
-          1000 * Math.pow(2, reconnectAttempt.current),
-        );
+        const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt.current);
         const attempt = reconnectAttempt.current + 1;
         console.log(
           `[ws] scheduling reconnect attempt ${attempt} in ${delay}ms (code: ${event.code})`,
@@ -183,9 +166,7 @@ export function useWebSocket(
     try {
       const result = await handler(req.params);
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({ type: "rpc.response", id: req.id, result }),
-        );
+        ws.send(JSON.stringify({ type: "rpc.response", id: req.id, result }));
       }
     } catch (error) {
       if (ws.readyState === WebSocket.OPEN) {
@@ -216,7 +197,10 @@ export function useWebSocket(
     (action: string, payload: Record<string, unknown>): boolean => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.warn("[ws] command dropped -- not connected, readyState:", ws?.readyState);
+        console.warn(
+          "[ws] command dropped -- not connected, readyState:",
+          ws?.readyState,
+        );
         return false;
       }
       try {
@@ -232,16 +216,16 @@ export function useWebSocket(
   );
 
   const startRun = useCallback(
-    (
-      payload: RunCreateRequest,
-      onAck?: (ack: WsCommandAck) => void,
-    ) => {
+    (payload: RunCreateRequest, onAck?: (ack: WsCommandAck) => void) => {
       if (onAck) {
         ackListeners.current.set("agent.run", onAck);
       }
+      // The socket is already authenticated by its handshake subprotocol. Do
+      // not duplicate the browser access token in every command frame.
+      const { accessToken: _accessToken, ...commandPayload } = payload;
       const sent = sendCommand(
         "agent.run",
-        payload as unknown as Record<string, unknown>,
+        commandPayload as Record<string, unknown>,
       );
       if (!sent) {
         // Remove the dangling ack listener so callers don't hang forever
@@ -278,15 +262,29 @@ export function useWebSocket(
     };
   }, []);
 
-  const registerRPC = useCallback(
-    (method: string, handler: RPCHandler) => {
-      rpcHandlers.current.set(method, handler);
-      return () => {
-        rpcHandlers.current.delete(method);
-      };
-    },
-    [],
-  );
+  const registerRPC = useCallback((method: string, handler: RPCHandler) => {
+    rpcHandlers.current.set(method, handler);
+    return () => {
+      rpcHandlers.current.delete(method);
+    };
+  }, []);
 
   return { connected, startRun, cancelRun, onEvent, registerRPC, resumeCanvas };
+}
+
+export function createWebSocketConnectionId(): string {
+  const fallback =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (typeof sessionStorage === "undefined") return fallback;
+
+  try {
+    const stored = sessionStorage.getItem("ws_connection_id");
+    if (stored) return stored;
+    sessionStorage.setItem("ws_connection_id", fallback);
+  } catch {
+    // Private browsing or an embedded context can deny storage access.
+  }
+  return fallback;
 }

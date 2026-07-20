@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../config/env.js";
 import { createDatabasePool } from "./pool.js";
@@ -10,16 +10,25 @@ const migrationDirectory = fileURLToPath(
   new URL("../../migrations", import.meta.url),
 );
 
-async function migrate() {
+/**
+ * Apply all pending SQL migrations in order. Idempotent and checksum-guarded:
+ * each file is recorded in `app_schema_migrations` on first apply, and a
+ * changed checksum for an already-applied version is a hard error (prevents
+ * silent schema drift). Safe to run on every API boot.
+ */
+export async function migrate() {
   const env = loadServerEnv();
-  if (!env.databaseUrl) throw new Error("DATABASE_URL is required to run migrations.");
+  if (!env.databaseUrl)
+    throw new Error("DATABASE_URL is required to run migrations.");
 
   const pool = createDatabasePool(env.databaseUrl);
   try {
     const files = (await readdir(migrationDirectory))
       .filter((file) => /^\d+_.+\.sql$/.test(file))
       .sort();
-    await pool.query(`create table if not exists app_schema_migrations (version text primary key, checksum text not null, applied_at timestamptz not null default now())`);
+    await pool.query(
+      `create table if not exists app_schema_migrations (version text primary key, checksum text not null, applied_at timestamptz not null default now())`,
+    );
 
     for (const file of files) {
       const sql = await readFile(join(migrationDirectory, file), "utf8");
@@ -31,7 +40,9 @@ async function migrate() {
         );
         if (existing.rowCount) {
           if (existing.rows[0]!.checksum !== checksum) {
-            throw new Error(`Migration checksum changed after application: ${file}`);
+            throw new Error(
+              `Migration checksum changed after application: ${file}`,
+            );
           }
           return;
         }
@@ -48,7 +59,17 @@ async function migrate() {
   }
 }
 
-void migrate().catch((error: unknown) => {
-  console.error("[database-migrate] failed", { message: error instanceof Error ? error.message : String(error) });
-  process.exitCode = 1;
-});
+// Run only when invoked directly as the CLI entry (`pnpm db:migrate`), not when
+// imported by the API server's boot sequence.
+const isMainModule =
+  process.argv[1] !== undefined &&
+  pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMainModule) {
+  void migrate().catch((error: unknown) => {
+    console.error("[database-migrate] failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    process.exitCode = 1;
+  });
+}

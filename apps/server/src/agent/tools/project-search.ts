@@ -1,5 +1,5 @@
 import type { ToolRuntime } from "@langchain/core/tools";
-import type { BackendFactory, BackendProtocol } from "deepagents";
+import type { BackendFactory, BackendProtocol, StateAndStore } from "deepagents";
 import { tool } from "langchain";
 import { z } from "zod";
 
@@ -91,8 +91,14 @@ function resolveBackend(
   runtime: ToolRuntime,
 ): BackendProtocol {
   if (typeof backend === "function") {
+    // ToolRuntime and deepagents resolve BaseStore from different dependency
+    // paths, but both refer to the same LangGraph store instance at runtime.
+    if (!runtime.store) {
+      return backend({ state: runtime.state });
+    }
     return backend({
       state: runtime.state,
+      store: runtime.store as unknown as NonNullable<StateAndStore["store"]>,
     });
   }
 

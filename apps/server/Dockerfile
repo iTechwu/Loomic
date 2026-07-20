@@ -70,6 +70,11 @@ RUN apk add --no-cache python3 py3-pip \
 # Copy skills (fonts + SKILL.md) to /opt/lovart-dofe/skills/
 COPY skills/ /opt/lovart-dofe/skills/
 
+# The API and worker never need root privileges at runtime. Writable runtime
+# state is restricted by Compose to tmpfs mounts under /tmp.
+RUN addgroup -S lovart && adduser -S -G lovart lovart
+USER lovart
+
 # SERVICE_MODE: "api" (default) or "worker"
 ENV SERVICE_MODE=api
 
@@ -77,9 +82,9 @@ ENV SERVICE_MODE=api
 # Set GOOGLE_SERVICE_ACCOUNT_JSON in Railway/cloud env vars with the full JSON content.
 CMD ["sh", "-c", "\
   if [ -n \"$GOOGLE_SERVICE_ACCOUNT_JSON\" ]; then \
-    mkdir -p /app/apps/server/credentials && \
-    printf '%s' \"$GOOGLE_SERVICE_ACCOUNT_JSON\" > /app/apps/server/credentials/vertex-ai-service-account.json && \
-    export GOOGLE_APPLICATION_CREDENTIALS=/app/apps/server/credentials/vertex-ai-service-account.json; \
+    mkdir -p /tmp/lovart-dofe-credentials && \
+    printf '%s' \"$GOOGLE_SERVICE_ACCOUNT_JSON\" > /tmp/lovart-dofe-credentials/vertex-ai-service-account.json && \
+    export GOOGLE_APPLICATION_CREDENTIALS=/tmp/lovart-dofe-credentials/vertex-ai-service-account.json; \
   fi && \
   if [ \"$SERVICE_MODE\" = \"worker\" ]; then \
     exec node --import tsx src/worker.ts; \

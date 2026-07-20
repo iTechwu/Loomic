@@ -4,66 +4,80 @@
  * Both the HTTP server (app.ts) and the background worker (worker.ts) need the
  * same set of image/video generation providers. This module is the single
  * source of truth so that adding a new provider only requires a change here.
+ *
+ * Image and video generation now flows exclusively through the DoFe (ixicai.cn)
+ * gateway, with per-user credentials injected at call time (params.auth). The
+ * legacy Replicate/Google/OpenAI/Volces provider source files are retained on
+ * disk for reference/rollback but are no longer registered. The ixicai
+ * catalog is the sole model-id authority.
  */
 import type { ServerEnv } from "../../config/env.js";
-import { GoogleImageProvider } from "./google-image.js";
-import { GoogleVertexImageProvider } from "./google-vertex-image.js";
-import { GoogleVertexVideoProvider } from "./google-vertex-video.js";
-import { GoogleVideoProvider } from "./google-video.js";
-import { OpenAIImageProvider } from "./openai-image.js";
+import {
+  type DofeRouterModel,
+  createDofeModelCatalog,
+} from "../../models/dofe-model-router.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
+import type { VideoModelInfo } from "../types.js";
+import { DofeImageProvider, DofeVideoProvider } from "./dofe-generation.js";
 import { registerImageProvider, registerVideoProvider } from "./registry.js";
-import { ReplicateImageProvider } from "./replicate-image.js";
-import { ReplicateVideoProvider } from "./replicate-video.js";
-import { VolcesImageProvider } from "./volces-image.js";
 
-/**
- * Register all available generation providers based on the provided env config.
- *
- * Each provider is only registered when its required API key is present,
- * keeping the behaviour identical to the previous inline registration while
- * ensuring every process gets the full set.
- */
+export function toCatalogVideoModelInfo(
+  model: DofeRouterModel,
+): VideoModelInfo {
+  const capabilities = new Set(model.capabilities ?? []);
+  return {
+    id: model.id,
+    displayName: model.id,
+    description: "Video generation via ixicai.cn",
+    capabilities: {
+      textToVideo: capabilities.has("text_to_video"),
+      imageToVideo: capabilities.has("image_to_video"),
+      videoToVideo: capabilities.has("video_to_video"),
+      // The public catalog response does not project provider audio metadata.
+      // Keep the control disabled until models exposes an explicit capability.
+      audio: false,
+    },
+  };
+}
+
 export function registerAllProviders(env: ServerEnv): void {
-  // Replicate — image + video
-  if (env.replicateApiToken) {
-    registerImageProvider(new ReplicateImageProvider(env.replicateApiToken));
-    registerVideoProvider(new ReplicateVideoProvider(env.replicateApiToken));
-  }
+  // DoFe gateway is the sole image/video data plane. Credentials are per-user
+  // (injected via params.auth at generate() time), so registration only needs
+  // the gateway base URL — no shared API-key gate.
+  if (env.dofeModelBaseUrl) {
+    const imageProvider = new DofeImageProvider(env.dofeModelBaseUrl);
+    const videoProvider = new DofeVideoProvider(env.dofeModelBaseUrl);
+    registerImageProvider(imageProvider);
+    registerVideoProvider(videoProvider);
 
-  // Google Developer API — image + video
-  if (env.googleApiKey) {
-    registerImageProvider(new GoogleImageProvider(env.googleApiKey));
-    registerVideoProvider(new GoogleVideoProvider(env.googleApiKey));
-  }
-
-  // Google Vertex AI — image + video (coexists with Developer API)
-  // Image/LLM models use the default location (global), while video models
-  // require a separate regional endpoint (us-central1).
-  if (env.googleVertexProject && env.googleVertexLocation) {
-    const vertexConfig = {
-      project: env.googleVertexProject,
-      location: env.googleVertexLocation,
-    };
-    registerImageProvider(new GoogleVertexImageProvider(vertexConfig));
-
-    const videoLocation = env.googleVertexVideoLocation ?? env.googleVertexLocation;
-    registerVideoProvider(new GoogleVertexVideoProvider({
-      project: env.googleVertexProject,
-      location: videoLocation,
-    }));
-  }
-
-  // OpenAI — image only
-  if (env.openAIApiKey) {
-    registerImageProvider(
-      new OpenAIImageProvider(env.openAIApiKey, env.openAIApiBase),
-    );
-  }
-
-  // Volces — image only
-  if (env.volcesApiKey) {
-    registerImageProvider(
-      new VolcesImageProvider(env.volcesApiKey, env.volcesBaseUrl),
-    );
+    const catalog = createDofeModelCatalog(env);
+    void catalog
+      ?.listImageModels()
+      .then((models) => {
+        imageProvider.setModels(
+          models.map((model) => ({
+            id: model.id,
+            displayName: model.id,
+            description: "Image generation via ixicai.cn",
+          })),
+        );
+      })
+      .catch(() => {
+        logOperationalFailure(
+          "[model-router] image catalog sync failed",
+          "model_catalog_image_sync",
+        );
+      });
+    void catalog
+      ?.listVideoModels()
+      .then((models) => {
+        videoProvider.setModels(models.map(toCatalogVideoModelInfo));
+      })
+      .catch(() => {
+        logOperationalFailure(
+          "[model-router] video catalog sync failed",
+          "model_catalog_video_sync",
+        );
+      });
   }
 }

@@ -20,6 +20,20 @@ export type ImageQuality = "standard" | "hd" | "ultra";
 
 export type OutputFormat = "png" | "jpg" | "webp";
 
+/**
+ * Per-user credentials injected into `provider.generate()` so the DoFe
+ * (ixicai.cn) gateway authenticates each model call as the owning user rather
+ * than the shared DOFE_MODEL_API_KEY. Strict no-fallback: providers throw when
+ * `designApiKey` is absent.
+ */
+export type ProviderAuth = {
+  /** Design apikey (sk-...) — Bearer for /generation/tasks. */
+  designApiKey: string;
+  /** Seedance asset AK/SK — reserved for asset OpenAPI uploads (future). */
+  seedanceAccessKeyId?: string;
+  seedanceSecretAccessKey?: string;
+};
+
 export interface ImageGenerateParams {
   prompt: string;
   model: string;
@@ -30,6 +44,8 @@ export interface ImageGenerateParams {
   /** Output format preference */
   outputFormat?: OutputFormat;
   metadata?: Record<string, unknown>;
+  /** Per-user DoFe gateway credentials (strict no-fallback when using the dofe provider). */
+  auth?: ProviderAuth;
 }
 
 export interface GeneratedImage {
@@ -48,13 +64,15 @@ export interface ImageProvider {
 export interface VideoGenerateParams {
   prompt: string;
   model: string;
-  resolution?: "480p" | "720p" | "1080p";
+  resolution?: "480p" | "720p" | "1080p" | "4k";
   duration?: number;
   aspectRatio?: string;
   inputImages?: string[];
   inputVideo?: string;
   /** Enable audio generation (only supported by some providers). */
   enableAudio?: boolean;
+  /** Per-user DoFe gateway credentials (strict no-fallback when using the dofe provider). */
+  auth?: ProviderAuth;
 }
 
 export interface GeneratedVideo {
@@ -79,7 +97,8 @@ export interface VideoModelInfo extends ModelInfo {
     videoToVideo: boolean;
     audio: boolean;
   };
-  limits: {
+  /** Omitted when the authorized models catalog does not project limit metadata. */
+  limits?: {
     maxDuration: number;
     allowedDurations?: number[];
     maxResolution: "480p" | "720p" | "1080p" | "2160p";

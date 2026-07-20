@@ -21,6 +21,7 @@ import { BrandKitSelector } from "../../components/brand-kit-selector";
 import { CanvasBottomBar } from "../../components/canvas-bottom-bar";
 import { CanvasFilesPanel } from "../../components/canvas-files-panel";
 import { CanvasLayersPanel } from "../../components/canvas-layers-panel";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "../../lib/sso-auth";
 
 function CanvasPageContent() {
   const searchParams = useSearchParams();
@@ -29,7 +30,7 @@ function CanvasPageContent() {
   // Capture prompt once — router.replace will strip it from URL, but the
   // value must survive for the auto-send effect in ChatSidebar.
   const [initialPrompt] = useState(() => searchParams.get("prompt") ?? undefined);
-  const { user, session, loading: authLoading, signOut } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [canvasData, setCanvasData] = useState<{
@@ -58,8 +59,6 @@ function CanvasPageContent() {
   const excalidrawApiRef = useRef<any>(null);
   const [excalidrawApi, setExcalidrawApi] = useState<any>(null);
 
-  const signOutRef = useRef(signOut);
-  signOutRef.current = signOut;
   const routerRef = useRef(router);
   routerRef.current = router;
 
@@ -178,7 +177,7 @@ function CanvasPageContent() {
   useEffect(() => {
     if (authLoading) return;
     if (!userId) {
-      routerRef.current.replace("/login");
+      replaceWithSsoLogin(getBrowserReturnTo());
       return;
     }
     const token = accessTokenRef.current;
@@ -209,14 +208,14 @@ function CanvasPageContent() {
       })
       .catch((err) => {
         if (err instanceof ApiAuthError) {
-          signOutRef.current().then(() => routerRef.current.replace("/login"));
+          replaceWithSsoLogin(getBrowserReturnTo());
           return;
         }
         setError("Failed to load canvas.");
         setPageLoading(false);
       });
-    // Intentionally omitting accessTokenRef (stable ref) and signOutRef/routerRef
-    // (ref wrappers) from deps — only re-run when auth resolves, user changes, or
+    // Intentionally omitting accessTokenRef and routerRef (stable refs) from deps
+    // so this only re-runs when auth resolves, user changes, or
     // canvasId changes. Token refresh (e.g. tab switch) must NOT trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, userId, canvasId]);

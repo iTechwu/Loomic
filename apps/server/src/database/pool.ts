@@ -1,5 +1,7 @@
 import pg from "pg";
 
+import { logOperationalFailure } from "../utils/operational-log.js";
+
 export type DatabasePool = Pick<pg.Pool, "end" | "query"> & {
   transaction<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T>;
 };
@@ -19,12 +21,17 @@ export function createDatabasePool(connectionString: string): DatabasePool {
     max: 10,
   });
 
-  pool.on("error", (error) => {
-    console.error("[database-pool] idle client error", { message: error.message });
-  });
+  pool.on("error", () =>
+    logOperationalFailure(
+      "[database-pool] idle client error",
+      "database_idle_client",
+    ),
+  );
 
   return Object.assign(pool, {
-    async transaction<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    async transaction<T>(
+      operation: (client: pg.PoolClient) => Promise<T>,
+    ): Promise<T> {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -32,11 +39,14 @@ export function createDatabasePool(connectionString: string): DatabasePool {
         await client.query("COMMIT");
         return result;
       } catch (error) {
-        await client.query("ROLLBACK").catch((rollbackError: unknown) => {
-          console.error("[database-pool] rollback failed", {
-            message: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
-          });
-        });
+        await client
+          .query("ROLLBACK")
+          .catch(() =>
+            logOperationalFailure(
+              "[database-pool] rollback failed",
+              "database_rollback",
+            ),
+          );
         throw error;
       } finally {
         client.release();

@@ -33,7 +33,7 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   const workspaceId: string = jobRow.workspace_id ?? jobId;
 
   // Resolve provider dynamically from model ID via registry
-  const model = payload.model ?? "black-forest-labs/flux-kontext-pro";
+  const model = payload.model ?? "flux-kontext-pro";
   const providerName = resolveImageProviderName(model);
 
   // Log input image format for debugging the data-URI-passthrough pipeline
@@ -44,6 +44,21 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
     console.log(`${tag} input_images formats: [${formats.join(", ")}] (${formats.length} total)`);
   }
 
+  // Resolve the job owner's DoFe credentials. Strict no-fallback: getByUserId
+  // throws CredentialsNotProvisionedError when the user has no ready
+  // credentials, which fails this job into the dead-letter queue.
+  if (!createdBy) throw new Error(`Job ${jobId} has no creator`);
+  const credentials = ctx.credentialsService
+    ? await ctx.credentialsService.getByUserId(createdBy)
+    : undefined;
+  const auth = credentials
+    ? {
+        designApiKey: credentials.designApiKey,
+        seedanceAccessKeyId: credentials.seedanceAccessKeyId,
+        seedanceSecretAccessKey: credentials.seedanceSecretAccessKey,
+      }
+    : undefined;
+
   try {
     // Generate image via the registered provider
     lap(`${providerName}_call_start`);
@@ -52,6 +67,7 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
       generated = await generateImage(providerName, {
         prompt: payload.prompt,
         model,
+        ...(auth ? { auth } : {}),
         ...(payload.aspect_ratio !== undefined ? { aspectRatio: payload.aspect_ratio } : {}),
         ...(payload.input_images?.length ? { inputImages: payload.input_images } : {}),
       });

@@ -21,6 +21,7 @@ import { createPipelineLogger } from "../ws/logger.js";
 import type { AgentRunMetadataService } from "../features/agent-runs/agent-run-service.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
 import type { AuthenticatedUser } from "../auth/sso-authenticator.js";
 import type { ConnectionManager } from "../ws/connection-manager.js";
 // execute 工具由 deepagents 内置提供（LocalShellBackend 作为 sandbox backend）
@@ -261,6 +262,12 @@ type CreateAgentRuntimeOptions = {
   databasePool?: DatabasePool;
   connectionManager?: ConnectionManager;
   brandKitService?: BrandKitService;
+  /**
+   * Per-user models credential resolver. When set, each agent run resolves the
+   * owning user's design apikey before building the agent, so the DoFe router
+   * authenticates as that user (strict per-user isolation).
+   */
+  credentialsService?: CredentialsService;
   env: ServerEnv;
   eventDelayMs?: number;
   jobService?: JobService;
@@ -911,6 +918,19 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
             });
           }
 
+          // Resolve the owning user's models credentials before building the
+          // agent. Strict no-fallback: getByUserId throws
+          // CredentialsNotProvisionedError when the user has no ready
+          // credentials, which fails this run cleanly (caught below).
+          const credentials =
+            options.credentialsService && run.userId
+              ? {
+                  designApiKey: (
+                    await options.credentialsService.getByUserId(run.userId)
+                  ).designApiKey,
+                }
+              : undefined;
+
           agent = resolvedAgentFactory({
             backendResult,
             ...(brandKitId ? { brandKitId } : {}),
@@ -923,6 +943,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
             dataRepository: options.dataRepository!,
             env: options.env,
             objectStorage: options.objectStorage!,
+            ...(credentials ? { credentials } : {}),
             ...(resolvedModel ? { model: resolvedModel } : {}),
             ...(persistImage ? { persistImage } : {}),
             // execute 工具由 LocalShellBackend 自动提供，无需手动传递

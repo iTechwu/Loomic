@@ -1,5 +1,6 @@
 "use client";
 
+import { SsoEntryLink } from "@/components/auth/sso-entry-link";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -68,7 +69,7 @@ function handleAnchorClick(
 // ---------------------------------------------------------------------------
 
 function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -78,10 +79,10 @@ function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       aria-label="Toggle theme"
     >
-      {theme === "dark" ? (
+      {resolvedTheme === "dark" ? (
         <Sun className="size-4" />
       ) : (
         <Moon className="size-4" />
@@ -104,15 +105,15 @@ function NavCTA() {
   }, []);
 
   return (
-    <Link
-      href="/login"
+    <SsoEntryLink
+      returnTo="/home"
       className={cn(
-        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
+        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-foreground dark:text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
         glowActive && "landing-nav-cta-glow",
       )}
     >
       开始创作
-    </Link>
+    </SsoEntryLink>
   );
 }
 
@@ -223,13 +224,13 @@ export function FloatingNav() {
                 </a>
               ))}
               <div className="pt-2 pb-1">
-                <Link
-                  href="/login"
+                <SsoEntryLink
+                  returnTo="/home"
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center justify-center h-9 w-full rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors"
+                  className="flex items-center justify-center h-9 w-full rounded-full bg-primary text-foreground dark:text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors"
                 >
                   开始创作
-                </Link>
+                </SsoEntryLink>
               </div>
             </nav>
           </motion.div>

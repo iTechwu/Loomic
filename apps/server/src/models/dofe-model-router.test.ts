@@ -24,7 +24,7 @@ describe("DoFe model router", () => {
     );
   });
 
-  it("keeps chat aliases and excludes asynchronous media aliases", () => {
+  it("keeps the legacy alias helper for backward compatibility", () => {
     expect(isChatModelAlias("gpt-5.4")).toBe(true);
     expect(isChatModelAlias("claude-sonnet-4.6")).toBe(true);
     expect(isChatModelAlias("imagen-4.0-generate-001")).toBe(false);
@@ -42,25 +42,41 @@ describe("DoFe model router", () => {
   });
 
   it("authenticates, filters, sorts, and caches the gateway catalog", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      data: [
-        { id: "glm-5.2", owned_by: "zhipu" },
-        { id: "gpt-5.4", owned_by: "dofe-ai" },
-        { id: "seedream-5.0", owned_by: "bytedance" },
-      ],
-    })));
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(JSON.stringify({ data: [
+          { id: "glm-5.2", owned_by: "zhipu" },
+          { id: "gpt-5.4", owned_by: "dofe-ai" },
+          { id: "seedream-5.0", owned_by: "bytedance" },
+        ] }));
+      }
+      const isImage = url.includes("seedream-5.0");
+      return new Response(JSON.stringify({
+        model_type: isImage ? "image" : "text",
+        capabilities: isImage ? [{ capabilityName: "text_to_image" }] : [],
+      }));
+    });
     const catalog = createDofeModelCatalog({
       dofeModelApiKey: "router-key",
       dofeModelBaseUrl: "https://ixicai.cn/api",
     }, { fetch });
 
     await expect(catalog?.listChatModels()).resolves.toEqual([
-      { id: "glm-5.2", ownedBy: "zhipu" },
-      { id: "gpt-5.4", ownedBy: "dofe-ai" },
+      { id: "glm-5.2", ownedBy: "zhipu", modelType: "text", capabilities: [] },
+      { id: "gpt-5.4", ownedBy: "dofe-ai", modelType: "text", capabilities: [] },
     ]);
     await catalog?.listChatModels();
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    await expect(catalog?.listImageModels()).resolves.toEqual([
+      {
+        id: "seedream-5.0",
+        ownedBy: "bytedance",
+        modelType: "image",
+        capabilities: ["text_to_image"],
+      },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(4);
     expect(fetch).toHaveBeenCalledWith("https://ixicai.cn/api/v1/models", {
       headers: { Authorization: "Bearer router-key" },
     });

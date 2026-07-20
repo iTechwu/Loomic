@@ -1,4 +1,5 @@
 import type { DatabasePool } from "../../database/pool.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 import type {
   CreateAcceptedAgentRunInput,
   UpdateAgentRunInput,
@@ -31,8 +32,11 @@ export function createAgentRunMetadataService(options: {
            values ($1, $2, $3, 'accepted', $4)`,
           [input.runId, input.model ?? null, input.sessionId, input.threadId],
         );
-      } catch (error) {
-        console.error("[agent-run-metadata] create failed", { runId: input.runId, message: error instanceof Error ? error.message : String(error) });
+      } catch {
+        logOperationalFailure(
+          "[agent-run-metadata] create failed",
+          "agent_run_metadata_create",
+        );
         throw new AgentRunPersistenceError("Failed to persist accepted run.");
       }
     },
@@ -43,10 +47,19 @@ export function createAgentRunMetadataService(options: {
           `update agent_runs set status = $2, completed_at = coalesce($3::timestamptz, completed_at),
              error_code = coalesce($4, error_code), error_message = coalesce($5, error_message)
            where id = $1`,
-          [input.runId, input.status, input.completedAt ?? null, input.errorCode ?? null, input.errorMessage ?? null],
+          [
+            input.runId,
+            input.status,
+            input.completedAt ?? null,
+            input.errorCode ?? null,
+            input.errorMessage ?? null,
+          ],
         );
-      } catch (error) {
-        console.error("[agent-run-metadata] update failed", { runId: input.runId, message: error instanceof Error ? error.message : String(error) });
+      } catch {
+        logOperationalFailure(
+          "[agent-run-metadata] update failed",
+          "agent_run_metadata_update",
+        );
         throw new AgentRunPersistenceError("Failed to update run metadata.");
       }
     },

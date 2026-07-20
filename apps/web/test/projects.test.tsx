@@ -10,6 +10,9 @@ vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => mockRouter),
 }));
 
+const { mockReplaceWithSsoLogin } = vi.hoisted(() => ({
+  mockReplaceWithSsoLogin: vi.fn(),
+}));
 const mockSignOut = vi.fn();
 const mockUser = { id: "u1", email: "test@test.com" };
 const mockSession = { access_token: "token_123" };
@@ -21,6 +24,10 @@ const mockAuthValue = {
 };
 vi.mock("../src/lib/auth-context", () => ({
   useAuth: vi.fn(() => mockAuthValue),
+}));
+vi.mock("../src/lib/sso-auth", () => ({
+  getBrowserReturnTo: () => "/projects",
+  replaceWithSsoLogin: mockReplaceWithSsoLogin,
 }));
 
 const mockFetch = vi.fn();
@@ -107,7 +114,7 @@ describe("Projects page", () => {
     expect(await screen.findByText("新建项目")).toBeInTheDocument();
   });
 
-  it("calls signOut and redirects on 401 from fetchViewer", async () => {
+  it("replaces the current route with the SSO flow on 401 from fetchViewer", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/viewer")) {
         return Promise.resolve({
@@ -120,8 +127,8 @@ describe("Projects page", () => {
 
     renderPage();
     await waitFor(() => {
-      expect(mockSignOut).toHaveBeenCalled();
-      expect(mockReplace).toHaveBeenCalledWith("/login");
+      expect(mockReplaceWithSsoLogin).toHaveBeenCalledWith("/projects");
+      expect(mockSignOut).not.toHaveBeenCalled();
     });
   });
 
@@ -142,7 +149,7 @@ describe("Projects page", () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it("calls signOut and redirects on 401 from fetchProjects", async () => {
+  it("replaces the current route with the SSO flow on 401 from fetchProjects", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/viewer")) {
         return Promise.resolve({ ok: true, status: 200, json: async () => viewerResponse });
@@ -158,8 +165,8 @@ describe("Projects page", () => {
 
     renderPage();
     await waitFor(() => {
-      expect(mockSignOut).toHaveBeenCalled();
-      expect(mockReplace).toHaveBeenCalledWith("/login");
+      expect(mockReplaceWithSsoLogin).toHaveBeenCalledWith("/projects");
+      expect(mockSignOut).not.toHaveBeenCalled();
     });
   });
 

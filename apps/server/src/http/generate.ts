@@ -6,28 +6,36 @@ import {
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
 
-import { generateImage } from "../generation/image-generation.js";
-import { resolveImageProviderName } from "../generation/providers/registry.js";
+import type {
+  AuthenticatedUser,
+  RequestAuthenticator,
+} from "../auth/sso-authenticator.js";
+import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
+import { CredentialsNotProvisionedError } from "../features/credentials/credentials-service.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import { JobServiceError } from "../features/jobs/job-service.js";
-import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type { UploadService } from "../features/uploads/upload-service.js";
-import type { AuthenticatedUser, RequestAuthenticator } from "../auth/sso-authenticator.js";
+import { generateImage } from "../generation/image-generation.js";
+import { resolveImageProviderName } from "../generation/providers/registry.js";
 
 const generateImageRequestSchema = z.object({
   prompt: z.string().min(1),
   model: z.string().optional(),
   aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
   quality: z.enum(["standard", "hd", "ultra"]).optional(),
+  inputImages: z.array(z.string()).optional(),
 });
 
 const generateVideoRequestSchema = z.object({
   prompt: z.string().min(1),
   model: z.string().optional(),
   duration: z.number().int().min(3).max(16).optional(),
-  resolution: z.enum(["720p", "1080p", "4k"]).optional(),
-  aspectRatio: z.enum(["16:9", "9:16"]).optional(),
+  resolution: z.enum(["480p", "720p", "1080p", "4k"]).optional(),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
   inputImages: z.array(z.string()).max(3).optional(),
+  inputVideo: z.string().optional(),
+  enableAudio: z.boolean().optional(),
 });
 
 export async function registerGenerateRoutes(
@@ -37,6 +45,7 @@ export async function registerGenerateRoutes(
     jobService?: JobService;
     uploadService: UploadService;
     viewerService: ViewerService;
+    credentialsService?: CredentialsService;
   },
 ) {
   app.post("/api/agent/generate-image", async (request, reply) => {
@@ -66,15 +75,32 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "black-forest-labs/flux-kontext-pro";
+    const model = payload.model ?? "flux-kontext-pro";
 
     try {
+      // Resolve the caller's DoFe credentials (strict no-fallback: throws if the
+      // user has no ready credentials, surfacing as a generation failure below).
+      const credentials = options.credentialsService
+        ? await options.credentialsService.getByUserId(user.id)
+        : undefined;
+      const auth = credentials
+        ? {
+            designApiKey: credentials.designApiKey,
+            seedanceAccessKeyId: credentials.seedanceAccessKeyId,
+            seedanceSecretAccessKey: credentials.seedanceSecretAccessKey,
+          }
+        : undefined;
+
       const providerName = resolveImageProviderName(model);
       const result = await generateImage(providerName, {
         prompt: payload.prompt,
         model,
+        ...(auth ? { auth } : {}),
         aspectRatio: payload.aspectRatio ?? "1:1",
         ...(payload.quality ? { quality: payload.quality } : {}),
+        ...(payload.inputImages?.length
+          ? { inputImages: payload.inputImages }
+          : {}),
       });
 
       // Download and persist to TOS/CDN Storage
@@ -95,6 +121,13 @@ export async function registerGenerateRoutes(
         height: result.height,
       });
     } catch (error) {
+      if (error instanceof CredentialsNotProvisionedError) {
+        return reply.code(error.statusCode).send(
+          applicationErrorResponseSchema.parse({
+            error: { code: error.code, message: error.message },
+          }),
+        );
+      }
       const message =
         error instanceof Error ? error.message : "Image generation failed.";
 
@@ -153,17 +186,27 @@ export async function registerGenerateRoutes(
         applicationErrorResponseSchema.parse({
           error: {
             code: "service_unavailable",
-            message: "Video generation is not available (job service not configured).",
+            message:
+              "Video generation is not available (job service not configured).",
           },
         }),
       );
     }
 
-    const model = payload.model ?? "google-official/veo-3.1-generate-preview";
+    // Default to the same ixicai model used by the tool and executor so the
+    // direct API, agent tool, and job queue never disagree on fallback model.
+    const model = payload.model ?? "seedance-2.0";
 
     try {
       const viewer = await options.viewerService.ensureViewer(user);
       const workspaceId = viewer.workspace.id;
+
+      // Fail before enqueueing: a job without a ready tenant credential cannot
+      // be fulfilled by the DoFe-only generation plane. This mirrors the image
+      // route and avoids a predictable worker retry/dead-letter cycle.
+      if (options.credentialsService) {
+        await options.credentialsService.getByUserId(user.id);
+      }
 
       // ── Create job ──
       const job = await options.jobService.createJob(user, {
@@ -174,11 +217,13 @@ export async function registerGenerateRoutes(
           model,
           ...(payload.duration != null ? { duration: payload.duration } : {}),
           ...(payload.resolution ? { resolution: payload.resolution } : {}),
-          ...(payload.aspectRatio
-            ? { aspect_ratio: payload.aspectRatio }
-            : {}),
+          ...(payload.aspectRatio ? { aspect_ratio: payload.aspectRatio } : {}),
           ...(payload.inputImages?.length
             ? { input_images: payload.inputImages }
+            : {}),
+          ...(payload.inputVideo ? { input_video: payload.inputVideo } : {}),
+          ...(payload.enableAudio != null
+            ? { enable_audio: payload.enableAudio }
             : {}),
         },
       });
@@ -215,6 +260,13 @@ export async function registerGenerateRoutes(
         durationSeconds: result.duration_seconds,
       });
     } catch (error) {
+      if (error instanceof CredentialsNotProvisionedError) {
+        return reply.code(error.statusCode).send(
+          applicationErrorResponseSchema.parse({
+            error: { code: error.code, message: error.message },
+          }),
+        );
+      }
       if (error instanceof JobServiceError) {
         return reply.code(error.statusCode).send(
           applicationErrorResponseSchema.parse({
@@ -313,7 +365,10 @@ async function downloadAndUpload(
   const buffer = Buffer.from(await response.arrayBuffer());
 
   const ext = mimeType === "image/webp" ? "webp" : "png";
-  const slug = prompt.slice(0, 40).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = prompt
+    .slice(0, 40)
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   const fileName = `gen-${slug}-${Date.now()}.${ext}`;
 
   const viewer = await deps.viewerService.ensureViewer(user);

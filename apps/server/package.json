@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@dofe/models-sdk": "^0.2.11",
     "@fastify/multipart": "^9.4.0",
+    "@fastify/rate-limit": "10.3.0",
     "@fastify/websocket": "^11.2.0",
     "@google/genai": "^1.47.0",
     "@langchain/anthropic": "1.1.0",

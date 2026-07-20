@@ -1,0 +1,74 @@
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  server:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    env_file:
+      - ${LOVART_ENV_FILE:-.env.production}
+    environment:
+      HOST: 0.0.0.0
+      LOVART_DOFE_REQUIRE_REDIS: "true"
+      SERVICE_MODE: api
+    expose:
+      - "3105"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3105/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    command: ["sh", "-c", "exec node --import tsx src/worker.ts"]
+    env_file:
+      - ${LOVART_ENV_FILE:-.env.production}
+    environment:
+      SERVICE_MODE: worker
+    init: true
+    read_only: true
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp

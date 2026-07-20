@@ -85,10 +85,113 @@ test("shared package placeholder exists for the upcoming contract task", async (
 test("root lint baseline is wired through Biome", async () => {
   const manifest = await readJson("package.json");
   const biomeConfig = await readJson("biome.json");
+  const biomeBaseline = await readJson("biome-baseline.json");
+  const baselineVerifier = await readText("scripts/verify-biome-baseline.mjs");
 
   assert.equal(typeof manifest.devDependencies["@biomejs/biome"], "string");
   assert.match(manifest.scripts.lint, /biome/);
+  assert.match(manifest.scripts["lint:baseline"], /verify-biome-baseline/);
   assert.match(biomeConfig.$schema, /biome/);
   assert.equal(biomeConfig.formatter.enabled, true);
   assert.equal(biomeConfig.linter.enabled, true);
+  assert.equal(typeof biomeBaseline.maximumErrors, "number");
+  assert.match(baselineVerifier, /maximumErrors/);
+  assert.match(baselineVerifier, /createHash/);
+});
+
+test("Vercel builds the deployed Lovart workspace packages", async () => {
+  const vercel = await readJson("vercel.json");
+
+  assert.match(vercel.buildCommand, /@lovart\.dofe\/shared/);
+  assert.match(vercel.buildCommand, /@lovart\.dofe\/web/);
+  assert.doesNotMatch(vercel.buildCommand, /@loomic\//);
+});
+
+test("web production builds fail on TypeScript errors", async () => {
+  const source = await readText("apps/web/next.config.ts");
+
+  assert.doesNotMatch(source, /ignoreBuildErrors\s*:\s*true/);
+});
+
+test("same-origin runtime and browser quality gates are versioned", async () => {
+  const web = await readJson("apps/web/package.json");
+  const nginx = await readText("nginx/lovart.local.dofe.ai.conf");
+  const runtimeCheck = await readText("scripts/verify-same-origin-runtime.mjs");
+
+  assert.equal(typeof web.scripts["test:e2e"], "string");
+  assert.equal(typeof web.scripts["test:e2e:static"], "string");
+  assert.equal(typeof web.devDependencies["@playwright/test"], "string");
+  assert.equal(typeof web.devDependencies["@axe-core/playwright"], "string");
+  assert.match(nginx, /location \^~ \/api\//);
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:3105/);
+  assert.match(nginx, /try_files \$uri \$uri\/ \$uri\.html \/index\.html/);
+  assert.match(runtimeCheck, /redirect: "manual"/);
+});
+
+test("deployment and CI keep the same-origin edge versioned", async () => {
+  const compose = await readText("deploy/docker-compose.yml");
+  const composeSmoke = await readText("deploy/docker-compose.smoke.yml");
+  const runtimeNginx = await readText("deploy/nginx/lovart-runtime.conf");
+  const runtimeCheck = await readText("scripts/verify-compose-runtime.mjs");
+  const workflow = await readText(".github/workflows/quality-gates.yml");
+
+  assert.match(compose, /dockerfile: apps\/web\/Dockerfile/);
+  assert.match(compose, /SERVICE_MODE: api/);
+  assert.match(compose, /SERVICE_MODE: worker/);
+  assert.match(runtimeNginx, /proxy_pass http:\/\/server:3105/);
+  assert.match(
+    runtimeNginx,
+    /location = \/api\/ws\s*\{\s*# Auth now travels[\s\S]*access_log off/,
+  );
+  assert.match(
+    runtimeNginx,
+    /Sec-WebSocket-Protocol \$http_sec_websocket_protocol/,
+  );
+  assert.match(runtimeNginx, /Content-Security-Policy/);
+  assert.match(runtimeNginx, /Strict-Transport-Security/);
+  assert.match(composeSmoke, /DATABASE_URL/);
+  assert.match(composeSmoke, /NGINX_BASE_IMAGE/);
+  assert.match(composeSmoke, /NPM_REGISTRY/);
+  assert.match(composeSmoke, /profiles: \[worker\]/);
+  assert.match(runtimeCheck, /lovart-dofe-server/);
+  assert.match(runtimeCheck, /Fastify ownership of \/api\/ws/);
+  assert.match(runtimeCheck, /strict-transport-security/);
+  assert.match(workflow, /verify:compose-runtime/);
+  assert.match(workflow, /test:e2e:static/);
+  assert.match(workflow, /lint:baseline/);
+});
+
+test("credentialed SSO workflow rejects a missing protected environment", async () => {
+  const workflow = await readText(".github/workflows/real-sso-e2e.yml");
+  const preflight = await readText("scripts/verify-real-sso-e2e-env.mjs");
+  const e2e = await readText("apps/web/e2e/auth-and-accessibility.spec.ts");
+
+  assert.match(workflow, /verify-real-sso-e2e-env/);
+  assert.match(preflight, /E2E_SSO_PASSWORD/);
+  assert.match(preflight, /must be distinct origins/);
+  assert.match(e2e, /Credentialed SSO is deliberately exercised once/);
+});
+
+test("WebSocket commands cannot override the authenticated handshake token", async () => {
+  const websocketHandler = await readText("apps/server/src/ws/handler.ts");
+  const websocketClient = await readText("apps/web/src/hooks/use-websocket.ts");
+  const app = await readText("apps/server/src/app.ts");
+
+  assert.match(websocketHandler, /const runToken = token/);
+  assert.doesNotMatch(websocketHandler, /accessToken \?\? token/);
+  assert.match(
+    websocketClient,
+    /accessToken: _accessToken, \.\.\.commandPayload/,
+  );
+  assert.doesNotMatch(websocketClient, /\/api\/ws\?token=/);
+  assert.match(app, /maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES/);
+  assert.match(websocketHandler, /failureCategory: "websocket_auth_error"/);
+  assert.doesNotMatch(websocketHandler, /log\.info\("connected", \{ userId/);
+  assert.doesNotMatch(
+    websocketHandler,
+    /log\.error\("socket_error", \{ userId/,
+  );
+  assert.doesNotMatch(websocketHandler, /log\.info\("started", \{ prompt/);
+  assert.doesNotMatch(websocketHandler, /log\.lap\("run_created", \{ runId/);
+  assert.match(websocketHandler, /failureCategory: "agent_stream"/);
 });

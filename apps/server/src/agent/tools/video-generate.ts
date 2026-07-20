@@ -8,7 +8,7 @@ import {
   type AvailableModel,
 } from "../../generation/providers/registry.js";
 
-const DEFAULT_MODEL = "wan-video/wan-2.6";
+const DEFAULT_MODEL = "seedance-2.0";
 
 // ── Submit function type ───────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ export async function runVideoGenerate(
       model: input.model,
       duration: input.duration,
       aspectRatio: input.aspectRatio,
-      ...(input.resolution ? { resolution: input.resolution as "480p" | "720p" | "1080p" } : {}),
+      ...(input.resolution ? { resolution: input.resolution as "480p" | "720p" | "1080p" | "4k" } : {}),
       ...(input.inputImages ? { inputImages: input.inputImages } : {}),
       ...(input.inputVideo ? { inputVideo: input.inputVideo } : {}),
       ...(input.enableAudio != null ? { enableAudio: input.enableAudio } : {}),

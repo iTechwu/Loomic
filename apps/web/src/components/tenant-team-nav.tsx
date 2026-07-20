@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, ChevronsUpDown, UsersRound } from "lucide-react";
+import { Building2, ChevronsUpDown, UserRound, UsersRound } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -16,7 +16,26 @@ import { useAuth } from "@/lib/auth-context";
 export function TenantTeamNav() {
   const { session } = useAuth();
   const context = session?.tenant_context;
-  if (!context) return null;
+  if (!context) {
+    // SSO can legitimately omit tenant context during an upstream outage or
+    // for personal accounts. Never infer a team from local product data.
+    return (
+      <output
+        className="fixed right-3 top-3 z-40 flex h-11 max-w-[calc(100vw-5.5rem)] items-center gap-2 border border-border bg-background px-2.5 text-left text-xs shadow-sm md:right-5 md:top-4"
+        aria-describedby="personal-workspace-context"
+        title="SSO 未提供租户与团队信息，当前仅显示个人工作区。"
+      >
+        <UserRound
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <span className="truncate font-medium">个人工作区</span>
+        <span id="personal-workspace-context" className="sr-only">
+          SSO 未提供租户与团队信息，当前仅显示个人工作区。
+        </span>
+      </output>
+    );
+  }
 
   const primaryTeam = context.teams[0];
   return (
@@ -24,7 +43,7 @@ export function TenantTeamNav() {
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label="查看当前租户和团队"
-          className="flex h-10 max-w-[calc(100vw-5.5rem)] items-center gap-2 border border-border bg-background px-2.5 text-left shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-11 max-w-[calc(100vw-5.5rem)] items-center gap-2 border border-border bg-background px-2.5 text-left shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Building2 className="size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 leading-tight">

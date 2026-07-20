@@ -46,7 +46,7 @@ export function ProjectList({
               onCreateClick();
             }
           }}
-          className="aspect-[286/208] cursor-pointer rounded-xl bg-card p-2 shadow-card transition-all duration-300 hover:shadow-md sm:rounded-2xl sm:p-3"
+          className="aspect-[286/208] cursor-pointer rounded-xl bg-card p-2 shadow-card transition-all duration-300 hover:shadow-md sm:rounded-2xl sm:p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         >
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-xl bg-muted sm:gap-3">
             <svg
@@ -70,14 +70,44 @@ export function ProjectList({
 
         {/* Project cards */}
         {projects.map((project) => (
-          <Link
+          <div
             key={project.id}
-            href={`/canvas?id=${project.primaryCanvas.id}`}
-            className={`group relative block aspect-[286/208] rounded-lg bg-card p-2 cursor-pointer shadow-card transition-all duration-300 hover:shadow-md sm:p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1${
+            className={`relative aspect-[286/208] rounded-lg bg-card p-2 shadow-card transition-all duration-300 hover:shadow-md sm:p-3 ${
               highlightId === project.id ? " ring-2 ring-border" : ""
             }`}
           >
-            {/* Trash icon -- hover reveal on desktop */}
+            <Link
+              href={`/canvas?id=${project.primaryCanvas.id}`}
+              className="group block h-full rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            >
+              {/* Thumbnail */}
+              <div className="aspect-[395/227] w-full overflow-hidden rounded-lg bg-muted">
+                {project.thumbnailUrl && (
+                  <img
+                    src={project.thumbnailUrl}
+                    // 项目名以文本形式紧邻出现且同处一个链接内；缩略图设为装饰图，
+                    // 避免链接可访问名被读两遍（WCAG 1.1.1 / 4.1.2）。
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                )}
+              </div>
+              {/* Info */}
+              <div className="mt-2 flex items-center justify-between sm:mt-3">
+                <div className="truncate text-xs text-foreground sm:text-sm">
+                  {project.name}
+                </div>
+              </div>
+              <div className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
+                更新于 {formatDate(project.updatedAt)}
+              </div>
+            </Link>
+
+            {/* Delete trigger -- sibling of the link so we don't nest buttons inside anchors. */}
             <button
               type="button"
               onClick={(e) => {
@@ -85,36 +115,12 @@ export function ProjectList({
                 e.stopPropagation();
                 requestDelete(project.id);
               }}
-              aria-label={`Delete ${project.name}`}
-              className="absolute right-3 top-3 z-10 flex size-8 items-center justify-center rounded-[4px] bg-foreground/70 text-background opacity-0 transition-all duration-300 hover:bg-foreground/80 group-hover:opacity-100 sm:right-5 sm:top-5 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:opacity-100"
+              aria-label={`删除“${project.name}”`}
+              className="absolute right-2 top-2 z-10 flex size-11 items-center justify-center rounded-[4px] bg-foreground/70 text-background opacity-0 transition-all duration-300 hover:bg-foreground/80 group-hover:opacity-100 sm:right-4 sm:top-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:opacity-100"
             >
-              <Trash2 size={14} />
+              <Trash2 size={16} />
             </button>
-
-            {/* Thumbnail */}
-            <div className="aspect-[395/227] w-full overflow-hidden rounded-lg bg-muted">
-              {project.thumbnailUrl && (
-                <img
-                  src={project.thumbnailUrl}
-                  alt={project.name}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-            </div>
-            {/* Info */}
-            <div className="mt-2 flex items-center justify-between sm:mt-3">
-              <div className="truncate text-xs text-foreground sm:text-sm">
-                {project.name}
-              </div>
-            </div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
-              更新于 {formatDate(project.updatedAt)}
-            </div>
-          </Link>
+          </div>
         ))}
       </div>
 

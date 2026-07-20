@@ -72,7 +72,7 @@ export function ImageGeneratorPanel({
   // Fetch available models with error logging
   useEffect(() => {
     let cancelled = false;
-    fetchImageModels()
+    fetchImageModels(accessToken)
       .then((r) => {
         if (!cancelled) setModels(r.models);
       })
@@ -80,7 +80,7 @@ export function ImageGeneratorPanel({
         console.warn("[image-gen] Failed to fetch models:", err);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [accessToken]);
 
   // Close dropdowns when clicking outside the panel
   useEffect(() => {

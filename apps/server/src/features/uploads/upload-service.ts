@@ -5,6 +5,7 @@ import type { AssetBucket, AssetObject } from "@lovart.dofe/shared";
 import type { NativeAssetRow, NativeDataRepository } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
 import type { AuthenticatedUser } from "../../auth/sso-authenticator.js";
+import { logOperationalFailure } from "../../utils/operational-log.js";
 
 const SIGNED_URL_EXPIRY_SECONDS = 3600;
 
@@ -30,12 +31,17 @@ export function createUploadService(options: { repository: NativeDataRepository;
           mimeType: input.mimeType, objectPath, ...(input.projectId ? { projectId: input.projectId } : {}), workspaceId: input.workspaceId,
         });
         if (!asset) {
-          await options.storage.delete(objectPath).catch((error: unknown) => console.error("[upload-service] orphan cleanup failed", { objectPath, message: error instanceof Error ? error.message : String(error) }));
+          await options.storage.delete(objectPath).catch(() =>
+            logOperationalFailure(
+              "[upload-service] orphan cleanup failed",
+              "upload_orphan_cleanup",
+            ),
+          );
           throw new Error("Metadata authorization failed");
         }
         return { asset: mapAsset(asset), url: options.storage.createReadUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS) };
-      } catch (error) {
-        console.error("[upload-service] upload failed", { message: error instanceof Error ? error.message : String(error), userId: user.id });
+      } catch {
+        logOperationalFailure("[upload-service] upload failed", "upload_create");
         throw new UploadServiceError("upload_failed", "Unable to upload asset.", 500);
       }
     },
@@ -52,7 +58,7 @@ export function createUploadService(options: { repository: NativeDataRepository;
         if (!await options.repository.removeAsset(user.id, assetId)) throw new UploadServiceError("asset_not_found", "Asset not found.", 404);
       } catch (error) {
         if (error instanceof UploadServiceError) throw error;
-        console.error("[upload-service] delete failed", { assetId, message: error instanceof Error ? error.message : String(error), userId: user.id });
+        logOperationalFailure("[upload-service] delete failed", "upload_delete");
         throw new UploadServiceError("upload_failed", "Unable to delete asset.", 500);
       }
     },

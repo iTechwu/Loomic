@@ -1,34 +1,58 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthTransferScreen } from "@/components/auth/auth-transfer-screen";
 import { LoadingScreen } from "@/components/loading-screen";
 import { PageTransition } from "@/components/page-transition";
 import { TenantTeamNav } from "@/components/tenant-team-nav";
 import { useAuth } from "@/lib/auth-context";
+import { getBrowserReturnTo, replaceWithSsoLogin } from "@/lib/sso-auth";
 
 export default function WorkspaceLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading, refreshSession, serviceError, sessionExpired } =
+    useAuth();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
+    if (!loading && !user && !serviceError) {
+      replaceWithSsoLogin(getBrowserReturnTo());
     }
-  }, [loading, user, router]);
+  }, [loading, serviceError, user]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
   if (!user) {
+    if (serviceError) {
+      return (
+        <AuthTransferScreen
+          error="service_unavailable"
+          onRetry={() => void refreshSession()}
+          {...(serviceError.requestId
+            ? { supportId: serviceError.requestId }
+            : {})}
+        />
+      );
+    }
+    if (sessionExpired) {
+      return (
+        <main
+          className="flex min-h-screen items-center justify-center bg-background px-6 text-center"
+          aria-live="polite"
+        >
+          <p className="text-sm text-muted-foreground">
+            登录状态已过期，正在前往 DoFe 账户验证。
+          </p>
+        </main>
+      );
+    }
     return null;
   }
 

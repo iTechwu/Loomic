@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { SsoEntryLink } from "@/components/auth/sso-entry-link";
 import { LovartDofeLogo } from "@/components/icons/lovart-dofe-logo";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -22,18 +23,18 @@ export function PricingNav() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/login"
+          <SsoEntryLink
+            returnTo="/pricing"
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
             登录
-          </Link>
-          <Link
-            href="/register"
+          </SsoEntryLink>
+          <SsoEntryLink
+            returnTo="/pricing"
             className={buttonVariants({ size: "sm" })}
           >
             免费开始
-          </Link>
+          </SsoEntryLink>
         </div>
       </nav>
     </motion.header>

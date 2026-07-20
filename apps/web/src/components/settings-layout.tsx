@@ -17,9 +17,9 @@ export function SettingsLayout({ children }: SettingsLayoutProps) {
     useState<SettingsSection>("profile");
 
   const sections: Array<{ id: SettingsSection; label: string }> = [
-    { id: "profile", label: "Profile" },
-    { id: "agent", label: "Agent" },
-    { id: "billing", label: "Billing" },
+    { id: "profile", label: "个人资料" },
+    { id: "agent", label: "智能体" },
+    { id: "billing", label: "账单" },
   ];
 
   return (
@@ -29,13 +29,13 @@ export function SettingsLayout({ children }: SettingsLayoutProps) {
         <button
           type="button"
           onClick={() => router.push("/projects")}
-          className="text-sm text-muted-foreground hover:text-foreground mb-6 flex items-center gap-1"
+          className="text-sm text-muted-foreground hover:text-foreground mb-6 flex min-h-11 items-center gap-1"
         >
-          <span aria-hidden>&larr;</span> Back to Projects
+          <span aria-hidden>&larr;</span> 返回项目
         </button>
 
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-          Settings
+          设置
         </div>
 
         <div className="space-y-0.5">
@@ -44,7 +44,8 @@ export function SettingsLayout({ children }: SettingsLayoutProps) {
               key={section.id}
               type="button"
               onClick={() => setActiveSection(section.id)}
-              className={`block w-full text-left text-sm px-2 py-1.5 rounded ${
+              aria-current={activeSection === section.id ? "true" : undefined}
+              className={`block w-full text-left text-sm px-2 min-h-11 rounded ${
                 activeSection === section.id
                   ? "font-medium bg-muted"
                   : "text-muted-foreground hover:bg-muted"

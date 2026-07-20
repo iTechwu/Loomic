@@ -48,6 +48,7 @@ import {
 } from "./features/uploads/upload-service.js";
 import { type ServerEnv, loadServerEnv, resolveDefaultAgentModel } from "./config/env.js";
 import { createRabbitMqClient } from "./queue/rabbitmq-client.js";
+import { createRedisClient } from "./cache/redis-client.js";
 import { createNativeJobRepository } from "./database/job-repository.js";
 import { createNativeChatRepository } from "./database/chat-repository.js";
 import { createNativeSettingsRepository } from "./database/settings-repository.js";
@@ -62,6 +63,10 @@ import { registerCanvasRoutes } from "./http/canvases.js";
 import { registerChatRoutes } from "./http/chat.js";
 import { registerGenerateRoutes } from "./http/generate.js";
 import { registerHealthRoutes } from "./http/health.js";
+import {
+  registerAuthTransferTelemetryReadiness,
+  registerAuthTransferTelemetryRoute,
+} from "./http/auth-transfer-telemetry.js";
 import { registerImageProxyRoute } from "./http/image-proxy.js";
 import { registerModelRoutes } from "./http/models.js";
 import { registerOidcAuthRoutes } from "./http/oidc-auth.js";
@@ -76,11 +81,17 @@ import { registerMarketplaceRoutes } from "./http/skills-marketplace.js";
 import { registerViewerRoutes } from "./http/viewer.js";
 import { CanvasEventBuffer } from "./ws/event-buffer.js";
 import { ConnectionManager } from "./ws/connection-manager.js";
-import { registerWsRoute } from "./ws/handler.js";
+import { registerWsRoute, selectWebSocketAuthProtocol } from "./ws/handler.js";
 import { createDatabasePool } from "./database/pool.js";
 import { createNativeDataRepository } from "./database/native-data-repository.js";
 import { createNativeSkillRepository } from "./database/skill-repository.js";
 import { createSsoIdentityRepository } from "./database/sso-identity-repository.js";
+import { createCredentialCrypto } from "./features/credentials/crypto.js";
+import {
+  createCredentialsService,
+  type CredentialsService,
+} from "./features/credentials/credentials-service.js";
+import { createUserCredentialsRepository } from "./features/credentials/credentials-repository.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
 import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./auth/sso-authenticator.js";
@@ -105,6 +116,8 @@ export type BuildAppOptions = {
   viewerService?: ViewerService;
 };
 
+const MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
+
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const env = loadServerEnv(options.env);
 
@@ -118,7 +131,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     limits: { fileSize: 10 * 1024 * 1024 },
   });
   void app.register(async (instance) => {
-    await instance.register(websocket);
+    await instance.register(websocket, {
+      options: {
+        handleProtocols: selectWebSocketAuthProtocol,
+        maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
+      },
+    });
     await registerWsRoute(instance, {
       agentRuns,
       agentRunMetadataService,
@@ -136,6 +154,37 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
   const databasePool = createDatabasePool(env.databaseUrl);
   const identities = createSsoIdentityRepository(databasePool);
+
+  // Per-user models credential provisioning + resolution. Disabled when the
+  // models internal secret or base URL isn't configured (e.g. local dev without
+  // models); in that case model calls fall back to whatever provider keys exist
+  // and provisioning is skipped.
+  const credentialCrypto = createCredentialCrypto(env.lovartCredentialEncryptionKey);
+  const credentialsEnabled = Boolean(
+    credentialCrypto.enabled && env.internalApiSecret && env.dofeModelBaseUrl,
+  );
+  if (!credentialsEnabled && (env.internalApiSecret || env.dofeModelBaseUrl)) {
+    app.log.error(
+      "[credentials] provisioning disabled: LOVART_CREDENTIAL_ENCRYPTION_KEY, INTERNAL_API_SECRET, and DOFE_MODEL_BASE_URL are required.",
+    );
+  }
+  const credentialsService: CredentialsService | undefined =
+    credentialsEnabled && env.internalApiSecret && env.dofeModelBaseUrl
+      ? createCredentialsService({
+          repository: createUserCredentialsRepository(databasePool),
+          crypto: credentialCrypto,
+          provisionConfig: {
+            baseUrl: env.dofeModelBaseUrl,
+            serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+            internalApiSecret: env.internalApiSecret,
+          },
+          logger: {
+            info: (message, data) => app.log.info(data ?? {}, message),
+            warn: (message, data) => app.log.warn(data ?? {}, message),
+            error: (message, data) => app.log.error(data ?? {}, message),
+          },
+        })
+      : undefined;
   const auth = options.auth ?? createSsoRequestAuthenticator(env, identities);
   const dataRepository = createNativeDataRepository(databasePool);
   const skillRepository = createNativeSkillRepository(databasePool);
@@ -144,7 +193,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const objectStorage = createConfiguredTosObjectStorage(env.tos);
   const canvasElementWriter = createCanvasElementWriter({ repository: dataRepository, storage: objectStorage });
   app.addHook("onClose", async () => databasePool.end());
-  const viewerService = options.viewerService ?? createViewerService({ repository: dataRepository });
+  const viewerService =
+    options.viewerService ??
+    createViewerService({
+      repository: dataRepository,
+      ...(credentialsService ? { credentialsService } : {}),
+    });
   const projectService =
     options.projectService ??
     createProjectService({ repository: dataRepository, storage: objectStorage, viewerService });
@@ -170,8 +224,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const uploadService =
     options.uploadService ?? createUploadService({ repository: dataRepository, storage: objectStorage });
   const rabbitMq = env.rabbitMqUrl ? createRabbitMqClient(env.rabbitMqUrl) : undefined;
+  const telemetryRedis = env.redisUrl ? createRedisClient(env.redisUrl) : undefined;
   const jobRepository = createNativeJobRepository(databasePool);
   if (rabbitMq) app.addHook("onClose", async () => rabbitMq.close());
+  if (telemetryRedis) app.addHook("onClose", async () => telemetryRedis.close());
+  registerAuthTransferTelemetryReadiness(app, telemetryRedis?.connection);
   const jobService =
     options.jobService ??
     (rabbitMq
@@ -194,6 +251,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? {}
       : { eventDelayMs: options.mockEventDelayMs }),
     env,
+    ...(credentialsService ? { credentialsService } : {}),
     objectStorage,
     ...(jobService ? { jobService } : {}),
     viewerService,
@@ -229,7 +287,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
-  void registerOidcAuthRoutes(app, { env, identities });
+  void registerAuthTransferTelemetryRoute(app, {
+    ...(telemetryRedis ? { redis: telemetryRedis.connection } : {}),
+  });
+  void registerOidcAuthRoutes(app, {
+    env,
+    identities,
+    ...(credentialsService ? { credentialsService } : {}),
+  });
   void registerFontsRoutes(app, { env });
   void registerImageProxyRoute(app);
   void registerRunRoutes(app, agentRuns, {
@@ -261,8 +326,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     viewerService,
   });
   void registerModelRoutes(app, env);
-  void registerImageModelRoutes(app, { auth, viewerService });
-  void registerVideoModelRoutes(app, { auth, viewerService });
+  void registerImageModelRoutes(app, { auth });
+  void registerVideoModelRoutes(app, { auth });
   void registerChatRoutes(app, {
     auth,
     chatService,
@@ -276,6 +341,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     auth,
     uploadService,
     viewerService,
+    ...(credentialsService ? { credentialsService } : {}),
     ...(jobService ? { jobService } : {}),
   });
   if (jobService) {

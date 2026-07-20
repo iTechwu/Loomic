@@ -55,6 +55,15 @@ export async function registerJobRoutes(
           ...(payload.aspect_ratio !== undefined
             ? { aspect_ratio: payload.aspect_ratio }
             : {}),
+          ...(payload.quality !== undefined
+            ? { quality: payload.quality }
+            : {}),
+          ...(payload.input_images !== undefined
+            ? { input_images: payload.input_images }
+            : {}),
+          ...(payload.output_format !== undefined
+            ? { output_format: payload.output_format }
+            : {}),
         },
       });
 

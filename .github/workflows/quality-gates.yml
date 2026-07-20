@@ -1,0 +1,49 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-static-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run verify:migrations
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm run lint:baseline
+      - run: LOVART_ENV_FILE=.env.production.example docker compose -f deploy/docker-compose.yml config
+      - name: Build and smoke-test the same-origin Compose runtime
+        run: |
+          docker compose --project-name lovart-runtime-smoke -f deploy/docker-compose.yml -f deploy/docker-compose.smoke.yml up --build --wait
+          pnpm run verify:compose-runtime
+      - name: Stop the Compose smoke runtime
+        if: always()
+        run: docker compose --project-name lovart-runtime-smoke -f deploy/docker-compose.yml -f deploy/docker-compose.smoke.yml down --volumes --remove-orphans
+      - run: pnpm --filter @lovart.dofe/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @lovart.dofe/web test:e2e:static
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore

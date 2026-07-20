@@ -14,10 +14,12 @@ export function ImageModelPreferencePopover({
   open,
   onClose,
   anchorRef,
+  accessToken,
 }: {
   open: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<HTMLElement | null>;
+  accessToken?: string | undefined;
 }) {
   const { preference, setMode, toggleModel } = useImageModelPreference();
   const [models, setModels] = useState<ImageModelInfo[]>([]);
@@ -29,13 +31,18 @@ export function ImageModelPreferencePopover({
 
   useEffect(() => {
     if (!open) return;
-    fetchImageModels()
+    if (!accessToken) {
+      setModels([]);
+      setVideoModels([]);
+      return;
+    }
+    fetchImageModels(accessToken)
       .then((data) => setModels(data.models))
       .catch(() => {});
-    fetchVideoModels()
+    fetchVideoModels(accessToken)
       .then((data) => setVideoModels(data.models))
       .catch(() => {});
-  }, [open]);
+  }, [accessToken, open]);
 
   // Calculate position — auto-detect direction based on available space
   useLayoutEffect(() => {

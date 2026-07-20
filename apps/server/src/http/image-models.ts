@@ -1,16 +1,18 @@
-import type { FastifyInstance } from "fastify";
-import { getAvailableImageModels } from "../generation/providers/registry.js";
+import { unauthenticatedErrorResponseSchema } from "@lovart.dofe/shared";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
-import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
+import { getAvailableImageModels } from "../generation/providers/registry.js";
 
 export async function registerImageModelRoutes(
   app: FastifyInstance,
   options: {
     auth: RequestAuthenticator;
-    viewerService: ViewerService;
   },
 ) {
   app.get("/api/image-models", async (request, reply) => {
+    if (!(await options.auth.authenticate(request))) {
+      return sendUnauthorized(reply);
+    }
     const models = getAvailableImageModels();
 
     const annotated = models.map((m) => ({
@@ -23,4 +25,15 @@ export async function registerImageModelRoutes(
 
     return reply.code(200).send({ models: annotated });
   });
+}
+
+function sendUnauthorized(reply: FastifyReply) {
+  return reply.code(401).send(
+    unauthenticatedErrorResponseSchema.parse({
+      error: {
+        code: "unauthorized",
+        message: "Missing or invalid bearer token.",
+      },
+    }),
+  );
 }
