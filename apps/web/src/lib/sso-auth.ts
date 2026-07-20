@@ -27,6 +27,9 @@ type OidcSessionResponse = {
 
 const OIDC_API_BASE = "/api/auth/oidc";
 const PENDING_RETURN_TO_KEY = "lovart.dofe:sso-return-to";
+const MAX_RETURN_TO_LENGTH = 2_048;
+export const SSO_UI_LOCALES = ["zh-CN", "en"] as const;
+export type SsoUiLocale = (typeof SSO_UI_LOCALES)[number];
 
 export class SsoExchangeError extends Error {
   readonly requestId: string | undefined;
@@ -42,9 +45,14 @@ export class SsoExchangeError extends Error {
  * Creates the only browser-facing entry point for DoFe identity. The API still
  * validates the destination before it writes the PKCE transaction cookie.
  */
-export function buildSsoStartHref(returnTo = "/home"): string {
+export function buildSsoStartHref(
+  returnTo = "/home",
+  uiLocale?: SsoUiLocale,
+): string {
   const safePath = isSafeReturnTo(returnTo) ? returnTo : "/home";
-  return `${OIDC_API_BASE}/start?${new URLSearchParams({ returnTo: safePath }).toString()}`;
+  const params = new URLSearchParams({ returnTo: safePath });
+  if (uiLocale) params.set("uiLocale", uiLocale);
+  return `${OIDC_API_BASE}/start?${params.toString()}`;
 }
 
 /** Preserves the complete in-app destination before an authentication redirect. */
@@ -68,16 +76,60 @@ export function getBrowserReturnTo(): string {
 }
 
 export function beginSsoLogin(returnTo = "/home"): void {
-  const safePath = isSafeReturnTo(returnTo) ? returnTo : "/home";
-  rememberPendingSsoReturnTo(safePath);
-  window.location.assign(buildSsoStartHref(safePath));
+  const safePath = rememberSsoReturnTo(returnTo);
+  window.location.assign(buildSsoStartHref(safePath, getBrowserSsoUiLocale()));
 }
 
 /** Replaces a protected, unauthenticated history entry before entering SSO. */
 export function replaceWithSsoLogin(returnTo = "/home"): void {
+  const safePath = rememberSsoReturnTo(returnTo);
+  window.location.replace(buildSsoStartHref(safePath, getBrowserSsoUiLocale()));
+}
+
+/** Records a same-tab public entry so a cancelled SSO flow can retry in place. */
+export function rememberSsoReturnTo(returnTo = "/home"): string {
   const safePath = isSafeReturnTo(returnTo) ? returnTo : "/home";
   rememberPendingSsoReturnTo(safePath);
-  window.location.replace(buildSsoStartHref(safePath));
+  return safePath;
+}
+
+/** Maps browser language ranges to the SSO contract's exact locale values. */
+export function getBrowserSsoUiLocale(): SsoUiLocale {
+  if (typeof navigator === "undefined") return "zh-CN";
+  const candidates = navigator.languages?.length
+    ? navigator.languages
+    : [navigator.language];
+  return selectSsoUiLocale(candidates);
+}
+
+/** Selects the first browser language represented by the SSO's exact locale set. */
+export function selectSsoUiLocale(candidates: readonly string[]): SsoUiLocale {
+  for (const locale of candidates) {
+    const language = locale.toLowerCase();
+    if (language.startsWith("zh")) return "zh-CN";
+    if (language.startsWith("en")) return "en";
+  }
+  return "zh-CN";
+}
+
+/** Returns the explicitly configured SSO account centre URL, never derived from API URLs. */
+export function getSsoAccountUrl(
+  value = process.env.NEXT_PUBLIC_SSO_ACCOUNT_URL,
+): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /** Returns the last same-tab, same-origin destination for a recoverable retry. */
@@ -144,7 +196,39 @@ export async function signOutFromSso(): Promise<string | null> {
     const body = (await response
       .json()
       .catch(() => null)) as OidcSessionResponse | null;
-    return typeof body?.logoutUrl === "string" ? body.logoutUrl : null;
+    return typeof body?.logoutUrl === "string"
+      ? getSafeSsoLogoutUrl(body.logoutUrl)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Accept only the standards-based global logout URL constructed by this RP.
+ * The Fastify response remains authoritative; this prevents a malformed
+ * response from turning browser logout into an arbitrary external redirect.
+ */
+export function getSafeSsoLogoutUrl(
+  value: string,
+  currentOrigin = typeof window === "undefined" ? "" : window.location.origin,
+): string | null {
+  if (!currentOrigin) return null;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.username ||
+      url.password ||
+      !url.pathname.endsWith("/oauth/logout")
+    ) {
+      return null;
+    }
+    const expectedReturnTo = `${currentOrigin.replace(/\/+$/, "")}/?signed_out=1`;
+    if (url.searchParams.get("post_logout_redirect_uri") !== expectedReturnTo) {
+      return null;
+    }
+    return url.toString();
   } catch {
     return null;
   }
@@ -236,6 +320,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function isSafeReturnTo(value: string): boolean {
   return (
-    value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
+    value.length <= MAX_RETURN_TO_LENGTH &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.startsWith("/\\")
   );
 }

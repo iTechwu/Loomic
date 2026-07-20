@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "verify:design-tokens": "node scripts/verify-design-tokens.mjs",
     "lint": "biome check .",
     "test:workspace": "node --test tests/workspace.test.mjs",
     "test:packages": "turbo run test",

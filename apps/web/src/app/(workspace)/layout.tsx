@@ -15,7 +15,7 @@ export default function WorkspaceLayout({
 }: {
   children: ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, sessionExpired } = useAuth();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -28,6 +28,19 @@ export default function WorkspaceLayout({
   }
 
   if (!user) {
+    if (sessionExpired) {
+      return (
+        <main
+          className="flex min-h-screen items-center justify-center bg-background px-6 text-center"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-sm text-muted-foreground">
+            登录状态已过期，正在前往 DoFe 账户验证。
+          </p>
+        </main>
+      );
+    }
     return null;
   }
 

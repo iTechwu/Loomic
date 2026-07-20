@@ -17,11 +17,15 @@ vi.mock("../src/lib/sso-auth", () => ({
 import { AuthProvider, useAuth } from "../src/lib/auth-context";
 
 function TestConsumer() {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshSession, sessionExpired } = useAuth();
   return (
     <>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="user">{user?.email ?? "none"}</span>
+      <span data-testid="session-expired">{String(sessionExpired)}</span>
+      <button type="button" onClick={() => void refreshSession()}>
+        Refresh session
+      </button>
     </>
   );
 }
@@ -89,5 +93,30 @@ describe("AuthProvider", () => {
       ),
     );
     expect(completeSignInReferences).toHaveLength(1);
+  });
+
+  it("marks a previously authenticated session as expired when refresh no longer succeeds", async () => {
+    mockRefreshSession
+      .mockResolvedValueOnce({
+        access_token: "data-token",
+        expires_at: Math.floor(Date.now() / 1000) + 300,
+        user: { id: "u1", email: "test@example.com", user_metadata: {} },
+      })
+      .mockResolvedValueOnce(null);
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("user").textContent).toBe("test@example.com"),
+    );
+
+    screen.getByRole("button", { name: "Refresh session" }).click();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("user").textContent).toBe("none");
+      expect(screen.getByTestId("session-expired").textContent).toBe("true");
+    });
   });
 });

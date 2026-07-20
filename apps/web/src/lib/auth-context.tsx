@@ -19,6 +19,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   session: SsoSession | null;
   loading: boolean;
+  sessionExpired: boolean;
   completeSignIn: (session: SsoSession) => void;
   refreshSession: () => Promise<SsoSession | null>;
   signOut: () => Promise<void>;
@@ -30,15 +31,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SsoSession | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const refreshTimer = useRef<number | null>(null);
+  const hadSession = useRef(false);
 
   const applySession = useCallback((nextSession: SsoSession | null) => {
+    hadSession.current = Boolean(nextSession);
+    if (nextSession) setSessionExpired(false);
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
   }, []);
 
   const refreshSession = useCallback(async (): Promise<SsoSession | null> => {
     const nextSession = await refreshSsoSession();
+    if (!nextSession && hadSession.current) setSessionExpired(true);
     applySession(nextSession);
     return nextSession;
   }, [applySession]);
@@ -83,11 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeSignIn,
       loading,
       refreshSession,
+      sessionExpired,
       session,
       signOut,
       user,
     }),
-    [completeSignIn, loading, refreshSession, session, signOut, user],
+    [completeSignIn, loading, refreshSession, session, sessionExpired, signOut, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -76,4 +76,24 @@ describe("Auth callback page", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("支持编号：req_123");
   });
+
+  it("retries workspace bootstrap without starting a second SSO authorization flow", async () => {
+    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
+    const session = { access_token: "data-token", expires_at: 123, user: { id: "u1", email: "a@b.com", user_metadata: {} } };
+    mockExchangeSsoCode.mockResolvedValue({ returnTo: "/projects", session });
+    mockFetchViewer.mockRejectedValueOnce(new Error("viewer unavailable"));
+    mockFetchViewer.mockResolvedValueOnce({});
+
+    render(<CallbackPage />);
+    const retry = await screen.findByRole("button", { name: "重试打开工作区" });
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(mockFetchViewer).toHaveBeenCalledTimes(2);
+      expect(mockExchangeSsoCode).toHaveBeenCalledTimes(1);
+      expect(mockBeginSsoLogin).not.toHaveBeenCalled();
+      expect(mockCompleteSignIn).toHaveBeenCalledWith(session);
+      expect(mockReplace).toHaveBeenCalledWith("/projects");
+    });
+  });
 });

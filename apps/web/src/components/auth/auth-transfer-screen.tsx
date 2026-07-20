@@ -23,16 +23,18 @@ const ERROR_COPY: Record<AuthTransferError, string> = {
 export function AuthTransferScreen({
   error,
   onRetry,
+  retryLabel = "重新开始",
   supportId,
 }: {
   error?: AuthTransferError;
   onRetry?: () => void;
+  retryLabel?: string;
   supportId?: string;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    if (error) headingRef.current?.focus();
+    headingRef.current?.focus();
   }, [error]);
 
   if (error) {
@@ -64,7 +66,7 @@ export function AuthTransferScreen({
           </div>
           <div className="flex flex-col gap-3">
             <Button type="button" className="h-10 w-full" onClick={onRetry}>
-              重新开始
+              {retryLabel}
             </Button>
             <a
               href="/"
@@ -84,11 +86,19 @@ export function AuthTransferScreen({
       role="status"
       aria-live="polite"
       aria-atomic="true"
+      aria-labelledby="auth-transfer-loading-title"
     >
       <div className="flex flex-col items-center gap-4 text-center">
         <LovartDofeLogo className="size-10 text-foreground" />
         <div className="space-y-1">
-          <h1 className="text-base font-semibold">正在验证 DoFe 账户</h1>
+          <h1
+            ref={headingRef}
+            id="auth-transfer-loading-title"
+            tabIndex={-1}
+            className="text-base font-semibold outline-none"
+          >
+            正在验证 DoFe 账户
+          </h1>
           <p className="text-sm text-muted-foreground">请稍候，正在打开你的工作区。</p>
         </div>
       </div>

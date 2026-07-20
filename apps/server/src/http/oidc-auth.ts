@@ -4,18 +4,23 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { ServerEnv } from "../config/env.js";
 import type { SsoIdentityRepository } from "../database/sso-identity-repository.js";
+import type { CredentialsService } from "../features/credentials/credentials-service.js";
 import { ssoProfileEmail } from "../sso-identity-email.js";
 import {
   type SsoTenantTeamContext,
   fetchSsoTenantTeamContext,
 } from "../sso-tenant-context.js";
-import type { CredentialsService } from "../features/credentials/credentials-service.js";
 
 const PKCE_COOKIE = "lovart_oidc_pkce";
 const REFRESH_COOKIE = "lovart_oidc_refresh";
+const ID_TOKEN_COOKIE = "lovart_oidc_id";
 const OIDC_TIMEOUT_MS = 10_000;
 const PKCE_MAX_AGE_SECONDS = 10 * 60;
 const REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const MAX_RETURN_TO_LENGTH = 2_048;
+// SSO ID Tokens expire after ten minutes. Never retain a logout hint longer
+// than the credential whose identity it represents.
+const ID_TOKEN_MAX_AGE_SECONDS = 10 * 60;
 
 type PkceState = {
   codeVerifier: string;
@@ -92,9 +97,9 @@ export async function registerOidcAuthRoutes(
 
   app.get("/api/auth/oidc/start", async (request, reply) => {
     if (!config) return sendSsoNotConfigured(reply);
-    const returnTo = safeReturnTo(
-      (request.query as { returnTo?: string }).returnTo,
-    );
+    const query = request.query as { returnTo?: string; uiLocale?: string };
+    const returnTo = safeReturnTo(query.returnTo);
+    const uiLocale = safeSsoUiLocale(query.uiLocale);
     const state = randomUrlValue(32);
     const nonce = randomUrlValue(32);
     const codeVerifier = randomUrlValue(64);
@@ -115,6 +120,7 @@ export async function registerOidcAuthRoutes(
     authorizationUrl.searchParams.set("nonce", nonce);
     authorizationUrl.searchParams.set("code_challenge", codeChallenge);
     authorizationUrl.searchParams.set("code_challenge_method", "S256");
+    if (uiLocale) authorizationUrl.searchParams.set("ui_locales", uiLocale);
 
     setCookie(
       reply,
@@ -129,7 +135,7 @@ export async function registerOidcAuthRoutes(
       },
     );
     request.log.info(
-      { entryRoute: routeOnly(returnTo) },
+      { entryRoute: routeOnly(returnTo), ...(uiLocale ? { uiLocale } : {}) },
       "oidc_authorization_started",
     );
     return reply.redirect(authorizationUrl.toString(), 302);
@@ -190,6 +196,7 @@ export async function registerOidcAuthRoutes(
           secure: isSecureCookieRequired(options.env.webOrigin),
         });
       }
+      persistIdTokenCookie(reply, tokens.id_token, options.env.webOrigin);
 
       request.log.info(
         {
@@ -239,6 +246,7 @@ export async function registerOidcAuthRoutes(
           secure: isSecureCookieRequired(options.env.webOrigin),
         });
       }
+      persistIdTokenCookie(reply, tokens.id_token, options.env.webOrigin);
 
       request.log.info(
         { userIdHash: hashIdentityId(identity.id) },
@@ -263,7 +271,14 @@ export async function registerOidcAuthRoutes(
   app.post("/api/auth/oidc/logout", async (request, reply) => {
     if (!config) return sendSsoNotConfigured(reply);
     const refreshToken = readCookie(request, REFRESH_COOKIE);
+    const idTokenHint = readCookie(request, ID_TOKEN_COOKIE);
     clearCookie(reply, REFRESH_COOKIE, "/api/auth/oidc", options.env.webOrigin);
+    clearCookie(
+      reply,
+      ID_TOKEN_COOKIE,
+      "/api/auth/oidc/logout",
+      options.env.webOrigin,
+    );
 
     if (refreshToken) {
       try {
@@ -281,11 +296,20 @@ export async function registerOidcAuthRoutes(
       "post_logout_redirect_uri",
       `${options.env.webOrigin.replace(/\/+$/, "")}/?signed_out=1`,
     );
+    if (idTokenHint) logoutUrl.searchParams.set("id_token_hint", idTokenHint);
     request.log.info(
-      { revocationAttempted: Boolean(refreshToken) },
+      {
+        globalLogoutRequested: Boolean(idTokenHint),
+        revocationAttempted: Boolean(refreshToken),
+      },
       "oidc_logout_completed",
     );
-    return reply.code(200).send({ logoutUrl: logoutUrl.toString() });
+    // Old sessions created before ID-token storage still receive a successful
+    // local logout. Do not navigate them to SSO's GET logout, which correctly
+    // refuses cookie-only logout requests and would otherwise show its login UI.
+    return reply.code(200).send({
+      logoutUrl: idTokenHint ? logoutUrl.toString() : null,
+    });
   });
 }
 
@@ -482,12 +506,17 @@ function withTrailingSlash(url: string) {
 function safeReturnTo(value: unknown): string {
   if (
     typeof value !== "string" ||
+    value.length > MAX_RETURN_TO_LENGTH ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.startsWith("/\\")
   )
     return "/home";
   return value;
+}
+
+function safeSsoUiLocale(value: unknown): "zh-CN" | "en" | undefined {
+  return value === "zh-CN" || value === "en" ? value : undefined;
 }
 
 function routeOnly(returnTo: string): string {
@@ -574,6 +603,20 @@ function clearCookie(
     maxAge: 0,
     path,
     sameSite,
+    secure: isSecureCookieRequired(webOrigin),
+  });
+}
+
+function persistIdTokenCookie(
+  reply: FastifyReply,
+  idToken: string | undefined,
+  webOrigin: string,
+) {
+  if (!idToken) return;
+  setCookie(reply, ID_TOKEN_COOKIE, idToken, {
+    httpOnly: true,
+    maxAge: ID_TOKEN_MAX_AGE_SECONDS,
+    path: "/api/auth/oidc/logout",
     secure: isSecureCookieRequired(webOrigin),
   });
 }

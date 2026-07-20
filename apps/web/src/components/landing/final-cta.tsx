@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { SsoEntryLink } from "@/components/auth/sso-entry-link";
 import { FadeUp } from "@/components/landing/motion";
-import { buildSsoStartHref } from "@/lib/sso-auth";
 
 // ---------------------------------------------------------------------------
 // Background orbs + floating particles
@@ -115,8 +115,8 @@ export function FinalCTA() {
                 }}
                 aria-hidden="true"
               />
-              <a
-                href={buildSsoStartHref("/home")}
+              <SsoEntryLink
+                returnTo="/home"
                 className="relative inline-flex items-center px-12 py-4 rounded-full text-lg font-medium transition-all duration-200 hover:scale-105 active:scale-95 hover:shadow-[0_0_40px_12px_oklch(0.90_0.17_115_/_0.35)]"
                 style={{
                   background: "oklch(0.90 0.17 115)",
@@ -125,7 +125,7 @@ export function FinalCTA() {
                 }}
               >
                 免费开始创作
-              </a>
+              </SsoEntryLink>
             </div>
           </FadeUp>
 

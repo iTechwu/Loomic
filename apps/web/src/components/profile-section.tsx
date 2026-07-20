@@ -7,12 +7,14 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
 interface ProfileSectionProps {
+  accountUrl: string | null;
   displayName: string;
   email: string;
   onSave: (displayName: string) => Promise<void>;
 }
 
 export function ProfileSection({
+  accountUrl,
   displayName: initialName,
   email,
   onSave,
@@ -53,6 +55,17 @@ export function ProfileSection({
       <p className="text-sm text-muted-foreground mb-6">
         Manage your personal information.
       </p>
+
+      {accountUrl && (
+        <a
+          href={accountUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-6 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Manage account and security in DoFe SSO
+        </a>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
         <div className="space-y-2">

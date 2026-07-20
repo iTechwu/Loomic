@@ -7,7 +7,7 @@ import { Sparkles, ChevronDown, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fadeUp, blurIn, scaleUp } from "@/components/landing/motion";
 import { TypewriterText, useTypewriter } from "@/components/landing/typewriter";
-import { buildSsoStartHref } from "@/lib/sso-auth";
+import { SsoEntryLink } from "@/components/auth/sso-entry-link";
 
 // ---------------------------------------------------------------------------
 // HeroBadge
@@ -279,8 +279,8 @@ export function HeroSection() {
           transition={{ delay: ctaDelay }}
           className="mt-10 flex flex-wrap items-center justify-center gap-4"
         >
-          <a
-            href={buildSsoStartHref("/home")}
+          <SsoEntryLink
+            returnTo="/home"
             className={cn(
               "landing-cta-shimmer inline-flex items-center px-8 py-3 rounded-full text-base font-medium",
               "text-foreground",
@@ -293,7 +293,7 @@ export function HeroSection() {
             }}
           >
             开始创作
-          </a>
+          </SsoEntryLink>
           <a
             href="#showcase"
             onClick={(e) => {

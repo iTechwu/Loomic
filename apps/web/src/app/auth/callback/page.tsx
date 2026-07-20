@@ -14,6 +14,7 @@ import {
   clearPendingSsoReturnTo,
   exchangeSsoCode,
   getPendingSsoReturnTo,
+  type SsoSession,
   SsoExchangeError,
 } from "../../../lib/sso-auth";
 
@@ -26,6 +27,27 @@ function AuthCallbackPageContent() {
   const started = useRef(false);
   const [error, setError] = useState<AuthTransferError>();
   const [supportId, setSupportId] = useState<string>();
+  const [workspaceRetry, setWorkspaceRetry] = useState<{
+    returnTo: string;
+    session: SsoSession;
+  }>();
+
+  async function retryWorkspaceBootstrap() {
+    if (!workspaceRetry) {
+      beginSsoLogin(getPendingSsoReturnTo());
+      return;
+    }
+
+    setError(undefined);
+    try {
+      await fetchViewer(workspaceRetry.session.access_token);
+      completeSignIn(workspaceRetry.session);
+      clearPendingSsoReturnTo();
+      router.replace(workspaceRetry.returnTo);
+    } catch {
+      setError("viewer_bootstrap_failed");
+    }
+  }
 
   useEffect(() => {
     if (started.current) return;
@@ -67,7 +89,10 @@ function AuthCallbackPageContent() {
       try {
         await fetchViewer(result.session.access_token);
       } catch {
-        if (!cancelled) setError("viewer_bootstrap_failed");
+        if (!cancelled) {
+          setWorkspaceRetry(result);
+          setError("viewer_bootstrap_failed");
+        }
         return;
       }
 
@@ -87,7 +112,16 @@ function AuthCallbackPageContent() {
   return (
     <AuthTransferScreen
       {...(error ? { error } : {})}
-      onRetry={() => beginSsoLogin(getPendingSsoReturnTo())}
+      onRetry={() => {
+        if (error === "viewer_bootstrap_failed") {
+          void retryWorkspaceBootstrap();
+          return;
+        }
+        beginSsoLogin(getPendingSsoReturnTo());
+      }}
+      retryLabel={
+        error === "viewer_bootstrap_failed" ? "重试打开工作区" : "重新开始"
+      }
       {...(supportId ? { supportId } : {})}
     />
   );

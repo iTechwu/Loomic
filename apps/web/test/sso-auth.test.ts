@@ -4,9 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildSsoStartHref,
   clearPendingSsoReturnTo,
-  getPendingSsoReturnTo,
+  getBrowserSsoUiLocale,
   getCurrentReturnTo,
+  getPendingSsoReturnTo,
+  getSsoAccountUrl,
+  getSafeSsoLogoutUrl,
   isSafeReturnTo,
+  rememberSsoReturnTo,
+  selectSsoUiLocale,
 } from "../src/lib/sso-auth";
 
 describe("SSO navigation helpers", () => {
@@ -16,11 +21,56 @@ describe("SSO navigation helpers", () => {
     );
   });
 
+  it("only adds the SSO allowlisted UI locale when explicitly provided", () => {
+    expect(buildSsoStartHref("/projects", "en")).toBe(
+      "/api/auth/oidc/start?returnTo=%2Fprojects&uiLocale=en",
+    );
+    expect(getBrowserSsoUiLocale()).toMatch(/^(zh-CN|en)$/);
+  });
+
+  it("keeps the browser's first supported locale preference", () => {
+    expect(selectSsoUiLocale(["zh-CN", "en-US"])).toBe("zh-CN");
+    expect(selectSsoUiLocale(["fr", "en-US", "zh-CN"])).toBe("en");
+  });
+
+  it("accepts only an explicit, credential-free HTTP(S) SSO account URL", () => {
+    expect(getSsoAccountUrl("https://sso.ixicai.cn/settings/security")).toBe(
+      "https://sso.ixicai.cn/settings/security",
+    );
+    expect(getSsoAccountUrl("javascript:alert(1)")).toBeNull();
+    expect(
+      getSsoAccountUrl("https://user:pass@sso.ixicai.cn/settings"),
+    ).toBeNull();
+  });
+
+  it("accepts only the RP-bound global SSO logout URL", () => {
+    const origin = "https://lovart.example.test";
+    expect(
+      getSafeSsoLogoutUrl(
+        "https://sso.example.test/api/oauth/logout?id_token_hint=hint&post_logout_redirect_uri=https%3A%2F%2Flovart.example.test%2F%3Fsigned_out%3D1",
+        origin,
+      ),
+    ).toContain("https://sso.example.test/api/oauth/logout");
+    expect(
+      getSafeSsoLogoutUrl(
+        "https://attacker.example/oauth/logout?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2F",
+        origin,
+      ),
+    ).toBeNull();
+    expect(
+      getSafeSsoLogoutUrl(
+        "https://sso.example.test/api/not-logout?post_logout_redirect_uri=https%3A%2F%2Flovart.example.test%2F%3Fsigned_out%3D1",
+        origin,
+      ),
+    ).toBeNull();
+  });
+
   it("falls back to home for an unsafe return path", () => {
     expect(buildSsoStartHref("//attacker.example")).toBe(
       "/api/auth/oidc/start?returnTo=%2Fhome",
     );
     expect(isSafeReturnTo("/\\attacker.example")).toBe(false);
+    expect(isSafeReturnTo(`/${"a".repeat(2_048)}`)).toBe(false);
   });
 
   it("preserves a protected route pathname, search, and hash", () => {
@@ -36,6 +86,13 @@ describe("SSO navigation helpers", () => {
     );
     expect(getPendingSsoReturnTo()).toBe("/projects?filter=mine#recent");
     clearPendingSsoReturnTo();
+    expect(getPendingSsoReturnTo()).toBe("/home");
+  });
+
+  it("records a validated public SSO entry destination for cancellation retry", () => {
+    expect(rememberSsoReturnTo("/pricing")).toBe("/pricing");
+    expect(getPendingSsoReturnTo()).toBe("/pricing");
+    expect(rememberSsoReturnTo("//attacker.example")).toBe("/home");
     expect(getPendingSsoReturnTo()).toBe("/home");
   });
 });
