@@ -461,6 +461,11 @@ stateDiagram-v2
 | 84（复审循环 AZ：内部解析失败分类） | thread/model resolution 失败仅记录稳定 failureCategory，不输出依赖层错误字符串。 | Server typecheck 与 workspace 验证通过。 | 已完成内部错误脱敏。 |
 | 85（复审循环 BA：stream/persist 错误脱敏） | stream 与 assistant message persistence 失败日志去除 runId/error text，保留可聚合 failureCategory；用户可见失败事件仍保留业务必要消息。 | Server typecheck 与 workspace 契约通过。 | 已完成 pipeline 日志与业务错误输出边界分离。 |
 | 86（复审循环 BB：日志最小化复核） | 复核第 82-85 轮，确认 prompt、身份、会话、run ID 与底层错误文本未进入 pipeline log。 | workspace 15 项、Server typecheck、Biome ratchet 通过。 | 五轮日志治理完成；平台日志留存/访问权限仍由 observability owner 验收。 |
+| 87（复审循环 BC：日志基础设施脱敏） | PipelineLogger 增加基础设施级 sensitive-key 规则，token/cookie/authorization/password/secret/prompt/身份/会话/error 字段默认替换为 `[redacted]`。 | Server typecheck 与新增单测通过。 | 已完成调用点之外的最后防线。 |
+| 88（复审循环 BD：嵌套 context 脱敏） | 脱敏函数递归处理嵌套对象，防止调用者把敏感字段藏在辅助 context 下绕过规则。 | 单测覆盖 nested prompt/token。 | 已完成嵌套字段治理。 |
+| 89（复审循环 BE：多出口一致性） | logger 在构造 JSONL entry 与 stdout 文本前均使用同一 sanitized base/context，避免仅保护文件或仅保护控制台。 | 类型检查与 logger 单测通过。 | 已完成日志出口一致性。 |
+| 90（复审循环 BF：脱敏回归测试） | 新增纯函数测试锁定 userId、prompt、token 与稳定 failureCategory 的输出边界。 | Server 59 项测试通过。 | 已完成可回归的日志隐私契约。 |
+| 91（复审循环 BG：日志治理对账） | 对 pipeline 调用点与基础设施规则复核，确认日志治理不替代业务持久化、用户可见错误或平台审计责任。 | Server typecheck、logger 测试及 Biome `807 <= 832` 通过。 | 五轮日志基础设施闭环完成；平台留存/访问控制仍待 observability owner 验收。 |
 
 ### 外部阻塞项
 

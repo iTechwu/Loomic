@@ -19,11 +19,22 @@ import { join } from "node:path";
 type LogLevel = "info" | "warn" | "error";
 
 const LEVEL_NUM: Record<LogLevel, number> = { info: 30, warn: 40, error: 50 };
-const LEVEL_LABEL: Record<LogLevel, string> = { info: "INFO", warn: "WARN", error: "ERROR" };
+const LEVEL_LABEL: Record<LogLevel, string> = {
+  info: "INFO",
+  warn: "WARN",
+  error: "ERROR",
+};
 
 // Ensure log directory exists
 const LOG_DIR = process.env.LOVART_DOFE_LOG_DIR ?? "/tmp/lovart-dofe-logs";
-try { mkdirSync(LOG_DIR, { recursive: true }); } catch { /* ignore */ }
+const SENSITIVE_CONTEXT_KEY =
+  /authorization|cookie|email|error|password|prompt|run.?id|secret|session.?id|token|user.?id|connection.?id/i;
+const REDACTED = "[redacted]";
+try {
+  mkdirSync(LOG_DIR, { recursive: true });
+} catch {
+  /* ignore */
+}
 
 /** Returns today's log file path: pipeline-YYYY-MM-DD.log */
 function getLogFile(): string {
@@ -41,6 +52,32 @@ export type PipelineLogger = {
   elapsed: () => number;
 };
 
+/** Last-resort protection for callers that accidentally include user content. */
+export function sanitizePipelineLogContext(
+  context: Record<string, unknown> | undefined,
+  seen = new WeakSet<object>(),
+): Record<string, unknown> | undefined {
+  if (!context) return undefined;
+  if (seen.has(context)) return { circular: REDACTED };
+  seen.add(context);
+  return Object.fromEntries(
+    Object.entries(context).map(([key, value]) => [
+      key,
+      SENSITIVE_CONTEXT_KEY.test(key)
+        ? REDACTED
+        : Array.isArray(value)
+          ? value.map((item) =>
+              item && typeof item === "object"
+                ? sanitizePipelineLogContext(item as Record<string, unknown>, seen)
+                : item,
+            )
+          : value && typeof value === "object"
+            ? sanitizePipelineLogContext(value as Record<string, unknown>, seen)
+            : value,
+    ]),
+  );
+}
+
 export function createPipelineLogger(
   scope: string,
   baseCtx?: Record<string, unknown>,
@@ -49,30 +86,43 @@ export function createPipelineLogger(
 
   function emit(level: LogLevel, event: string, ctx?: Record<string, unknown>) {
     const now = Date.now();
+    const safeBaseContext = sanitizePipelineLogContext(baseCtx);
+    const safeContext = sanitizePipelineLogContext(ctx);
     const entry = {
       level: LEVEL_NUM[level],
       time: now,
       scope,
       event,
-      ...baseCtx,
-      ...ctx,
+      ...safeBaseContext,
+      ...safeContext,
     };
-    const line = JSON.stringify(entry) + "\n";
+    const line = `${JSON.stringify(entry)}\n`;
 
     // stdout: human-friendly one-liner
     const ts = new Date(now).toISOString().slice(11, 23);
-    const ctxStr = ctx ? " " + Object.entries(ctx).map(([k, v]) => `${k}=${v}`).join(" ") : "";
-    process.stdout.write(`${ts} [${LEVEL_LABEL[level]}] ${scope}.${event}${ctxStr}\n`);
+    const ctxStr = safeContext
+      ? ` ${Object.entries(safeContext)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(" ")}`
+      : "";
+    process.stdout.write(
+      `${ts} [${LEVEL_LABEL[level]}] ${scope}.${event}${ctxStr}\n`,
+    );
 
     // file: structured JSON lines (daily rotation)
-    try { appendFileSync(getLogFile(), line); } catch { /* ignore */ }
+    try {
+      appendFileSync(getLogFile(), line);
+    } catch {
+      /* ignore */
+    }
   }
 
   return {
     info: (event, ctx) => emit("info", event, ctx),
     warn: (event, ctx) => emit("warn", event, ctx),
     error: (event, ctx) => emit("error", event, ctx),
-    lap: (event, ctx) => emit("info", event, { ...ctx, elapsed_ms: Date.now() - t0 }),
+    lap: (event, ctx) =>
+      emit("info", event, { ...ctx, elapsed_ms: Date.now() - t0 }),
     elapsed: () => Date.now() - t0,
   };
 }
