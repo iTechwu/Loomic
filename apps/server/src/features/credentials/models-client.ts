@@ -1,6 +1,6 @@
 import { createSignedModelsInternalDataClient } from "@dofe/models-sdk/internal-node";
 import type { ModelsInternalSeedanceCredentialsStatus } from "@dofe/models-sdk/internal-types";
-import { ModelsInternalApiError } from "@dofe/models-sdk/response";
+import type { ModelsInternalApiError } from "@dofe/models-sdk/response";
 
 /**
  * Client for models.dofe.ai (ixicai.cn) service-to-service credential APIs.
@@ -148,7 +148,7 @@ export async function provisionSeedanceCredentials(
       throw error;
     }
 
-    if (error instanceof ModelsInternalApiError) {
+    if (isModelsInternalApiError(error)) {
       // status === 0 means the SDK's own request timer elapsed (timeout) or the
       // request was aborted. Any other status is an HTTP failure classified by
       // the models envelope. We never persist error.message — it may carry the
@@ -243,7 +243,7 @@ export async function getSeedanceCredentialsStatus(
     return status;
   } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
-    if (error instanceof ModelsInternalApiError && error.status === 0) {
+    if (isModelsInternalApiError(error) && error.status === 0) {
       log.error("[credentials] provision_status_lookup_timeout", {
         correlationId: input.correlationId,
         latencyMs,
@@ -255,7 +255,7 @@ export async function getSeedanceCredentialsStatus(
         "timeout",
       );
     }
-    if (error instanceof ModelsInternalApiError) {
+    if (isModelsInternalApiError(error)) {
       log.error("[credentials] provision_status_lookup_failed", {
         correlationId: input.correlationId,
         latencyMs,
@@ -312,6 +312,16 @@ function isTimeoutError(error: unknown): boolean {
   if (cause && (cause.name === "TimeoutError" || cause.name === "AbortError"))
     return true;
   return false;
+}
+
+function isModelsInternalApiError(
+  error: unknown,
+): error is ModelsInternalApiError {
+  return (
+    error instanceof Error &&
+    error.name === "ModelsInternalApiError" &&
+    typeof (error as ModelsInternalApiError).status === "number"
+  );
 }
 
 function silentLogger(): Logger {
