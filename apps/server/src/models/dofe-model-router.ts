@@ -8,6 +8,7 @@ export type DofeRouterModel = {
   id: string;
   ownedBy?: string;
   modelType?: string;
+  capabilities?: string[];
 };
 
 type OpenAIModelListResponse = {
@@ -16,6 +17,7 @@ type OpenAIModelListResponse = {
 
 type ModelCapabilitiesResponse = {
   model_type?: unknown;
+  capabilities?: Array<{ capabilityName?: unknown }>;
 };
 
 type FetchLike = typeof fetch;
@@ -83,6 +85,10 @@ export function createDofeModelCatalog(
       return {
         ...entry,
         ...(typeof capability.model_type === "string" ? { modelType: capability.model_type } : {}),
+        capabilities: Array.isArray(capability.capabilities)
+          ? capability.capabilities.flatMap((item) =>
+            typeof item?.capabilityName === "string" ? [item.capabilityName] : [])
+          : [],
       };
     })))
       .sort((left, right) => left.id.localeCompare(right.id));
@@ -101,7 +107,9 @@ export function createDofeModelCatalog(
       return models.filter((model) => model.modelType !== "image" && model.modelType !== "video");
     },
     async listImageModels() {
-      return (await getModels()).filter((model) => model.modelType === "image");
+      return (await getModels()).filter(
+        (model) => model.modelType === "image" && model.capabilities?.includes("text_to_image"),
+      );
     },
     async listVideoModels() {
       return (await getModels()).filter((model) => model.modelType === "video");

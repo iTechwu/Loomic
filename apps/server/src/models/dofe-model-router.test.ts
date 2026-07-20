@@ -51,8 +51,11 @@ describe("DoFe model router", () => {
           { id: "seedream-5.0", owned_by: "bytedance" },
         ] }));
       }
-      const modelType = url.includes("seedream-5.0") ? "image" : "text";
-      return new Response(JSON.stringify({ model_type: modelType }));
+      const isImage = url.includes("seedream-5.0");
+      return new Response(JSON.stringify({
+        model_type: isImage ? "image" : "text",
+        capabilities: isImage ? [{ capabilityName: "text_to_image" }] : [],
+      }));
     });
     const catalog = createDofeModelCatalog({
       dofeModelApiKey: "router-key",
@@ -60,13 +63,18 @@ describe("DoFe model router", () => {
     }, { fetch });
 
     await expect(catalog?.listChatModels()).resolves.toEqual([
-      { id: "glm-5.2", ownedBy: "zhipu", modelType: "text" },
-      { id: "gpt-5.4", ownedBy: "dofe-ai", modelType: "text" },
+      { id: "glm-5.2", ownedBy: "zhipu", modelType: "text", capabilities: [] },
+      { id: "gpt-5.4", ownedBy: "dofe-ai", modelType: "text", capabilities: [] },
     ]);
     await catalog?.listChatModels();
 
     await expect(catalog?.listImageModels()).resolves.toEqual([
-      { id: "seedream-5.0", ownedBy: "bytedance", modelType: "image" },
+      {
+        id: "seedream-5.0",
+        ownedBy: "bytedance",
+        modelType: "image",
+        capabilities: ["text_to_image"],
+      },
     ]);
     expect(fetch).toHaveBeenCalledTimes(4);
     expect(fetch).toHaveBeenCalledWith("https://ixicai.cn/api/v1/models", {
