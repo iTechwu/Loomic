@@ -57,7 +57,7 @@ const SETTINGS_ITEM: NavItem = {
 
 // ---------------------------------------------------------------------------
 // Reusable nav-button with active indicator
-// Touch target: min 44px on mobile, 36px on desktop (md+)
+// Touch target: min 44px everywhere (doc §4.4).
 // ---------------------------------------------------------------------------
 
 function NavButton({
@@ -75,13 +75,13 @@ function NavButton({
       title={item.label}
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
-      className="relative flex h-11 w-11 items-center justify-center rounded-full md:h-9 md:w-9"
+      className="relative flex h-11 w-11 items-center justify-center rounded-full"
     >
       {/* Animated active background */}
       {active && (
         <motion.span
           layoutId="sidebar-active"
-          className="absolute inset-0 rounded-full bg-accent/10 border-l-2 border-accent"
+          className="absolute inset-0 rounded-full bg-accent/10"
           transition={{ type: "spring", stiffness: 350, damping: 30 }}
         />
       )}
@@ -127,7 +127,6 @@ function MobileBottomBar() {
           <Link
             key={item.href}
             href={item.href}
-            aria-label={item.label}
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex min-h-[48px] min-w-[48px] flex-col items-center justify-center gap-0.5 px-2 py-1.5 transition-colors",
@@ -153,7 +152,6 @@ function MobileBottomBar() {
       {/* Settings in bottom bar */}
       <Link
         href={SETTINGS_ITEM.href}
-        aria-label={SETTINGS_ITEM.label}
         aria-current={isActive(SETTINGS_ITEM.href) ? "page" : undefined}
         className={cn(
           "flex min-h-[48px] min-w-[48px] flex-col items-center justify-center gap-0.5 px-2 py-1.5 transition-colors",
@@ -201,9 +199,9 @@ export function AppSidebar() {
         {/* Logo */}
         <Link
           href="/home"
-          title="lovart.dofe"
-          aria-label="lovart.dofe"
-          className="mb-1 flex h-9 w-9 items-center justify-center"
+          title="返回工作台"
+          aria-label="返回工作台"
+          className="mb-1 flex h-11 w-11 items-center justify-center"
         >
           <motion.div
             whileHover={{ scale: 1.1, rotate: 8 }}

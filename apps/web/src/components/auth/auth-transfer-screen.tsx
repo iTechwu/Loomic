@@ -10,6 +10,7 @@ export type AuthTransferError =
   | "callback_invalid"
   | "exchange_failed"
   | "viewer_bootstrap_failed"
+  | "service_unavailable"
   | "timeout";
 
 const ERROR_COPY: Record<AuthTransferError, string> = {
@@ -18,6 +19,7 @@ const ERROR_COPY: Record<AuthTransferError, string> = {
   exchange_failed: "DoFe 无法验证此次授权，请重新开始。",
   timeout: "身份验证耗时过长，请重新开始。",
   viewer_bootstrap_failed: "账户已验证，但工作区暂时无法打开。",
+  service_unavailable: "统一身份服务暂时不可用，请稍后重试。",
 };
 
 export function AuthTransferScreen({

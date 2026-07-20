@@ -88,13 +88,15 @@ export function ProfileSection({
 
         {feedback && (
           <p
+            role={feedback.type === "error" ? "alert" : "status"}
+            aria-live={feedback.type === "error" ? "assertive" : "polite"}
             className={`text-sm ${feedback.type === "success" ? "text-success" : "text-destructive"}`}
           >
             {feedback.message}
           </p>
         )}
 
-        <Button type="submit" disabled={saving || !hasChanges} size="sm">
+        <Button type="submit" disabled={saving || !hasChanges}>
           {saving ? "保存中…" : "保存"}
         </Button>
       </form>

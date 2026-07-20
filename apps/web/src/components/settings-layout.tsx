@@ -29,7 +29,7 @@ export function SettingsLayout({ children }: SettingsLayoutProps) {
         <button
           type="button"
           onClick={() => router.push("/projects")}
-          className="text-sm text-muted-foreground hover:text-foreground mb-6 flex items-center gap-1"
+          className="text-sm text-muted-foreground hover:text-foreground mb-6 flex min-h-11 items-center gap-1"
         >
           <span aria-hidden>&larr;</span> 返回项目
         </button>
@@ -44,7 +44,8 @@ export function SettingsLayout({ children }: SettingsLayoutProps) {
               key={section.id}
               type="button"
               onClick={() => setActiveSection(section.id)}
-              className={`block w-full text-left text-sm px-2 py-1.5 rounded ${
+              aria-current={activeSection === section.id ? "true" : undefined}
+              className={`block w-full text-left text-sm px-2 min-h-11 rounded ${
                 activeSection === section.id
                   ? "font-medium bg-muted"
                   : "text-muted-foreground hover:bg-muted"

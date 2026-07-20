@@ -236,7 +236,7 @@ export async function runVideoGenerate(
       model: input.model,
       duration: input.duration,
       aspectRatio: input.aspectRatio,
-      ...(input.resolution ? { resolution: input.resolution as "480p" | "720p" | "1080p" } : {}),
+      ...(input.resolution ? { resolution: input.resolution as "480p" | "720p" | "1080p" | "4k" } : {}),
       ...(input.inputImages ? { inputImages: input.inputImages } : {}),
       ...(input.inputVideo ? { inputVideo: input.inputVideo } : {}),
       ...(input.enableAudio != null ? { enableAudio: input.enableAudio } : {}),

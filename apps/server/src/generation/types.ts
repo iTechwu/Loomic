@@ -64,7 +64,7 @@ export interface ImageProvider {
 export interface VideoGenerateParams {
   prompt: string;
   model: string;
-  resolution?: "480p" | "720p" | "1080p";
+  resolution?: "480p" | "720p" | "1080p" | "4k";
   duration?: number;
   aspectRatio?: string;
   inputImages?: string[];

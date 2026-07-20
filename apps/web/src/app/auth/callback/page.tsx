@@ -57,7 +57,7 @@ function AuthCallbackPageContent() {
     const state = searchParams.get("state");
     const providerError = searchParams.get("error");
     if (providerError) {
-      setError(providerError === "access_denied" ? "cancelled" : "exchange_failed");
+      setError(providerError === "access_denied" ? "cancelled" : providerError === "server_error" ? "service_unavailable" : "exchange_failed");
       return;
     }
     if (!code || !state) {

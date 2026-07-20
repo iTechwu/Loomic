@@ -67,7 +67,10 @@ export function createVideoGeneratorElement(
     type: "video-generator",
     status: "idle",
     prompt: "",
-    model: options?.model ?? "google-official/veo-3.1-generate-preview",
+    // Canvas video generator must use an ixicai model id (not a Replicate-style
+    // namespace). See docs/tech/generation-models-reference.md and project
+    // memory: all model ids are ixicai ids, no fallback.
+    model: options?.model ?? "seedance-2.0",
     aspectRatio,
     duration: options?.duration ?? 5,
     resolution: options?.resolution ?? "720p",

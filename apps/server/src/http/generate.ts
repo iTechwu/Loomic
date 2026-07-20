@@ -20,15 +20,18 @@ const generateImageRequestSchema = z.object({
   model: z.string().optional(),
   aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
   quality: z.enum(["standard", "hd", "ultra"]).optional(),
+  inputImages: z.array(z.string()).optional(),
 });
 
 const generateVideoRequestSchema = z.object({
   prompt: z.string().min(1),
   model: z.string().optional(),
   duration: z.number().int().min(3).max(16).optional(),
-  resolution: z.enum(["720p", "1080p", "4k"]).optional(),
-  aspectRatio: z.enum(["16:9", "9:16"]).optional(),
+  resolution: z.enum(["480p", "720p", "1080p", "4k"]).optional(),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
   inputImages: z.array(z.string()).max(3).optional(),
+  inputVideo: z.string().optional(),
+  enableAudio: z.boolean().optional(),
 });
 
 export async function registerGenerateRoutes(
@@ -91,6 +94,9 @@ export async function registerGenerateRoutes(
         ...(auth ? { auth } : {}),
         aspectRatio: payload.aspectRatio ?? "1:1",
         ...(payload.quality ? { quality: payload.quality } : {}),
+        ...(payload.inputImages?.length
+          ? { inputImages: payload.inputImages }
+          : {}),
       });
 
       // Download and persist to TOS/CDN Storage
@@ -175,7 +181,9 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "veo-3.1-generate";
+    // Default to the same ixicai model used by the tool and executor so the
+    // direct API, agent tool, and job queue never disagree on fallback model.
+    const model = payload.model ?? "seedance-2.0";
 
     try {
       const viewer = await options.viewerService.ensureViewer(user);
@@ -195,6 +203,10 @@ export async function registerGenerateRoutes(
             : {}),
           ...(payload.inputImages?.length
             ? { input_images: payload.inputImages }
+            : {}),
+          ...(payload.inputVideo ? { input_video: payload.inputVideo } : {}),
+          ...(payload.enableAudio != null
+            ? { enable_audio: payload.enableAudio }
             : {}),
         },
       });
