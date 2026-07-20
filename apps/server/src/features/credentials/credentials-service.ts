@@ -97,19 +97,19 @@ export function createCredentialsService(
 
   return {
     async ensureProvisioned({ userId, ssoUserId, ssoTeamId }) {
-      // Retry path (ensureViewer) may arrive without ssoTeamId; recover it from
-      // any existing row. If we have neither, we cannot provision — defer to
-      // the next login which carries the real team id.
-      const resolvedTeamId =
-        ssoTeamId ?? (await repository.findAny(userId))?.ssoTeamId;
+      // Retry path (ensureViewer) may arrive without ssoTeamId/ssoUserId; recover
+      // either from any existing row with a single read. If we have neither, we
+      // cannot provision — defer to the next login which carries the real ids.
+      const existing =
+        ssoTeamId && ssoUserId ? null : await repository.findAny(userId);
+      const resolvedTeamId = ssoTeamId ?? existing?.ssoTeamId;
       if (!resolvedTeamId) {
         logger.warn("[credentials] ensure_skipped_no_team", {
           failureCategory: "credential_team_unavailable",
         });
         return;
       }
-      const resolvedSsoUserId =
-        ssoUserId ?? (await repository.findAny(userId))?.ssoUserId ?? undefined;
+      const resolvedSsoUserId = ssoUserId ?? existing?.ssoUserId ?? undefined;
       if (!resolvedSsoUserId) {
         logger.warn("[credentials] ensure_skipped_no_sso_subject", {
           failureCategory: "credential_sso_subject_unavailable",

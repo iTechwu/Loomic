@@ -141,4 +141,41 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
     );
     expect(upsert?.params).toContain(1);
   });
+
+  it("takes over a stale provisioning row (in-flight TTL exceeded) and re-locks", async () => {
+    // A provisioning row whose started_at is older than timeoutMs must NOT be
+    // treated as in_flight — another caller crashed or stalled. The lock holder
+    // re-ups to provisioning and increments the attempt count, recovering the
+    // stuck state without manual intervention.
+    const staleRow: Row = {
+      ...PROVISIONING_ROW,
+      provision_state: "provisioning",
+      provisioning_started_at: new Date(Date.now() - 60_000), // 60s ago > 15s TTL
+      provision_attempt_count: 1,
+    };
+    const relockedRow: Row = {
+      ...PROVISIONING_ROW,
+      provision_state: "provisioning",
+      provisioning_started_at: new Date(),
+      provision_attempt_count: 2,
+    };
+    const { pool, queries } = makeRecordingPool(staleRow, relockedRow);
+    const repository = createUserCredentialsRepository(pool as never);
+
+    const result = await repository.takeProvisionLock({
+      userId: "u1",
+      ssoUserId: "s1",
+      ssoTeamId: "t1",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.status).toBe("locked");
+    expect(result.row.provisionAttemptCount).toBe(2);
+    const upsert = queries.find((q) =>
+      /insert into user_credentials/.test(q.text),
+    );
+    expect(upsert).toBeDefined();
+    // The new attempt count is previous (1) + 1 = 2.
+    expect(upsert?.params).toContain(2);
+  });
 });

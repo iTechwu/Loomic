@@ -151,6 +151,14 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - [x] **全量 CI gate**：`typecheck` ✅ / `test` 19 文件 61 用例 ✅ / `lint:baseline` 809≤832 ✅ / `build` ✅ / 浏览器包零泄漏 ✅。
 - [x] P2 完成。adapter 现为薄封装：配置校验 → 构造 signed client（带 correlation + 超时）→ `seedanceCredentials.create` → 映射 + 脱敏错误。签名算法、信封、超时、`x-service-name` 全部收敛到 SDK，Lovart 不再复制任何 models 合同细节。
 
+### Cycle 10 — 深审补强：`getByUserId` 解密失败硬化（2026-07-20）
+
+- **背景**：`crypto.decrypt` 在密钥轮换（旧行用旧 key 加密）或行损坏（GCM auth-tag 不匹配）时会抛错；原先该错误会以原始 crypto 堆栈直达模型调用路径，外露为 500。
+- [x] `credentials-service.ts` `getByUserId` 包裹两次 `decrypt`：失败时记录 `failureCategory: "credential_decrypt_failed"`（仅记 `error.name` 与 `cryptoEnabled`，不记任何密文/密钥/明文），并抛 `CredentialsNotProvisionedError`，使调用方拿到干净的 424 而非 500。
+- [x] 已知限制（已写入代码注释与 runbook 锚点）：ready-but-undecryptable 行不会被 `ensureProvisioned` 自动重签（它看到 `ready` 即返回）；需运维轮换回旧 key 或清除该行。
+- [x] 新增测试：模拟 decrypt 抛错，断言抛 `CredentialsNotProvisionedError` 且日志含 `credential_decrypt_failed`、不含 crypto 错误明文/secret。
+- [x] `pnpm --filter @lovart.dofe/server test src/features/credentials/credentials-service.test.ts` ✅ 7 用例通过。
+
 ## 最终状态汇总
 
 | 项 | 状态 |
@@ -174,3 +182,15 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 2. ~~models 发布 `seedanceCredentials.create` typed method 后，替换 adapter `fetch`（见 Cycle 5 条件）~~ ✅ 已完成（Cycle 9，SDK 0.2.10，`package.json` 锁 `^0.2.10`）。
 3. models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。**（仅剩这一项，仍阻塞在 models 侧）**
 4. ~~部署前确保 `pnpm --filter @lovart.dofe/server db:migrate` 已应用 `0014` 迁移~~ ✅ 已改为 API 启动自动迁移（Cycle 7）；如部署环境用外部迁移作业，设 `LOVART_RUN_MIGRATIONS_ON_BOOT=0` opt out。
+
+### Cycle 11 — 深审补强：stale-takeover 分支测试覆盖（2026-07-20）
+
+- **背景**：`takeProvisionLock` 的 stale-takeover 分支（`provisioning` 行的 `provisioning_started_at` 超过 in-flight TTL → 视为前序调用崩溃/卡死 → 重新接管并递增 attempt_count）此前未被测试覆盖；该分支是"避免永久卡死 + 超时后恢复"的关键。
+- [x] `credentials-repository.test.ts` 新增用例：注入 `provisioning_started_at = 60s 前`（> 15s TTL）、`attempt_count=1` 的 provisioning 行，断言结果为 `locked`、`provisionAttemptCount=2`、upsert params 含 2。
+- [x] `pnpm --filter @lovart.dofe/server test src/features/credentials/credentials-repository.test.ts` ✅ 4 用例通过（ready / in_flight / locked-from-none / stale-takeover 四条路径全覆盖）。
+
+### Cycle 12 — 深审补强：合并 `ensureProvisioned` 冗余 `findAny` 调用（2026-07-20）
+
+- **背景**：`ensureProvisioned` 此前对同一 `userId` 连续调用两次 `repository.findAny`（分别恢复 `ssoTeamId` 与 `ssoUserId`），产生两次 DB 往返；且 OIDC 路径（两者都已提供）也照查不误。
+- [x] `credentials-service.ts` 改为：仅当 `ssoTeamId` 或 `ssoUserId` 缺失时才调用一次 `findAny`，复用同一行恢复两者。OIDC 路径（两者齐全）零 `findAny` 调用，ensureViewer 兜底路径（仅 userId）一次调用。
+- [x] 行为等价、严格更省；`typecheck` ✅、`credentials-service.test.ts` 7 用例 ✅（含并发用例：两者齐全时不触发 findAny，mock 仍兼容）。

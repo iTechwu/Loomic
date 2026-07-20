@@ -2,13 +2,13 @@
 
 > **2026-07-20 协议收敛更新：** 已核对 SSO 源码并落实客户端登记、OIDC 全局退出和 Discovery 真实性修复。以 [SSO 协议与设计契约](./sso-protocol-and-design-contract.md) 为准；它明确了 `/oauth/*` 端点、`id_token_hint` 退出、环境级客户端和共享 design token 发布边界。
 
-> 状态：本仓库实施完成，待外部环境验收
+> 状态：SSO/UX 与本轮凭据日志实施完成；外部环境验收及全应用 legacy 直接日志治理待推进
 >
 > 范围：`apps/web` 的产品体验、视觉系统和身份入口；身份认证仍由 `sso.ixicai.cn` 唯一承担。
 >
 > 目标：让用户从任意需要身份的操作直接进入 DoFe SSO，在完成授权后无损返回原始工作位置；同时以 SSO 的设计系统为唯一上游，消除 Lovart 与 DoFe 在语言、视觉密度、控件语义和反馈方式上的割裂。
 
-> 实施状态：本仓库可实施项已完成。第 10 节记录每个“实施 -> 标注 -> 复审”循环；未经 SSO 外部契约确认的事项明确保留为阻塞项。授权交接的仪表盘、告警和外部交付细节见 [可观测性运行手册](./auth-transfer-observability-runbook.md)。
+> 实施状态：本文件所列 SSO/UX、同源 runtime、凭据与第 97-101 轮日志治理已完成。第 10 节记录每个“实施 -> 标注 -> 复审”循环；未经 SSO 外部契约确认的事项明确保留为阻塞项。全应用 legacy 直接日志治理已在第 102 轮列为本地 P1，不能误称为外部环境问题。授权交接的仪表盘、告警和外部交付细节见 [可观测性运行手册](./auth-transfer-observability-runbook.md)。
 
 ## 1. 决策摘要
 
@@ -475,6 +475,8 @@ stateDiagram-v2
 | 98（复审循环 BN：凭据身份日志最小化） | 凭据 provision 的 attempt、in-flight、成功、失败和落库失败日志移除 local user、SSO subject、team ID 与数据库原始错误；保留 correlation、attempt、状态分类和非密钥运维 ID。 | Server 63 项测试、typecheck 和触及文件 Biome 检查通过；回归测试覆盖远端与落库失败。 | 已完成凭据业务日志的身份与错误正文收敛。 |
 | 99（复审循环 BO：SDK 未知错误归一化） | Models SDK adapter 的网络、fetcher 与 JSON 未知异常仅记录 `models_provision_unexpected`，并向调用方返回固定 `provision request failed`，不保留第三方 response/error message。 | Server 64 项测试、typecheck 和触及文件 Biome 检查通过；测试注入含 Authorization 的异常验证日志与错误均不泄露。 | 已完成 SDK adapter 未知错误边界收敛。 |
 | 100（复审循环 BP：SSO mapping 身份日志最小化） | SSO identity mapping 完成时只记录 `new_sso_user` 或 `legacy_email_match` 来源分类，不输出本地 profile ID 或 SSO subject。 | Server 65 项测试、typecheck 和触及文件 Biome 检查通过；新增 repository 回归测试锁定该输出边界。 | 已完成 SSO identity mapping 日志收敛。 |
+| 101（复审循环 BQ：错误 sanitizer 名实一致） | `sanitizeErrorForClient` 不再将 raw message、cause、provider response body、details 或 stack 写入 console；仅记录稳定 failureCategory，且保持既有客户端友好文案。 | Server 67 项测试、typecheck 和触及文件 Biome 检查通过；测试注入 Authorization、prompt 与 response token 验证零泄露。 | 已完成 agent/runtime 共用错误 sanitizer 的日志边界收敛。 |
+| 102（复审循环 BR：全仓复核与遗留日志建账） | 完整复核确认第 97-101 轮行为、SDK 契约与测试数字；同时扫描出 33 个仍有直接 console 的 Server 文件，其中 18 处同时输出身份标识或原始错误文本。 | `pnpm test` 通过（workspace 15、Web 73、Server 67），全 workspace typecheck、token gate 与 Biome `805 <= 832` 通过。 | 本轮五项业务代码实施已闭环；将 projects/canvas/uploads、worker/queue/database 和 provider/agent runtime 的 18 处旧式日志列为本地 P1，必须迁移至 allowlisted failureCategory 日志后才可宣称全应用日志治理完成。 |
 
 ### 外部阻塞项
 
@@ -485,13 +487,13 @@ stateDiagram-v2
 - 生产仪表盘、指标保留期和告警策略仍由 observability owner 在批准平台创建；Lovart 已输出最小化事件、拒绝类别，并提供 [字段、查询、阈值和处置运行手册](./auth-transfer-observability-runbook.md)。
 - 受管 Redis 的 DNS/TLS CA/ACL/网络策略和 `REDIS_URL` secret 仍为平台发布操作；配置后必须以 `auth_transfer_telemetry_redis_ready` 与健康检查记录证明实例可承接流量。
 - `sso-e2e` Environment 当前没有 variables/secrets 或 protection rule；workflow 预检会失败直至设置准确的非生产凭据和 selector，不能将该失败视为测试通过。
-- 全仓 `biome check .` 当前有 813 个既有诊断，受 832 上限的 `lint:baseline` 已成为只减不增 CI 门禁，基线包含工具版本和规则配置 hash。全量 `pnpm lint` 在债务清零前仍会失败，不能伪装为质量通过。
+- 全仓 `biome check .` 当前有 805 个既有诊断，受 832 上限的 `lint:baseline` 已成为只减不增 CI 门禁，基线包含工具版本和规则配置 hash。全量 `pnpm lint` 在债务清零前仍会失败，不能伪装为质量通过。
 
 ### 最终完成度矩阵
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 72 项、Server 58 项、workspace 15 项自动化测试、全 workspace type-check、token 门禁、Biome `813 <= 832` ratchet、Web production build 和 public static CI gate 已通过。第 51-76 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线、匿名授权漏斗、Redis 就绪/强制配置、refresh E2E、token 发布物完整性、跨文档耗时修复、SSO preflight、告警契约、Docker CI 网络 override、WebSocket/HSTS smoke 及 WebSocket 凭据最小化。 |
+| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 73 项、Server 67 项、workspace 15 项自动化测试、全 workspace type-check、token 门禁、Biome `805 <= 832` ratchet、Web production build 和 public static CI gate 已通过。第 51-102 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线、匿名授权漏斗、Redis 就绪/强制配置、refresh E2E、token 发布物完整性、跨文档耗时修复、SSO preflight、告警契约、Docker CI 网络 override、WebSocket/HSTS smoke、WebSocket 凭据最小化和凭据/身份/agent 错误日志边界。全应用 legacy 直接日志治理仍按第 102 轮本地 P1 推进。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、账户中心 | 已实现并接入 | locale、账户中心与发布的 token 包均已接入；后续版本升级使用 npm semver，不使用相对路径或生产 CSS 抓取。 |
 | 多模态图片/视频生成模型接入与文档 | 已与 `docs/tech/generation-models-reference.md` 统一 | 视频默认模型统一为 `seedance-2.0` 且全部使用 ixicai 模型 ID；`image/videoGenerationPayloadSchema` 与 `/api/agent/generate-*` 支持 `quality`、`inputImages`、`inputVideo`、`enableAudio` 等 Tool 层字段；文档已重写为 DoFe / ixicai 网关架构。 |
