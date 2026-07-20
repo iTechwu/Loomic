@@ -62,6 +62,7 @@ import { registerCanvasRoutes } from "./http/canvases.js";
 import { registerChatRoutes } from "./http/chat.js";
 import { registerGenerateRoutes } from "./http/generate.js";
 import { registerHealthRoutes } from "./http/health.js";
+import { registerAuthTransferTelemetryRoute } from "./http/auth-transfer-telemetry.js";
 import { registerImageProxyRoute } from "./http/image-proxy.js";
 import { registerModelRoutes } from "./http/models.js";
 import { registerOidcAuthRoutes } from "./http/oidc-auth.js";
@@ -267,6 +268,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   void registerHealthRoutes(app, env);
+  void registerAuthTransferTelemetryRoute(app);
   void registerOidcAuthRoutes(app, {
     env,
     identities,

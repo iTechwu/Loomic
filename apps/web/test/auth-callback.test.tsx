@@ -20,6 +20,10 @@ const { mockBeginSsoLogin, mockClearPendingSsoReturnTo, mockCompleteSignIn, mock
   },
 }));
 const { mockFetchViewer } = vi.hoisted(() => ({ mockFetchViewer: vi.fn() }));
+const { mockCreateFlowId, mockReportTelemetry } = vi.hoisted(() => ({
+  mockCreateFlowId: vi.fn(() => "flow_12345678"),
+  mockReportTelemetry: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ replace: mockReplace })),
@@ -34,6 +38,10 @@ vi.mock("../src/lib/sso-auth", () => ({
   SsoExchangeError: MockSsoExchangeError,
 }));
 vi.mock("../src/lib/server-api", () => ({ fetchViewer: mockFetchViewer }));
+vi.mock("../src/lib/auth-transfer-telemetry", () => ({
+  createAuthTransferFlowId: mockCreateFlowId,
+  reportAuthTransferEvent: mockReportTelemetry,
+}));
 
 import CallbackPage from "../src/app/auth/callback/page";
 
@@ -75,6 +83,33 @@ describe("Auth callback page", () => {
     render(<CallbackPage />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("支持编号：req_123");
+  });
+
+  it("keeps an invalid PKCE transaction in the specific callback error state", async () => {
+    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
+    mockExchangeSsoCode.mockRejectedValue(
+      new MockSsoExchangeError("invalid_callback", "req_456"),
+    );
+    render(<CallbackPage />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("登录信息不完整或已失效");
+    expect(alert).toHaveTextContent("支持编号：req_456");
+  });
+
+  it("maps a temporarily unavailable provider response to a recoverable service error", async () => {
+    currentSearchParams = new URLSearchParams("error=temporarily_unavailable");
+    render(<CallbackPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "统一身份服务暂时不可用",
+    );
+    expect(mockReportTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryPoint: "callback",
+        state: "service_unavailable",
+      }),
+    );
   });
 
   it("retries workspace bootstrap without starting a second SSO authorization flow", async () => {

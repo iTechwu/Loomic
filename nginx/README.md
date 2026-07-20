@@ -1,7 +1,8 @@
 # Local HTTPS
 
-This development configuration proxies Next.js at `https://lovart.local.dofe.ai` to
-`127.0.0.1:3005` and Fastify, including WebSocket upgrades, to `127.0.0.1:3105`.
+This production-like local configuration serves the built Next static export at
+`https://lovart.local.dofe.ai` and proxies Fastify, including WebSocket upgrades,
+to `127.0.0.1:3105`. Browser requests to `/api/*` therefore remain same-origin.
 
 1. Add this hostname to `/etc/hosts`:
 
@@ -16,10 +17,11 @@ This development configuration proxies Next.js at `https://lovart.local.dofe.ai`
    mkcert -cert-file nginx/certs/lovart.local.dofe.ai.pem -key-file nginx/certs/lovart.local.dofe.ai-key.pem lovart.local.dofe.ai
    ```
 
-3. Set the application origins and start the development services:
+3. Set the application origins, build Web, and start Fastify:
 
    ```bash
-   pnpm dev
+   pnpm --filter @lovart.dofe/web build
+   pnpm --filter @lovart.dofe/server dev:server
    ```
 
    ```dotenv
@@ -38,5 +40,19 @@ This development configuration proxies Next.js at `https://lovart.local.dofe.ai`
    sudo nginx -t
    sudo nginx -s reload
    ```
+
+5. Verify the trusted, same-origin browser entry without disabling TLS checks:
+
+   ```bash
+   E2E_SSO_ORIGIN=https://sso.ixicai.cn pnpm run verify:same-origin-runtime
+   ```
+
+For visual/axe gates, install the Playwright Chromium binary once, then run
+`pnpm --filter @lovart.dofe/web exec playwright install chromium` and
+`pnpm --filter @lovart.dofe/web test:e2e`. The HTTPS OIDC browser checks need
+a browser that trusts the local CA, so enable them explicitly with
+`E2E_BASE_URL=https://lovart.local.dofe.ai E2E_SAME_ORIGIN=1 pnpm --filter @lovart.dofe/web test:e2e`.
+The credentialed test remains skipped until explicitly configured non-production
+SSO test-account selectors and credentials are supplied through the environment.
 
 The site configuration uses this workspace's absolute path. Update its `root`, `ssl_certificate`, and `ssl_certificate_key` directives if the repository moves.

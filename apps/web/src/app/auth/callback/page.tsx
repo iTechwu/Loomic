@@ -1,24 +1,44 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  AuthTransferScreen,
   type AuthTransferError,
+  AuthTransferScreen,
 } from "../../../components/auth/auth-transfer-screen";
 import { useAuth } from "../../../lib/auth-context";
 import { fetchViewer } from "../../../lib/server-api";
 import {
+  createAuthTransferFlowId,
+  reportAuthTransferEvent,
+  type AuthTransferTelemetryState,
+} from "../../../lib/auth-transfer-telemetry";
+import {
+  SsoExchangeError,
+  type SsoSession,
   beginSsoLogin,
   clearPendingSsoReturnTo,
   exchangeSsoCode,
   getPendingSsoReturnTo,
-  type SsoSession,
-  SsoExchangeError,
 } from "../../../lib/sso-auth";
 
 const CALLBACK_TIMEOUT_MS = 10_000;
+
+function mapProviderError(error: string): AuthTransferError {
+  if (error === "access_denied") return "cancelled";
+  if (error === "server_error" || error === "temporarily_unavailable") {
+    return "service_unavailable";
+  }
+  return "exchange_failed";
+}
+
+function mapExchangeError(error: unknown): AuthTransferError {
+  if (!(error instanceof SsoExchangeError)) return "service_unavailable";
+  if (error.message === "invalid_callback") return "callback_invalid";
+  if (error.message === "sso_not_configured") return "service_unavailable";
+  return "exchange_failed";
+}
 
 function AuthCallbackPageContent() {
   const router = useRouter();
@@ -31,6 +51,20 @@ function AuthCallbackPageContent() {
     returnTo: string;
     session: SsoSession;
   }>();
+  const flowId = useRef(createAuthTransferFlowId());
+  const startedAt = useRef(performance.now());
+  const reportedStates = useRef(new Set<AuthTransferTelemetryState>());
+
+  const reportState = useCallback((state: AuthTransferTelemetryState) => {
+    if (reportedStates.current.has(state)) return;
+    reportedStates.current.add(state);
+    reportAuthTransferEvent({
+      entryPoint: "callback",
+      flowId: flowId.current,
+      startedAt: startedAt.current,
+      state,
+    });
+  }, []);
 
   async function retryWorkspaceBootstrap() {
     if (!workspaceRetry) {
@@ -43,25 +77,31 @@ function AuthCallbackPageContent() {
       await fetchViewer(workspaceRetry.session.access_token);
       completeSignIn(workspaceRetry.session);
       clearPendingSsoReturnTo();
+      reportState("authorized");
       router.replace(workspaceRetry.returnTo);
     } catch {
       setError("viewer_bootstrap_failed");
+      reportState("viewer_bootstrap_failed");
     }
   }
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    reportState("checking");
 
     const code = searchParams.get("code");
     const state = searchParams.get("state");
     const providerError = searchParams.get("error");
     if (providerError) {
-      setError(providerError === "access_denied" ? "cancelled" : providerError === "server_error" ? "service_unavailable" : "exchange_failed");
+      const mappedError = mapProviderError(providerError);
+      setError(mappedError);
+      reportState(mappedError);
       return;
     }
     if (!code || !state) {
       setError("callback_invalid");
+      reportState("callback_invalid");
       return;
     }
 
@@ -69,6 +109,7 @@ function AuthCallbackPageContent() {
     const timeoutId = window.setTimeout(() => {
       cancelled = true;
       setError("timeout");
+      reportState("timeout");
     }, CALLBACK_TIMEOUT_MS);
 
     void (async () => {
@@ -80,7 +121,9 @@ function AuthCallbackPageContent() {
           if (exchangeError instanceof SsoExchangeError) {
             setSupportId(exchangeError.requestId);
           }
-          setError("exchange_failed");
+          const mappedError = mapExchangeError(exchangeError);
+          setError(mappedError);
+          reportState(mappedError);
         }
         return;
       }
@@ -92,6 +135,7 @@ function AuthCallbackPageContent() {
         if (!cancelled) {
           setWorkspaceRetry(result);
           setError("viewer_bootstrap_failed");
+          reportState("viewer_bootstrap_failed");
         }
         return;
       }
@@ -99,6 +143,7 @@ function AuthCallbackPageContent() {
       if (!cancelled) {
         completeSignIn(result.session);
         clearPendingSsoReturnTo();
+        reportState("authorized");
         router.replace(result.returnTo);
       }
     })().finally(() => clearTimeout(timeoutId));
@@ -107,7 +152,7 @@ function AuthCallbackPageContent() {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [completeSignIn, router, searchParams]);
+  }, [completeSignIn, reportState, router, searchParams]);
 
   return (
     <AuthTransferScreen

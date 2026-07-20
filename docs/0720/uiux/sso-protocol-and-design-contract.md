@@ -69,6 +69,7 @@ SSO now carries the space-delimited `ui_locales` request through its shared Zod 
 | PKCE, state, nonce and exact return path | Done | `apps/server/src/http/oidc-auth.ts` and unit tests. |
 | Recoverable callback flows | Done | Public CTA cancellations retain their safe return path; a viewer bootstrap retry reuses the exchanged in-memory session instead of repeating SSO. |
 | Expired workspace session feedback | Done | Refresh distinguishes an initial anonymous visit from expiry of an established session, and announces the SSO redirect state. |
+| SSO refresh outage recovery | Done | Network, configuration and upstream failures are distinct from `401`; Lovart preserves an existing in-memory session or renders a retryable, support-safe service-unavailable state without an authorization loop. |
 | Standards-compliant global logout | Done | Verified ID Token is HttpOnly; SSO receives `id_token_hint`. |
 | Browser logout URL validation | Done | Lovart only follows an uncredentialed `/oauth/logout` URL whose registered post-logout redirect is the current origin's `/?signed_out=1`. |
 | Lovart local SSO client source of truth | Done | `sso.dofe.ai/apps/api/scripts/oauth-clients.config.ts`. |

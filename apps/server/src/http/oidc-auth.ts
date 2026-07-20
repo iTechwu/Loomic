@@ -96,7 +96,7 @@ export async function registerOidcAuthRoutes(
   }
 
   app.get("/api/auth/oidc/start", async (request, reply) => {
-    if (!config) return sendSsoNotConfigured(reply);
+    if (!config) return sendSsoNotConfigured(request, reply);
     const query = request.query as { returnTo?: string; uiLocale?: string };
     const returnTo = safeReturnTo(query.returnTo);
     const uiLocale = safeSsoUiLocale(query.uiLocale);
@@ -142,7 +142,7 @@ export async function registerOidcAuthRoutes(
   });
 
   app.post("/api/auth/oidc/exchange", async (request, reply) => {
-    if (!config || !remoteJwks) return sendSsoNotConfigured(reply);
+    if (!config || !remoteJwks) return sendSsoNotConfigured(request, reply);
     const body = request.body as
       | { code?: unknown; state?: unknown }
       | undefined;
@@ -219,7 +219,7 @@ export async function registerOidcAuthRoutes(
   });
 
   app.post("/api/auth/oidc/refresh", async (request, reply) => {
-    if (!config || !remoteJwks) return sendSsoNotConfigured(reply);
+    if (!config || !remoteJwks) return sendSsoNotConfigured(request, reply);
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     if (!refreshToken) {
       return reply.code(401).send({ error: "session_expired" });
@@ -269,7 +269,7 @@ export async function registerOidcAuthRoutes(
   });
 
   app.post("/api/auth/oidc/logout", async (request, reply) => {
-    if (!config) return sendSsoNotConfigured(reply);
+    if (!config) return sendSsoNotConfigured(request, reply);
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     const idTokenHint = readCookie(request, ID_TOKEN_COOKIE);
     clearCookie(reply, REFRESH_COOKIE, "/api/auth/oidc", options.env.webOrigin);
@@ -337,8 +337,17 @@ function tryLoadOidcConfig(env: ServerEnv) {
 
 type OidcConfig = NonNullable<ReturnType<typeof tryLoadOidcConfig>>;
 
-function sendSsoNotConfigured(reply: FastifyReply) {
-  return reply.code(503).send({ error: "sso_not_configured" });
+function sendSsoNotConfigured(request: FastifyRequest, reply: FastifyReply) {
+  // Keep the browser-visible error stable while retaining a correlation handle
+  // for deployment/configuration incidents. Never expose missing env names.
+  request.log.warn(
+    { failureCategory: "sso_not_configured" },
+    "oidc_request_unavailable",
+  );
+  return reply
+    .header("x-request-id", request.id)
+    .code(503)
+    .send({ error: "sso_not_configured", requestId: request.id });
 }
 
 async function exchangeToken(

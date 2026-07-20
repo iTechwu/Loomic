@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthTransferScreen } from "@/components/auth/auth-transfer-screen";
 import { LoadingScreen } from "@/components/loading-screen";
 import { PageTransition } from "@/components/page-transition";
 import { TenantTeamNav } from "@/components/tenant-team-nav";
@@ -15,24 +16,35 @@ export default function WorkspaceLayout({
 }: {
   children: ReactNode;
 }) {
-  const { user, loading, sessionExpired } = useAuth();
+  const { user, loading, refreshSession, serviceError, sessionExpired } =
+    useAuth();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !serviceError) {
       replaceWithSsoLogin(getBrowserReturnTo());
     }
-  }, [loading, user]);
+  }, [loading, serviceError, user]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
   if (!user) {
+    if (serviceError) {
+      return (
+        <AuthTransferScreen
+          error="service_unavailable"
+          onRetry={() => void refreshSession()}
+          {...(serviceError.requestId
+            ? { supportId: serviceError.requestId }
+            : {})}
+        />
+      );
+    }
     if (sessionExpired) {
       return (
         <main
           className="flex min-h-screen items-center justify-center bg-background px-6 text-center"
-          role="status"
           aria-live="polite"
         >
           <p className="text-sm text-muted-foreground">

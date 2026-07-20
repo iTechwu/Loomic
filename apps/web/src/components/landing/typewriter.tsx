@@ -71,13 +71,18 @@ export function useTypewriter({
     };
   }, [text, speed, delay, reduceMotion]);
 
-  // Cursor blink — starts immediately, keeps blinking after completion
+  // A blinking caret is non-essential motion. Keep the final text readable
+  // without an interval when the user asks to reduce motion.
   useEffect(() => {
+    if (reduceMotion || isComplete) {
+      setCursor(false);
+      return;
+    }
     const blink = setInterval(() => {
       setCursor((v) => !v);
     }, 530);
     return () => clearInterval(blink);
-  }, []);
+  }, [isComplete, reduceMotion]);
 
   return { displayText, isComplete, cursor };
 }

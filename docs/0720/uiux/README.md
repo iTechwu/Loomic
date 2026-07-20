@@ -417,6 +417,13 @@ stateDiagram-v2
 | 41（触控目标与导航/列表可访问性） | `Button` 基础类新增 `min-h-11 min-w-11`，确保所有按钮触控目标不低于 44px。`app-sidebar` 移除桌面端 36px 收缩，导航当前态只保留单一背景信号；Logo `aria-label` 收敛为中文；移动端底部导航去除冗余 `aria-label`。`project-list` 将删除按钮从 `<Link>` 内移出为同级元素，删除按钮改为 44px 并使用中文 `aria-label`；“新建项目”卡片补 `focus-visible` 环。 | Web 60 项测试与 type-check 通过；导航与列表的主要 a11y 缺口已收敛。 | 已完成；下一轮加载 Geist 字体并修复 `--font-sans` 自引用。 |
 | 42（Geist 字体与 RootLayout） | 在 `layout.tsx` 通过 `next/font/google` 加载 `Geist` 与 `Geist_Mono`，并注入 `--font-geist-sans` / `--font-geist-mono` CSS 变量；修复 `globals.css` 中 `--font-sans: var(--font-sans)` 的自引用，将 `font-sans` 与 `font-heading` 指向 Geist。 | Web 60 项测试与 type-check 通过；字体不再依赖浏览器默认。 | 已完成；下一轮收敛设置、个人资料与弹窗的剩余 a11y 缺口。 |
 | 43（设置、个人资料与弹窗可访问性） | `profile-section` 保存按钮改用默认尺寸（满足 44px），反馈消息按成功/错误分别使用 `role="status"` / `role="alert"` 与 `aria-live`。`settings-layout` 返回按钮与分段按钮增加 `min-h-11`，分段按钮补 `aria-current`。`dialog` 关闭按钮从 `icon-sm` 改为 `icon`（依赖 Button 基础类已达 44px）。`AuthTransferError` 新增 `service_unavailable` 并在 callback 将 OIDC `server_error` 映射到该状态。 | Web 60 项测试与 type-check 通过；组件级 a11y 与错误状态语义补齐。 | 已完成；进入全量复审与多模态统一性确认。 |
+| 44（复审循环 L：配置失败可关联） | 深度复审发现 `/api/auth/oidc/*` 在 SSO 配置缺失时只有裸 `503`，前端无法给支持人员提供关联编号。统一为安全的 `error + requestId` JSON，并写入 `x-request-id`；日志仅记录 `sso_not_configured` 失败类别。 | Server 单测断言响应 header 与 body 的 ID 一致，且不含环境变量名、凭据或配置细节。下一轮将让客户端区分该类可恢复故障与真实的匿名会话。 | 已完成。 |
+| 45（复审循环 M：刷新故障分类） | `refreshSsoSession()` 以前将网络、5xx 与 `401` 全部折叠为 `null`，导致业务层把身份服务不可用误判为匿名访问。新增 `SsoSessionRefreshError`：仅 `401` 返回空会话，其余失败带安全 request ID 向认证层传播。 | Web 单测覆盖 `503/sso_not_configured`，确认它不会触发匿名分支；下一轮由 AuthProvider 保留已存在的会话并暴露恢复状态。 | 已完成。 |
+| 46（复审循环 N：认证状态保留） | AuthProvider 现将刷新故障表示为 `serviceError`，不把网络/配置问题变更为登录过期；已有内存 session 保持可用，只有确认 `401` 才清空用户并启动重新认证。 | 组件测试覆盖“先有 session，后遇 SSO 不可用”，确认用户、过期状态与安全 request ID 均被正确保留。下一轮在没有 session 的工作区入口展示可重试错误，而非盲目重定向。 | 已完成。 |
+| 47（复审循环 O：工作区故障边界） | 受保护路由仅会在已确认匿名且无服务故障时跳转 SSO。首次 refresh 失败时，工作区不挂载受保护 DOM，而显示带“重试”和可选支持编号的 `service_unavailable` 交接页。 | Layout 测试断言配置/上游故障不会触发 `replaceWithSsoLogin`，不会泄露工作区内容，并能呈现关联 ID。下一轮补齐文档要求但仍缺失的 tenant context 空态。 | 已完成。 |
+| 48（复审循环 P：租户空态） | `TenantTeamNav` 不再在 SSO 缺失 tenant context 时消失；它显示“个人工作区”与解释性 tooltip/辅助描述，且明确不从本地数据推断团队。正常 tenant trigger 同步扩至 44px。 | 组件测试覆盖已授权团队和空 context 两种状态；空态只呈现个人工作区，不泄露或臆造 tenant/team。下一轮精确区分 callback 的 provider 与本地 transaction 失败。 | 已完成。 |
+| 49（复审循环 Q：callback 错误语义） | callback 现在按稳定协议码分类：`invalid_callback` 显示失效交接信息；`server_error`、`temporarily_unavailable`、`sso_not_configured` 及网络失败显示可恢复的服务不可用状态；授权拒绝仍为取消。 | 回归测试验证无效 PKCE transaction 和 provider 暂不可用分别进入正确错误文案，request ID 继续仅在可安全提供时展示。下一轮处理部署配置中可本地修复的构建阻断。 | 已完成。 |
+| 50（复审循环 R：发布构建真实性） | 修正 Vercel 构建命令中已不存在的 `@loomic/*` workspace 包名为实际 `@lovart.dofe/*`，并移除 Next 的 `ignoreBuildErrors`，使生产构建不能绕过 TypeScript 门禁。 | Root workspace 测试现在锁定 Vercel 包名和 TypeScript 构建失败策略；仍不把 Vercel 标为可用，因为它没有同源 Fastify API runtime，见外部阻塞项。 | 已完成。 |
 
 ### 外部阻塞项
 
@@ -429,9 +436,9 @@ stateDiagram-v2
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 60 项、Server 29 项自动化测试、两端 type-check、token 门禁和 Web production build 已通过。第 33-37 轮补齐第 4.4 节代码侧 a11y；第 39-43 轮进一步统一多模态模型接入、补齐 schema 缺口，并收敛按钮触控目标（≥44px）、Geist 字体、`project-list` 与 `settings-layout` 可访问性。 |
+| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 66 项、Server 29 项、workspace 11 项自动化测试、两端 type-check、token 门禁和 Web production build 已通过。第 44-50 轮进一步修复 SSO 配置/上游故障的循环跳转、tenant context 空态、callback 错误语义与发布构建门禁。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、账户中心 | 已实现并接入 | locale、账户中心与发布的 token 包均已接入；后续版本升级使用 npm semver，不使用相对路径或生产 CSS 抓取。 |
 | 多模态图片/视频生成模型接入与文档 | 已与 `docs/tech/generation-models-reference.md` 统一 | 视频默认模型统一为 `seedance-2.0` 且全部使用 ixicai 模型 ID；`image/videoGenerationPayloadSchema` 与 `/api/agent/generate-*` 支持 `quality`、`inputImages`、`inputVideo`、`enableAudio` 等 Tool 层字段；文档已重写为 DoFe / ixicai 网关架构。 |
-| 真实 Lovart SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 待受信任浏览器验收 | SSO 本身的真实登录、Lovart 证书 SAN、Nginx 路由和 Fastify API 已就绪；受控应用内浏览器不信任本地 mkcert CA，需改在已信任系统根证书的本机浏览器完成浏览器验收。这是环境验证，不是可由业务代码替代的待办。 |
+| 真实 Lovart SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 待受信任浏览器与测试基础设施验收 | SSO 本身的真实登录、Lovart 证书 SAN、Nginx 路由和 Fastify API 已就绪；受控应用内浏览器不信任本地 mkcert CA，需改在已信任系统根证书的本机浏览器完成浏览器验收。跨仓库 token hash、视觉/axe 门禁和指标采集尚未在本仓库配置，不能误报为已完成。 |
 | Vercel 静态部署 | 环境阻塞 | 已排除 `/api` 的 SPA rewrite，防止返回静态 HTML；仍须由平台提供同源 Fastify proxy 或 serverless API 后才能启用 Vercel 的历史 URL redirect。 |

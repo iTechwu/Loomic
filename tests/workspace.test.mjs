@@ -92,3 +92,31 @@ test("root lint baseline is wired through Biome", async () => {
   assert.equal(biomeConfig.formatter.enabled, true);
   assert.equal(biomeConfig.linter.enabled, true);
 });
+
+test("Vercel builds the deployed Lovart workspace packages", async () => {
+  const vercel = await readJson("vercel.json");
+
+  assert.match(vercel.buildCommand, /@lovart\.dofe\/shared/);
+  assert.match(vercel.buildCommand, /@lovart\.dofe\/web/);
+  assert.doesNotMatch(vercel.buildCommand, /@loomic\//);
+});
+
+test("web production builds fail on TypeScript errors", async () => {
+  const source = await readText("apps/web/next.config.ts");
+
+  assert.doesNotMatch(source, /ignoreBuildErrors\s*:\s*true/);
+});
+
+test("same-origin runtime and browser quality gates are versioned", async () => {
+  const web = await readJson("apps/web/package.json");
+  const nginx = await readText("nginx/lovart.local.dofe.ai.conf");
+  const runtimeCheck = await readText("scripts/verify-same-origin-runtime.mjs");
+
+  assert.equal(typeof web.scripts["test:e2e"], "string");
+  assert.equal(typeof web.devDependencies["@playwright/test"], "string");
+  assert.equal(typeof web.devDependencies["@axe-core/playwright"], "string");
+  assert.match(nginx, /location \^~ \/api\//);
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:3105/);
+  assert.match(nginx, /try_files \$uri \$uri\/ \$uri\.html \/index\.html/);
+  assert.match(runtimeCheck, /redirect: "manual"/);
+});

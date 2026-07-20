@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildSsoStartHref,
@@ -11,8 +11,12 @@ import {
   getSafeSsoLogoutUrl,
   isSafeReturnTo,
   rememberSsoReturnTo,
+  refreshSsoSession,
   selectSsoUiLocale,
+  SsoSessionRefreshError,
 } from "../src/lib/sso-auth";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("SSO navigation helpers", () => {
   it("builds a same-origin authorization start URL", () => {
@@ -94,5 +98,23 @@ describe("SSO navigation helpers", () => {
     expect(getPendingSsoReturnTo()).toBe("/pricing");
     expect(rememberSsoReturnTo("//attacker.example")).toBe("/home");
     expect(getPendingSsoReturnTo()).toBe("/home");
+  });
+
+  it("does not treat an unavailable refresh endpoint as an anonymous session", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ error: "sso_not_configured", requestId: "req_123" }),
+          { status: 503 },
+        ),
+      ),
+    );
+
+    await expect(refreshSsoSession()).rejects.toMatchObject({
+      name: SsoSessionRefreshError.name,
+      message: "service_unavailable",
+      requestId: "req_123",
+    });
   });
 });

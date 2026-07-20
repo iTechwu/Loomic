@@ -42,6 +42,20 @@ export class SsoExchangeError extends Error {
 }
 
 /**
+ * A refresh failure is not proof that the user has signed out. Callers keep
+ * the current session and offer recovery when SSO or the local API is down.
+ */
+export class SsoSessionRefreshError extends Error {
+  readonly requestId: string | undefined;
+
+  constructor(message: string, requestId?: string) {
+    super(message);
+    this.name = "SsoSessionRefreshError";
+    this.requestId = requestId;
+  }
+}
+
+/**
  * Creates the only browser-facing entry point for DoFe identity. The API still
  * validates the destination before it writes the PKCE transaction cookie.
  */
@@ -175,16 +189,29 @@ export async function exchangeSsoCode(
 }
 
 export async function refreshSsoSession(): Promise<SsoSession | null> {
+  let response: Response;
   try {
-    const response = await fetch(`${OIDC_API_BASE}/refresh`, {
+    response = await fetch(`${OIDC_API_BASE}/refresh`, {
       credentials: "same-origin",
       method: "POST",
     });
-    if (response.status === 401) return null;
-    return (await parseSessionResponse(response, false)).session;
   } catch {
-    return null;
+    throw new SsoSessionRefreshError("service_unavailable");
   }
+
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as OidcSessionResponse | null;
+    throw new SsoSessionRefreshError(
+      response.status >= 500 || body?.error === "sso_not_configured"
+        ? "service_unavailable"
+        : "session_refresh_failed",
+      typeof body?.requestId === "string" ? body.requestId : undefined,
+    );
+  }
+  return (await parseSessionResponse(response, false)).session;
 }
 
 export async function signOutFromSso(): Promise<string | null> {

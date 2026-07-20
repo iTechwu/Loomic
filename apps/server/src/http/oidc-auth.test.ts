@@ -70,7 +70,11 @@ describe("OIDC auth routes", () => {
       url: "/api/auth/oidc/start",
     });
     expect(response.statusCode).toBe(503);
-    expect(response.json()).toEqual({ error: "sso_not_configured" });
+    expect(response.json()).toEqual({
+      error: "sso_not_configured",
+      requestId: expect.any(String),
+    });
+    expect(response.headers["x-request-id"]).toBe(response.json().requestId);
   });
 
   it("starts a PKCE authorization request with refresh-capable SSO scopes", async () => {

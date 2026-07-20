@@ -11,14 +11,21 @@ import {
   useState,
 } from "react";
 
-import { type SsoSession, refreshSsoSession, signOutFromSso } from "./sso-auth";
+import {
+  type SsoSession,
+  SsoSessionRefreshError,
+  refreshSsoSession,
+  signOutFromSso,
+} from "./sso-auth";
 
 export type AuthUser = SsoSession["user"];
+export type AuthServiceError = { requestId?: string };
 
 interface AuthContextValue {
   user: AuthUser | null;
   session: SsoSession | null;
   loading: boolean;
+  serviceError: AuthServiceError | null;
   sessionExpired: boolean;
   completeSignIn: (session: SsoSession) => void;
   refreshSession: () => Promise<SsoSession | null>;
@@ -31,6 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SsoSession | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [serviceError, setServiceError] = useState<AuthServiceError | null>(
+    null,
+  );
   const [sessionExpired, setSessionExpired] = useState(false);
   const refreshTimer = useRef<number | null>(null);
   const hadSession = useRef(false);
@@ -43,10 +53,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async (): Promise<SsoSession | null> => {
-    const nextSession = await refreshSsoSession();
-    if (!nextSession && hadSession.current) setSessionExpired(true);
-    applySession(nextSession);
-    return nextSession;
+    try {
+      const nextSession = await refreshSsoSession();
+      setServiceError(null);
+      if (!nextSession && hadSession.current) setSessionExpired(true);
+      applySession(nextSession);
+      return nextSession;
+    } catch (error) {
+      // A transport/configuration failure does not invalidate an access token
+      // already held in memory. Keep it usable until a confirmed 401 arrives.
+      setSessionExpired(false);
+      setServiceError({
+        ...(error instanceof SsoSessionRefreshError && error.requestId
+          ? { requestId: error.requestId }
+          : {}),
+      });
+      return null;
+    }
   }, [applySession]);
 
   useEffect(() => {
@@ -89,12 +112,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeSignIn,
       loading,
       refreshSession,
+      serviceError,
       sessionExpired,
       session,
       signOut,
       user,
     }),
-    [completeSignIn, loading, refreshSession, session, sessionExpired, signOut, user],
+    [
+      completeSignIn,
+      loading,
+      refreshSession,
+      serviceError,
+      session,
+      sessionExpired,
+      signOut,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
