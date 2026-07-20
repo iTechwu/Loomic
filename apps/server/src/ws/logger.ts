@@ -70,27 +70,34 @@ export function sanitizePipelineLogContext(
         key,
         SENSITIVE_CONTEXT_KEY.test(key)
           ? REDACTED
-          : Array.isArray(value)
-            ? value
-                .slice(0, MAX_LOG_ARRAY_ITEMS)
-                .map((item) =>
-                  item && typeof item === "object"
-                    ? sanitizePipelineLogContext(
-                        item as Record<string, unknown>,
-                        seen,
-                      )
-                    : item,
-                )
-            : value && typeof value === "object"
-              ? sanitizePipelineLogContext(
-                  value as Record<string, unknown>,
-                  seen,
-                )
-              : typeof value === "string"
-                ? value.slice(0, MAX_LOG_STRING_LENGTH)
-                : value,
+          : sanitizePipelineLogValue(value, seen),
       ]),
   );
+}
+
+function sanitizePipelineLogValue(
+  value: unknown,
+  seen: WeakSet<object>,
+): unknown {
+  if (typeof value === "string") {
+    return value.slice(0, MAX_LOG_STRING_LENGTH);
+  }
+  if (typeof value === "bigint") {
+    // JSON.stringify throws for bigint values. Keep logs non-disruptive while
+    // retaining the bounded numeric identifier for operational correlation.
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return { circular: REDACTED };
+    seen.add(value);
+    return value
+      .slice(0, MAX_LOG_ARRAY_ITEMS)
+      .map((item) => sanitizePipelineLogValue(item, seen));
+  }
+  if (value && typeof value === "object") {
+    return sanitizePipelineLogContext(value as Record<string, unknown>, seen);
+  }
+  return value;
 }
 
 export function createPipelineLogger(

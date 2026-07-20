@@ -471,6 +471,7 @@ stateDiagram-v2
 | 94（复审循环 BJ：循环 context 容错） | sanitizer 使用 WeakSet 检测循环对象并以 redacted 标记替代，日志不会成为业务异常源。 | 新增循环对象测试通过。 | 已完成日志路径容错。 |
 | 95（复审循环 BK：递归输出复核） | JSONL 与 stdout 继续复用同一递归 sanitized context。 | Server 60 项测试与 typecheck 通过。 | 已完成多出口递归保护。 |
 | 96（复审循环 BL：日志边界最终对账） | 对第 92-95 轮的字段、数组、循环对象和日志出口逐项复核。 | Biome `807 <= 832`、Server typecheck 与 logger tests 通过。 | 五轮日志鲁棒性闭环完成；平台日志留存和访问权限继续由 owner 验收。 |
+| 97（复审循环 BM：数组递归日志边界） | PipelineLogger 对数组内字符串、嵌套对象、循环数组与 bigint 使用同一递归 sanitizer；数组长度和字符串长度均有上限，bigint 在 JSONL 前安全转换为字符串。 | Server 62 项测试、typecheck 和触及文件 Biome 检查通过。 | 已完成数组路径与对象路径的日志边界一致性。 |
 
 ### 外部阻塞项
 

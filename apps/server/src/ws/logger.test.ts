@@ -31,11 +31,27 @@ describe("pipeline log sanitization", () => {
 
   it("bounds otherwise safe context values before they reach log outputs", () => {
     const sanitized = sanitizePipelineLogContext({
-      entries: Array.from({ length: 25 }, (_, index) => index),
+      entries: [
+        "x".repeat(600),
+        ...Array.from({ length: 24 }, (_, index) => index),
+      ],
       text: "x".repeat(600),
     });
 
     expect(sanitized?.entries).toHaveLength(20);
+    expect((sanitized?.entries as string[])[0]).toHaveLength(512);
     expect(sanitized?.text).toHaveLength(512);
+  });
+
+  it("bounds cyclic arrays and bigint values without breaking the logger", () => {
+    const entries: unknown[] = [];
+    entries.push(entries);
+
+    expect(
+      sanitizePipelineLogContext({ entries, numericId: BigInt(42) }),
+    ).toEqual({
+      entries: [{ circular: "[redacted]" }],
+      numericId: "42",
+    });
   });
 });

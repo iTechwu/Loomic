@@ -103,15 +103,16 @@ export function createCredentialsService(
       const resolvedTeamId =
         ssoTeamId ?? (await repository.findAny(userId))?.ssoTeamId;
       if (!resolvedTeamId) {
-        logger.warn("[credentials] ensure_skipped_no_team", { userId });
+        logger.warn("[credentials] ensure_skipped_no_team", {
+          failureCategory: "credential_team_unavailable",
+        });
         return;
       }
       const resolvedSsoUserId =
         ssoUserId ?? (await repository.findAny(userId))?.ssoUserId ?? undefined;
       if (!resolvedSsoUserId) {
         logger.warn("[credentials] ensure_skipped_no_sso_subject", {
-          userId,
-          ssoTeamId: resolvedTeamId,
+          failureCategory: "credential_sso_subject_unavailable",
         });
         return;
       }
@@ -131,8 +132,6 @@ export function createCredentialsService(
         // SSO subject changed since last provision — fall through to re-provision.
       } else if (lock.status === "in_flight") {
         logger.info("[credentials] ensure_skipped_in_flight", {
-          userId,
-          ssoTeamId: resolvedTeamId,
           attemptCount: lock.row.provisionAttemptCount,
         });
         return;
@@ -142,9 +141,6 @@ export function createCredentialsService(
       const attemptCount = lock.row.provisionAttemptCount;
       logger.info("[credentials] provision_attempt", {
         correlationId,
-        userId,
-        ssoUserId: resolvedSsoUserId,
-        ssoTeamId: resolvedTeamId,
         attemptCount,
       });
 
@@ -175,9 +171,6 @@ export function createCredentialsService(
         });
         logger.info("[credentials] provision_ok", {
           correlationId,
-          userId,
-          ssoUserId: resolvedSsoUserId,
-          ssoTeamId: resolvedTeamId,
           keyPrefix: provisioned.apiKey.keyPrefix,
           modelsApiKeyId: provisioned.apiKey.id,
           modelsCredentialId: provisioned.assetCredential.id,
@@ -196,8 +189,6 @@ export function createCredentialsService(
         const sanitizedError = `models provision ${code} (${statusCategory}) corr=${correlationId}`;
         logger.error("[credentials] provision_failed", {
           correlationId,
-          userId,
-          ssoTeamId: resolvedTeamId,
           attemptCount,
           code,
           statusCategory,
@@ -208,14 +199,10 @@ export function createCredentialsService(
         // so a DB hiccup never propagates into the login path.
         await repository
           .saveFailed(userId, resolvedTeamId, sanitizedError)
-          .catch((saveError) => {
+          .catch(() => {
             logger.error("[credentials] save_failed_error", {
-              userId,
-              ssoTeamId: resolvedTeamId,
-              message:
-                saveError instanceof Error
-                  ? saveError.message
-                  : String(saveError),
+              correlationId,
+              failureCategory: "credential_failure_state_persist",
             });
           });
       }

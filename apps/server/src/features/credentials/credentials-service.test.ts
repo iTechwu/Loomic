@@ -6,6 +6,7 @@ import type {
   UserCredentialsRepository,
 } from "./credentials-repository.js";
 import { createCredentialsService } from "./credentials-service.js";
+import type { Logger } from "./models-client.js";
 import { provisionSeedanceCredentials } from "./models-client.js";
 
 vi.mock("./models-client.js", async (importOriginal) => ({
@@ -86,7 +87,7 @@ function makeRepository(initial: {
   };
 }
 
-function makeService(repository: UserCredentialsRepository) {
+function makeService(repository: UserCredentialsRepository, logger?: Logger) {
   return createCredentialsService({
     repository,
     crypto: {
@@ -99,6 +100,7 @@ function makeService(repository: UserCredentialsRepository) {
       serviceName: "lovart.dofe.ai",
       internalApiSecret: "test-secret",
     },
+    ...(logger ? { logger } : {}),
   });
 }
 
@@ -246,6 +248,48 @@ describe("CredentialsService", () => {
     await expect(service.getByUserId(LOCAL_USER_ID)).resolves.toMatchObject({
       designApiKey: "sk-secret",
     });
+  });
+
+  it("does not write local identity, SSO identity, team, or storage errors to logs", async () => {
+    const repository = makeRepository({
+      lock: {
+        status: "locked",
+        row: readyRow({
+          provisionState: "provisioning",
+          apikeyCiphertext: null,
+          provisionAttemptCount: 1,
+        }),
+      },
+    });
+    vi.mocked(provisionSeedanceCredentials).mockRejectedValue(
+      Object.assign(new Error("remote response token=secret"), {
+        status: 503,
+        code: "http",
+      }),
+    );
+    vi.mocked(repository.saveFailed).mockRejectedValue(
+      new Error("database connection for user-1 failed"),
+    );
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      info: (message, data = {}) => logs.push({ message, data }),
+      warn: (message, data = {}) => logs.push({ message, data }),
+      error: (message, data = {}) => logs.push({ message, data }),
+    };
+
+    await makeService(repository, logger).ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    const output = JSON.stringify(logs);
+    expect(output).not.toContain(LOCAL_USER_ID);
+    expect(output).not.toContain(SSO_USER_ID);
+    expect(output).not.toContain(TEAM_ID);
+    expect(output).not.toContain("remote response token=secret");
+    expect(output).not.toContain("database connection");
+    expect(output).toContain("credential_failure_state_persist");
   });
 
   it("does not fall back when credentials are not ready", async () => {
