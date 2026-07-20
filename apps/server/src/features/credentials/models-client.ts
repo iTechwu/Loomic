@@ -1,6 +1,10 @@
-import { createSignedModelsInternalDataClient } from "@dofe/models-sdk/internal-node";
+import { createRequire } from "node:module";
 import type { ModelsInternalSeedanceCredentialsStatus } from "@dofe/models-sdk/internal-types";
 import type { ModelsInternalApiError } from "@dofe/models-sdk/response";
+
+const { createSignedModelsInternalDataClient } = createRequire(import.meta.url)(
+  "@dofe/models-sdk/internal-node",
+) as typeof import("@dofe/models-sdk/internal-node");
 
 /**
  * Client for models.dofe.ai (ixicai.cn) service-to-service credential APIs.
