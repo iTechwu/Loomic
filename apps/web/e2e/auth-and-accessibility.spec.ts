@@ -34,6 +34,29 @@ test("public landing and recoverable callback meet the visual and axe gates", as
   expect(callbackAxe.violations).toEqual([]);
 });
 
+test("landing supports keyboard skip navigation and reduced-motion dark mode", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-1440",
+    "Dark/reduced-motion snapshot is intentionally kept to one stable desktop baseline.",
+  );
+
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "跳到主内容" });
+  await expect(skipLink).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#landing-main")).toBeFocused();
+  await expect(page.getByTestId("landing-hero-copy")).toHaveScreenshot(
+    "landing-dark-reduced-motion.png",
+  );
+
+  const axe = await new AxeBuilder({ page }).analyze();
+  expect(axe.violations).toEqual([]);
+});
+
 test("legacy login uses the same-origin OIDC entry before the provider redirect", async ({
   page,
 }) => {

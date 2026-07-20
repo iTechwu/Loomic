@@ -43,6 +43,7 @@
     "dev": "next dev -p 3005",
     "test": "vitest run test",
     "test:e2e": "playwright test",
+    "test:e2e:static": "pnpm build && E2E_STATIC_EXPORT=1 playwright test --grep 'public landing|landing supports keyboard'",
     "test:e2e:update": "playwright test --update-snapshots",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit"
   }

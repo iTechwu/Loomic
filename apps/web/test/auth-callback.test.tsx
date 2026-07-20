@@ -1,11 +1,23 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockReplace = vi.fn();
 let currentSearchParams = new URLSearchParams();
-const { mockBeginSsoLogin, mockClearPendingSsoReturnTo, mockCompleteSignIn, mockExchangeSsoCode, MockSsoExchangeError } = vi.hoisted(() => ({
+const {
+  mockBeginSsoLogin,
+  mockClearPendingSsoReturnTo,
+  mockCompleteSignIn,
+  mockExchangeSsoCode,
+  MockSsoExchangeError,
+} = vi.hoisted(() => ({
   mockBeginSsoLogin: vi.fn(),
   mockClearPendingSsoReturnTo: vi.fn(),
   mockCompleteSignIn: vi.fn(),
@@ -20,16 +32,31 @@ const { mockBeginSsoLogin, mockClearPendingSsoReturnTo, mockCompleteSignIn, mock
   },
 }));
 const { mockFetchViewer } = vi.hoisted(() => ({ mockFetchViewer: vi.fn() }));
-const { mockCreateFlowId, mockReportTelemetry } = vi.hoisted(() => ({
-  mockCreateFlowId: vi.fn(() => "flow_12345678"),
+const {
+  mockClearFlow,
+  mockGetOrCreateFlow,
+  mockIsTerminalState,
+  mockReportTelemetry,
+} = vi.hoisted(() => ({
+  mockClearFlow: vi.fn(),
+  mockGetOrCreateFlow: vi.fn(() => ({
+    entryPoint: "workspace",
+    flowId: "flow_12345678",
+    startedAt: 0,
+  })),
+  mockIsTerminalState: vi.fn((state: string) => state !== "checking"),
   mockReportTelemetry: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ replace: mockReplace })),
-  useSearchParams: vi.fn(() => ({ get: (key: string) => currentSearchParams.get(key) })),
+  useSearchParams: vi.fn(() => ({
+    get: (key: string) => currentSearchParams.get(key),
+  })),
 }));
-vi.mock("../src/lib/auth-context", () => ({ useAuth: () => ({ completeSignIn: mockCompleteSignIn }) }));
+vi.mock("../src/lib/auth-context", () => ({
+  useAuth: () => ({ completeSignIn: mockCompleteSignIn }),
+}));
 vi.mock("../src/lib/sso-auth", () => ({
   beginSsoLogin: mockBeginSsoLogin,
   clearPendingSsoReturnTo: mockClearPendingSsoReturnTo,
@@ -39,7 +66,9 @@ vi.mock("../src/lib/sso-auth", () => ({
 }));
 vi.mock("../src/lib/server-api", () => ({ fetchViewer: mockFetchViewer }));
 vi.mock("../src/lib/auth-transfer-telemetry", () => ({
-  createAuthTransferFlowId: mockCreateFlowId,
+  clearAuthTransferFlow: mockClearFlow,
+  getOrCreateAuthTransferFlow: mockGetOrCreateFlow,
+  isTerminalAuthTransferState: mockIsTerminalState,
   reportAuthTransferEvent: mockReportTelemetry,
 }));
 
@@ -53,13 +82,22 @@ describe("Auth callback page", () => {
   afterEach(cleanup);
 
   it("exchanges an OIDC code and establishes the app session", async () => {
-    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
-    const session = { access_token: "data-token", expires_at: 123, user: { id: "u1", email: "a@b.com", user_metadata: {} } };
+    currentSearchParams = new URLSearchParams(
+      "code=authorization-code&state=csrf-state",
+    );
+    const session = {
+      access_token: "data-token",
+      expires_at: 123,
+      user: { id: "u1", email: "a@b.com", user_metadata: {} },
+    };
     mockExchangeSsoCode.mockResolvedValue({ returnTo: "/home", session });
     mockFetchViewer.mockResolvedValue({});
     render(<CallbackPage />);
     await waitFor(() => {
-      expect(mockExchangeSsoCode).toHaveBeenCalledWith("authorization-code", "csrf-state");
+      expect(mockExchangeSsoCode).toHaveBeenCalledWith(
+        "authorization-code",
+        "csrf-state",
+      );
       expect(mockFetchViewer).toHaveBeenCalledWith("data-token");
       expect(mockCompleteSignIn).toHaveBeenCalledWith(session);
       expect(mockReplace).toHaveBeenCalledWith("/home");
@@ -73,20 +111,29 @@ describe("Auth callback page", () => {
       "登录信息不完整或已失效",
     );
     fireEvent.click(screen.getByRole("button", { name: "重新开始" }));
-    expect(mockBeginSsoLogin).toHaveBeenCalledWith("/projects?filter=mine#recent");
+    expect(mockBeginSsoLogin).toHaveBeenCalledWith(
+      "/projects?filter=mine#recent",
+      "callback",
+    );
   });
 
   it("shows the safe server request ID when the token exchange fails", async () => {
-    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
+    currentSearchParams = new URLSearchParams(
+      "code=authorization-code&state=csrf-state",
+    );
     const error = new MockSsoExchangeError("authentication_failed", "req_123");
     mockExchangeSsoCode.mockRejectedValue(error);
     render(<CallbackPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("支持编号：req_123");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "支持编号：req_123",
+    );
   });
 
   it("keeps an invalid PKCE transaction in the specific callback error state", async () => {
-    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
+    currentSearchParams = new URLSearchParams(
+      "code=authorization-code&state=csrf-state",
+    );
     mockExchangeSsoCode.mockRejectedValue(
       new MockSsoExchangeError("invalid_callback", "req_456"),
     );
@@ -106,15 +153,21 @@ describe("Auth callback page", () => {
     );
     expect(mockReportTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
-        entryPoint: "callback",
+        entryPoint: "workspace",
         state: "service_unavailable",
       }),
     );
   });
 
   it("retries workspace bootstrap without starting a second SSO authorization flow", async () => {
-    currentSearchParams = new URLSearchParams("code=authorization-code&state=csrf-state");
-    const session = { access_token: "data-token", expires_at: 123, user: { id: "u1", email: "a@b.com", user_metadata: {} } };
+    currentSearchParams = new URLSearchParams(
+      "code=authorization-code&state=csrf-state",
+    );
+    const session = {
+      access_token: "data-token",
+      expires_at: 123,
+      user: { id: "u1", email: "a@b.com", user_metadata: {} },
+    };
     mockExchangeSsoCode.mockResolvedValue({ returnTo: "/projects", session });
     mockFetchViewer.mockRejectedValueOnce(new Error("viewer unavailable"));
     mockFetchViewer.mockResolvedValueOnce({});

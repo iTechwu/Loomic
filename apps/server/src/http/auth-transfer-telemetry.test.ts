@@ -53,4 +53,41 @@ describe("auth transfer telemetry", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "invalid_telemetry_event" });
   });
+
+  it("rate limits otherwise valid anonymous telemetry before it becomes a log flood", async () => {
+    const app = createTestApp();
+    await registerAuthTransferTelemetryRoute(app);
+    const payload = {
+      durationMsBucket: "1_to_5s",
+      entryPoint: "public",
+      flowId: "flow_12345678",
+      state: "intent_started",
+    };
+
+    for (let requestNumber = 0; requestNumber < 30; requestNumber += 1) {
+      const response = await app.inject({
+        headers: { "x-real-ip": "198.51.100.10" },
+        method: "POST",
+        payload: {
+          ...payload,
+          flowId: `flow_${requestNumber.toString().padStart(8, "0")}`,
+        },
+        url: "/api/telemetry/auth-transfer",
+      });
+      expect(response.statusCode).toBe(204);
+    }
+
+    const limited = await app.inject({
+      headers: { "x-real-ip": "198.51.100.10" },
+      method: "POST",
+      payload,
+      url: "/api/telemetry/auth-transfer",
+    });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toEqual({
+      error: "telemetry_rate_limited",
+      statusCode: 429,
+    });
+  });
 });

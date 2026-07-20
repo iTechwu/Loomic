@@ -1,3 +1,8 @@
+import {
+  type AuthTransferEntryPoint,
+  beginAuthTransferFlow,
+} from "./auth-transfer-telemetry";
+
 export type SsoSession = {
   access_token: string;
   expires_at: number;
@@ -89,14 +94,19 @@ export function getBrowserReturnTo(): string {
   );
 }
 
-export function beginSsoLogin(returnTo = "/home"): void {
+export function beginSsoLogin(
+  returnTo = "/home",
+  entryPoint: AuthTransferEntryPoint = "callback",
+): void {
   const safePath = rememberSsoReturnTo(returnTo);
+  beginAuthTransferFlow(entryPoint);
   window.location.assign(buildSsoStartHref(safePath, getBrowserSsoUiLocale()));
 }
 
 /** Replaces a protected, unauthenticated history entry before entering SSO. */
 export function replaceWithSsoLogin(returnTo = "/home"): void {
   const safePath = rememberSsoReturnTo(returnTo);
+  beginAuthTransferFlow("workspace");
   window.location.replace(buildSsoStartHref(safePath, getBrowserSsoUiLocale()));
 }
 

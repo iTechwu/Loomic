@@ -113,10 +113,24 @@ test("same-origin runtime and browser quality gates are versioned", async () => 
   const runtimeCheck = await readText("scripts/verify-same-origin-runtime.mjs");
 
   assert.equal(typeof web.scripts["test:e2e"], "string");
+  assert.equal(typeof web.scripts["test:e2e:static"], "string");
   assert.equal(typeof web.devDependencies["@playwright/test"], "string");
   assert.equal(typeof web.devDependencies["@axe-core/playwright"], "string");
   assert.match(nginx, /location \^~ \/api\//);
   assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:3105/);
   assert.match(nginx, /try_files \$uri \$uri\/ \$uri\.html \/index\.html/);
   assert.match(runtimeCheck, /redirect: "manual"/);
+});
+
+test("deployment and CI keep the same-origin edge versioned", async () => {
+  const compose = await readText("deploy/docker-compose.yml");
+  const runtimeNginx = await readText("deploy/nginx/lovart-runtime.conf");
+  const workflow = await readText(".github/workflows/quality-gates.yml");
+
+  assert.match(compose, /dockerfile: apps\/web\/Dockerfile/);
+  assert.match(compose, /SERVICE_MODE: api/);
+  assert.match(compose, /SERVICE_MODE: worker/);
+  assert.match(runtimeNginx, /proxy_pass http:\/\/server:3105/);
+  assert.match(runtimeNginx, /Content-Security-Policy/);
+  assert.match(workflow, /test:e2e:static/);
 });

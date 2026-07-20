@@ -56,3 +56,19 @@ The credentialed test remains skipped until explicitly configured non-production
 SSO test-account selectors and credentials are supplied through the environment.
 
 The site configuration uses this workspace's absolute path. Update its `root`, `ssl_certificate`, and `ssl_certificate_key` directives if the repository moves.
+
+## Container deployment
+
+`deploy/docker-compose.yml` versions the deployable same-origin topology: the
+Web Nginx service is the only browser-facing service and proxies `/api` and
+`/api/ws` to private Fastify; the worker has no browser port. Copy
+`deploy/.env.production.example` to an untracked secret file containing the
+required values from `.env.example`, then run:
+
+```bash
+LOVART_ENV_FILE=.env.production docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+Terminate TLS at the platform ingress in front of port `8080`, preserve the
+public host, and never publish Fastify port `3105`. The bundled runtime config
+sets CSP, HSTS, frame, referrer, permission and MIME-sniffing protections.

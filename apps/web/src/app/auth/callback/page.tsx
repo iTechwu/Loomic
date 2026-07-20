@@ -10,7 +10,9 @@ import {
 import { useAuth } from "../../../lib/auth-context";
 import {
   type AuthTransferTelemetryState,
-  createAuthTransferFlowId,
+  clearAuthTransferFlow,
+  getOrCreateAuthTransferFlow,
+  isTerminalAuthTransferState,
   reportAuthTransferEvent,
 } from "../../../lib/auth-transfer-telemetry";
 import { fetchViewer } from "../../../lib/server-api";
@@ -51,24 +53,24 @@ function AuthCallbackPageContent() {
     returnTo: string;
     session: SsoSession;
   }>();
-  const flowId = useRef(createAuthTransferFlowId());
-  const startedAt = useRef(performance.now());
+  const flow = useRef(getOrCreateAuthTransferFlow());
   const reportedStates = useRef(new Set<AuthTransferTelemetryState>());
 
   const reportState = useCallback((state: AuthTransferTelemetryState) => {
     if (reportedStates.current.has(state)) return;
     reportedStates.current.add(state);
     reportAuthTransferEvent({
-      entryPoint: "callback",
-      flowId: flowId.current,
-      startedAt: startedAt.current,
+      entryPoint: flow.current.entryPoint,
+      flowId: flow.current.flowId,
+      startedAt: flow.current.startedAt,
       state,
     });
+    if (isTerminalAuthTransferState(state)) clearAuthTransferFlow();
   }, []);
 
   async function retryWorkspaceBootstrap() {
     if (!workspaceRetry) {
-      beginSsoLogin(getPendingSsoReturnTo());
+      beginSsoLogin(getPendingSsoReturnTo(), "callback");
       return;
     }
 
@@ -162,7 +164,7 @@ function AuthCallbackPageContent() {
           void retryWorkspaceBootstrap();
           return;
         }
-        beginSsoLogin(getPendingSsoReturnTo());
+        beginSsoLogin(getPendingSsoReturnTo(), "callback");
       }}
       retryLabel={
         error === "viewer_bootstrap_failed" ? "重试打开工作区" : "重新开始"

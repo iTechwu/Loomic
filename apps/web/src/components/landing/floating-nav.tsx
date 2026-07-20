@@ -108,7 +108,7 @@ function NavCTA() {
     <SsoEntryLink
       returnTo="/home"
       className={cn(
-        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
+        "hidden md:inline-flex items-center justify-center h-8 px-4 rounded-full bg-primary text-foreground dark:text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors",
         glowActive && "landing-nav-cta-glow",
       )}
     >
@@ -227,7 +227,7 @@ export function FloatingNav() {
                 <SsoEntryLink
                   returnTo="/home"
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center justify-center h-9 w-full rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors"
+                  className="flex items-center justify-center h-9 w-full rounded-full bg-primary text-foreground dark:text-primary-foreground text-sm font-medium hover:bg-primary/80 transition-colors"
                 >
                   开始创作
                 </SsoEntryLink>

@@ -3,10 +3,10 @@
 import { FloatingNav } from "@/components/landing/floating-nav";
 import { HeroSection } from "@/components/landing/hero-section";
 import { TrustBar } from "@/components/landing/trust-bar";
+import { X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { X } from "lucide-react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -59,7 +59,6 @@ function SignedOutNotice() {
 
   return (
     <div
-      role="status"
       aria-live="polite"
       className="fixed inset-x-0 top-3 z-[60] mx-auto flex w-fit items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm shadow-card"
     >
@@ -82,6 +81,15 @@ function SignedOutNotice() {
 }
 
 export default function LandingPage() {
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const focusMain = () => {
+      if (window.location.hash === "#landing-main") mainRef.current?.focus();
+    };
+    window.addEventListener("hashchange", focusMain);
+    return () => window.removeEventListener("hashchange", focusMain);
+  }, []);
 
   return (
     <div className="relative">
@@ -96,7 +104,7 @@ export default function LandingPage() {
         跳到主内容
       </a>
       <FloatingNav />
-      <main id="landing-main">
+      <main ref={mainRef} id="landing-main" tabIndex={-1}>
         {/* Above-fold: eagerly loaded for fast LCP */}
         <HeroSection />
         <TrustBar />

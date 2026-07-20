@@ -283,7 +283,7 @@ stateDiagram-v2
 | `cancelled` | “你已取消 DoFe 账户授权。” | 再次使用 DoFe 账户继续 | provider error code |
 | `callback_invalid` | “登录信息不完整或已失效。” | 重新开始 | code/state 缺失或 PKCE 不匹配 |
 | `exchange_failed` | “DoFe 无法验证此次授权。” | 重新开始 | token/JWKS/nonce，不记录凭证 |
-| `workspace_unavailable` | “账户已验证，但工作区暂时无法打开。” | 重试打开工作区 | viewer bootstrap 分类错误 |
+| `viewer_bootstrap_failed` | “账户已验证，但工作区暂时无法打开。” | 重试打开工作区 | viewer bootstrap 分类错误 |
 | `timeout` | “身份验证耗时过长。” | 重新开始 | 当前状态、耗时 bucket |
 | `service_unavailable` | “统一身份服务暂时不可用。” | 重试 | 上游状态码 bucket/config 状态 |
 
@@ -293,14 +293,14 @@ stateDiagram-v2
 
 | 事件 | 必填字段 | 禁止记录 |
 | --- | --- | --- |
-| `oidc_authorization_started` | `requestId`、`returnToRoute`、`entryPoint`、allowlisted locale | state、nonce、code verifier、完整 query。 |
-| `oidc_callback_received` | `requestId`、`providerOutcome`、`durationMsBucket` | authorization code、state。 |
-| `oidc_exchange_completed` | `requestId`、`userIdHash`、`returnToRoute`、`hasTenantContext` | token、email、refresh token。 |
-| `oidc_exchange_failed` | `requestId`、`failureCategory`、`upstreamStatusBucket` | error response body、JWT、cookie。 |
+| `oidc_authorization_started` | Fastify `requestId`、`entryRoute`、allowlisted locale | state、nonce、code verifier、完整 query。 |
+| `oidc_callback_rejected` | Fastify `requestId`、`hasCode`、`hasState` | authorization code、state。 |
+| `oidc_exchange_completed` | Fastify `requestId`、`userIdHash`、`hasTenantContext` | token、email、refresh token。 |
+| `oidc_exchange_failed` | Fastify `requestId`、`failureCategory` | error response body、JWT、cookie。 |
 | `oidc_logout_completed` | `requestId`、`revocationOutcome` | refresh token。 |
-| `auth_transfer_viewed`（前端分析） | `flowId`、`state`、`durationMsBucket`、`entryPoint` | PII、URL query、身份标识。 |
+| `auth_transfer_viewed`（前端分析） | tab-scoped `flowId`、`intent_started`/终态、`durationMsBucket`、入口 | PII、URL query、身份标识。 |
 
-`requestId` 由 API 生成并作为安全响应头回传；错误页显示该 ID 以便支持排查。前端 `flowId` 仅为本次导航的随机短 ID，生命周期不超过 tab session。日志保留期、访问权限和采样率按 DoFe 现有安全规范执行。
+`requestId` 由 API 生成并作为安全响应头回传；错误页显示该 ID 以便支持排查。前端 `flowId` 仅为 tab session 内的随机 ID：入口在跳转前、callback 在终态上报，因此可计算匿名漏斗；端点按客户端 IP 限为每分钟 30 个事件。日志保留期、访问权限和采样率按 DoFe 现有安全规范执行。
 
 ## 6. 分阶段交付
 
@@ -312,7 +312,7 @@ stateDiagram-v2
 | 3. 设计系统（1 个 sprint） | token package 接入、Typography/locale/theme 收敛、button/input/nav 审计 | SSO token 发布物 | token hash、视觉回归和 a11y 门禁通过。 |
 | 4. 渐进发布（1 个 sprint） | feature flag、10% -> 50% -> 100%、仪表盘、旧路由观察期 | 数据分析/运维 | 指标不回退，旧 URL 30 天无异常后移除兼容代码。 |
 
-**建议 feature flag：** `direct_sso_entry_v1` 只控制入口和 protected-route redirect，不改变 token exchange。按 `requestId` 和产品环境观察，不按用户身份做永久分叉。紧急回退只能回到“旧中转页”，不得回退安全校验或把登录逻辑移到客户端。
+**发布约束：** 旧中转页已经删除，因此不得实现一个会回到不存在 UI 的 feature flag。生产 rollout 应只在已准备好的独立环境中按流量切换同源 ingress；紧急回退是恢复上一版完整部署，不得回退 PKCE、token 校验或把登录逻辑移到客户端。
 
 ## 7. 测试、验收与度量
 
@@ -326,8 +326,8 @@ stateDiagram-v2
 | Web unit | `ProtectedRouteGate` | 401 时 `window.location.replace` 到 start，保留 pathname/search/hash；有 session 时零跳转。 |
 | Web unit | callback | 成功回原路径；取消/超时/invalid state/exchange/viewer 错误停在可访问的错误页。 |
 | Browser E2E | 全新用户、已有 SSO 会话、已登出用户 | 真实 SSO 测试 client 完成全链路，检查 URL、cookie 属性、回跳和浏览器 Back 行为。 |
-| Visual regression | 公开页、工作区、callback loading/error，light/dark，320/768/1440 | token、文本、焦点、布局无回归。 |
-| A11y | auth transfer 与核心工作区 | axe 无严重问题；键盘和 `prefers-reduced-motion` 人工通过。 |
+| Visual regression | Landing、callback error，light/dark、320/768/1440 | CI 静态导出快照无回归；工作区和 callback loading 仍由可信凭据 E2E 补齐。 |
+| A11y | Landing、callback error | axe 无违规；dark/reduced-motion 与 keyboard skip-link 自动覆盖，核心工作区待可信凭据 E2E。 |
 
 原 `apps/web/test/login.test.tsx` 和 `register.test.tsx` 已随本地中转 UI 删除；现由 `sso-auth.test.ts`、`public-sso-entry.test.tsx`、`auth-callback.test.tsx` 覆盖安全回跳、直接入口和异常交接。保留并扩展 `apps/server/src/http/oidc-auth.test.ts` 的 PKCE、cookie、登出和 request ID 覆盖。
 

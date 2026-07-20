@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { buildSsoStartHref } from "@/lib/sso-auth";
+import { beginSsoLogin } from "@/lib/sso-auth";
 
 /**
  * Last-resort compatibility for static previews without the production proxy.
@@ -10,7 +10,7 @@ import { buildSsoStartHref } from "@/lib/sso-auth";
  */
 export function LegacySsoRedirect() {
   useEffect(() => {
-    window.location.replace(buildSsoStartHref("/home"));
+    beginSsoLogin("/home", "public");
   }, []);
 
   return null;

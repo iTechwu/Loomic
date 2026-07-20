@@ -2,9 +2,13 @@
 
 import type { AnchorHTMLAttributes, MouseEvent } from "react";
 
+import { beginAuthTransferFlow } from "@/lib/auth-transfer-telemetry";
 import { buildSsoStartHref, rememberSsoReturnTo } from "@/lib/sso-auth";
 
-type SsoEntryLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
+type SsoEntryLinkProps = Omit<
+  AnchorHTMLAttributes<HTMLAnchorElement>,
+  "href"
+> & {
   returnTo: string;
 };
 
@@ -30,7 +34,11 @@ export function SsoEntryLink({
     }
     rememberSsoReturnTo(returnTo);
     onClick?.(event);
+    if (event.defaultPrevented) return;
+    beginAuthTransferFlow("public");
   }
 
-  return <a {...props} href={buildSsoStartHref(returnTo)} onClick={handleClick} />;
+  return (
+    <a {...props} href={buildSsoStartHref(returnTo)} onClick={handleClick} />
+  );
 }
