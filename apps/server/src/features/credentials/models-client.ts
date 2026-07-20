@@ -1,17 +1,18 @@
-import { createModelsInternalApiAuthorization } from "@dofe/models-sdk/internal-node";
+import { createSignedModelsInternalDataClient } from "@dofe/models-sdk/internal-node";
+import { ModelsInternalApiError } from "@dofe/models-sdk/response";
 
 /**
  * Client for models.dofe.ai (ixicai.cn) service-to-service credential APIs.
  *
  * The only operation lovart needs today is provisioning a per-user design
- * apikey + seedance asset AK/SK via `POST /internal/seedance/credentials`. That
- * route is guarded by models' InternalAuthGuard, which expects an HMAC-signed
- * Bearer token bound to a whitelisted service name (lovart.dofe.ai is on the
- * default list).
+ * apikey + seedance asset AK/SK via `POST /internal/seedance/credentials`. As
+ * of `@dofe/models-sdk@0.2.10` that route is exposed as the typed
+ * `seedanceCredentials.create` method, so this adapter delegates to the SDK's
+ * signed data client (HMAC auth, x-service-name, timeout, envelope unwrap) and
+ * only owns: config validation, correlation-id propagation, sanitized logging,
+ * and mapping SDK errors onto lovart's `ModelsProvisionError`.
  *
- * Authentication is delegated to `@dofe/models-sdk/internal-node` so the signing
- * algorithm stays in sync with models' InternalAuthGuard. The SDK import is
- * server-side only and must never leak into the browser bundle.
+ * The SDK import is server-side only and must never leak into the browser bundle.
  */
 
 export type Logger = {
@@ -54,7 +55,8 @@ export class ModelsProvisionError extends Error {
 }
 
 /**
- * Provision a per-user design apikey and seedance asset AK/SK.
+ * Provision a per-user design apikey and seedance asset AK/SK via the SDK's
+ * typed `seedanceCredentials.create` method.
  *
  * NOTE: models' provision endpoint is **not idempotent** — every successful
  * call mints fresh credentials. Callers must guard re-invocation (see
@@ -74,79 +76,47 @@ export async function provisionSeedanceCredentials(
 ): Promise<ProvisionedCredentials> {
   validateConfig(config);
 
-  // The internal route is served beneath the /api prefix on ixicai.cn.
-  const url = `${config.baseUrl.replace(/\/$/, "")}/internal/seedance/credentials`;
-  const timestampSec = Math.floor(Date.now() / 1000);
-  const authorization = createModelsInternalApiAuthorization(
-    config.internalApiSecret,
-    timestampSec,
-    config.serviceName,
-  );
+  // Construct per call so the correlation id is bound to this request via
+  // baseHeaders. Construction is pure (no I/O); provisioning runs at most once
+  // per user, so this cost is negligible.
+  const client = createSignedModelsInternalDataClient({
+    baseUrl: config.baseUrl,
+    serviceName: config.serviceName,
+    internalApiSecret: config.internalApiSecret,
+    timeoutMs: config.timeoutMs ?? 8_000,
+    baseHeaders: { "x-correlation-id": input.correlationId },
+  });
 
-  const body: Record<string, unknown> = {
-    userId: input.userId,
-    ssoTeamId: input.ssoTeamId,
-  };
-  if (input.name) body.name = input.name;
-  if (input.expiresAt) body.expiresAt = input.expiresAt.toISOString();
-
-  const startedAt = performance.now();
-  let status = 0;
   const log = input.logger ?? silentLogger();
+  const startedAt = performance.now();
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        authorization,
-        "x-service-name": config.serviceName,
-        "x-correlation-id": input.correlationId,
-        "content-type": "application/json",
+    const data = await client.seedanceCredentials.create({
+      body: {
+        userId: input.userId,
+        ssoTeamId: input.ssoTeamId,
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
       },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(config.timeoutMs ?? 8_000),
     });
-    status = response.status;
-
-    if (!response.ok) {
-      // Do not include the response body or Authorization in the error or logs.
-      throw new ModelsProvisionError(
-        `provision HTTP ${response.status}`,
-        response.status,
-        "http",
-      );
-    }
-
-    const payload = (await response.json()) as unknown;
-    // models wraps responses as `{ code, msg, data }`; accept either shape.
-    const data =
-      (isRecord(payload) && isRecord(payload.data)
-        ? payload.data
-        : isRecord(payload)
-          ? payload
-          : {}) ?? {};
-    const apiKey = isRecord(data.apiKey) ? data.apiKey : {};
-    const assetCredential = isRecord(data.assetCredential)
-      ? data.assetCredential
-      : {};
 
     const result: ProvisionedCredentials = {
       apiKey: {
-        id: stringField(apiKey.id),
-        keyPrefix: stringField(apiKey.keyPrefix),
-        apiKey: stringField(apiKey.apiKey),
+        id: data.apiKey.id,
+        keyPrefix: data.apiKey.keyPrefix,
+        apiKey: data.apiKey.apiKey,
       },
       assetCredential: {
-        id: stringField(assetCredential.id),
-        accessKeyId: stringField(assetCredential.accessKeyId),
-        secretAccessKey: stringField(assetCredential.secretAccessKey),
+        id: data.assetCredential.id,
+        accessKeyId: data.assetCredential.accessKeyId,
+        secretAccessKey: data.assetCredential.secretAccessKey,
       },
     };
 
     if (!result.apiKey.apiKey || !result.assetCredential.secretAccessKey) {
       throw new ModelsProvisionError(
         "provision response was missing apiKey.apiKey or assetCredential.secretAccessKey",
-        response.status,
+        200,
         "http",
       );
     }
@@ -154,7 +124,7 @@ export async function provisionSeedanceCredentials(
     log.info("[credentials] provision_remote_ok", {
       correlationId: input.correlationId,
       latencyMs: Math.round(performance.now() - startedAt),
-      statusCategory: `${Math.floor(status / 100)}xx`,
+      statusCategory: "2xx",
       modelsApiKeyId: result.apiKey.id,
       modelsCredentialId: result.assetCredential.id,
     });
@@ -162,6 +132,50 @@ export async function provisionSeedanceCredentials(
     return result;
   } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
+
+    if (error instanceof ModelsProvisionError) {
+      // Re-raise our own validation errors untouched.
+      log.error("[credentials] provision_remote_failed", {
+        correlationId: input.correlationId,
+        latencyMs,
+        statusCategory: `${Math.floor(error.status / 100) || 5}xx`,
+        status: error.status,
+        code: error.code,
+      });
+      throw error;
+    }
+
+    if (error instanceof ModelsInternalApiError) {
+      // status === 0 means the SDK's own request timer elapsed (timeout) or the
+      // request was aborted. Any other status is an HTTP failure classified by
+      // the models envelope. We never persist error.message — it may carry the
+      // envelope's msg text — only the status/code classification.
+      if (error.status === 0) {
+        log.error("[credentials] provision_remote_timeout", {
+          correlationId: input.correlationId,
+          latencyMs,
+          statusCategory: "timeout",
+        });
+        throw new ModelsProvisionError(
+          "provision request timed out",
+          0,
+          "timeout",
+        );
+      }
+      log.error("[credentials] provision_remote_failed", {
+        correlationId: input.correlationId,
+        latencyMs,
+        statusCategory: `${Math.floor(error.status / 100) || 5}xx`,
+        status: error.status,
+        code: "http",
+      });
+      throw new ModelsProvisionError(
+        `provision HTTP ${error.status}`,
+        error.status,
+        "http",
+      );
+    }
+
     if (isTimeoutError(error)) {
       log.error("[credentials] provision_remote_timeout", {
         correlationId: input.correlationId,
@@ -175,17 +189,8 @@ export async function provisionSeedanceCredentials(
       );
     }
 
-    if (error instanceof ModelsProvisionError) {
-      log.error("[credentials] provision_remote_failed", {
-        correlationId: input.correlationId,
-        latencyMs,
-        statusCategory: `${Math.floor(error.status / 100) || 5}xx`,
-        status: error.status,
-        code: error.code,
-      });
-      throw error;
-    }
-
+    // Unexpected error (network, fetcher, JSON). Log a sanitized message and
+    // surface a generic HTTP failure so callers retry on the next login.
     const message = error instanceof Error ? error.message : String(error);
     log.error("[credentials] provision_remote_error", {
       correlationId: input.correlationId,
@@ -212,9 +217,11 @@ function validateConfig(config: ModelsProvisionConfig): void {
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;
-  // Node fetch/undici may throw AbortError with a cause that is a TimeoutError.
   const cause = (error as { cause?: Error }).cause;
-  if (cause && (cause.name === "TimeoutError" || cause.name === "AbortError"))
+  if (
+    cause &&
+    (cause.name === "TimeoutError" || cause.name === "AbortError")
+  )
     return true;
   return false;
 }
@@ -225,12 +232,4 @@ function silentLogger(): Logger {
     warn: () => {},
     error: () => {},
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stringField(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }

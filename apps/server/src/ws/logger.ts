@@ -30,6 +30,9 @@ const LOG_DIR = process.env.LOVART_DOFE_LOG_DIR ?? "/tmp/lovart-dofe-logs";
 const SENSITIVE_CONTEXT_KEY =
   /authorization|cookie|email|error|password|prompt|run.?id|secret|session.?id|token|user.?id|connection.?id/i;
 const REDACTED = "[redacted]";
+const MAX_LOG_ARRAY_ITEMS = 20;
+const MAX_LOG_OBJECT_ENTRIES = 50;
+const MAX_LOG_STRING_LENGTH = 512;
 try {
   mkdirSync(LOG_DIR, { recursive: true });
 } catch {
@@ -61,23 +64,32 @@ export function sanitizePipelineLogContext(
   if (seen.has(context)) return { circular: REDACTED };
   seen.add(context);
   return Object.fromEntries(
-    Object.entries(context).map(([key, value]) => [
-      key,
-      SENSITIVE_CONTEXT_KEY.test(key)
-        ? REDACTED
-        : Array.isArray(value)
-          ? value.map((item) =>
-              item && typeof item === "object"
-                ? sanitizePipelineLogContext(
-                    item as Record<string, unknown>,
-                    seen,
-                  )
-                : item,
-            )
-          : value && typeof value === "object"
-            ? sanitizePipelineLogContext(value as Record<string, unknown>, seen)
-            : value,
-    ]),
+    Object.entries(context)
+      .slice(0, MAX_LOG_OBJECT_ENTRIES)
+      .map(([key, value]) => [
+        key,
+        SENSITIVE_CONTEXT_KEY.test(key)
+          ? REDACTED
+          : Array.isArray(value)
+            ? value
+                .slice(0, MAX_LOG_ARRAY_ITEMS)
+                .map((item) =>
+                  item && typeof item === "object"
+                    ? sanitizePipelineLogContext(
+                        item as Record<string, unknown>,
+                        seen,
+                      )
+                    : item,
+                )
+            : value && typeof value === "object"
+              ? sanitizePipelineLogContext(
+                  value as Record<string, unknown>,
+                  seen,
+                )
+              : typeof value === "string"
+                ? value.slice(0, MAX_LOG_STRING_LENGTH)
+                : value,
+      ]),
   );
 }
 

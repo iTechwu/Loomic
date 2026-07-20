@@ -28,4 +28,14 @@ describe("pipeline log sanitization", () => {
       self: { circular: "[redacted]" },
     });
   });
+
+  it("bounds otherwise safe context values before they reach log outputs", () => {
+    const sanitized = sanitizePipelineLogContext({
+      entries: Array.from({ length: 25 }, (_, index) => index),
+      text: "x".repeat(600),
+    });
+
+    expect(sanitized?.entries).toHaveLength(20);
+    expect(sanitized?.text).toHaveLength(512);
+  });
 });

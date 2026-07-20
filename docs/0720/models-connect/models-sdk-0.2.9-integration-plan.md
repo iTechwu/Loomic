@@ -139,6 +139,18 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   - 浏览器包零泄漏 ✅
 - [x] 未引入新 biome 错误（`migrate.ts` 残留 2 处为历史遗留 noNonNullAssertion/noUnusedTemplateLiteral，已在基线内，非本次引入）。
 
+### Cycle 9 — P2 落地：SDK 0.2.10 typed `seedanceCredentials.create` 替换 adapter fetch（2026-07-20）
+
+- [x] **触发条件已满足**：`@dofe/models-sdk@0.2.10` 发布，data client 新增 typed method `seedanceCredentials.create({ body: ModelsInternalProvisionSeedanceCredentialsRequest })` → `POST /internal/seedance/credentials`，响应 `ModelsInternalProvisionSeedanceCredentialsResponse { apiKey, assetCredential }` 与 Lovart `ProvisionedCredentials` 形状一致。`package.json` 升级 `^0.2.9` → `^0.2.10`，lockfile 解析 0.2.10。
+- [x] **`models-client.ts` 移除手写 `fetch`**，改用 `createSignedModelsInternalDataClient`（来自 `@dofe/models-sdk/internal-node`）：
+  - SDK 内部负责 HMAC 签名（`createModelsInternalApiAuthorization`）、`x-service-name`、超时（`timeoutMs`）、`{code,msg,data}` 信封解包；
+  - `correlationId` 通过 `baseHeaders["x-correlation-id"]` 透传（client 按 provision 调用构造，绑定该次 correlation）；
+  - 删除本地 response-shape 解包逻辑（`isRecord`/`stringField`），改为按 SDK typed 字段直接映射；
+  - 错误映射：`ModelsInternalApiError`（来自 `@dofe/models-sdk/response`）`status===0` → `ModelsProvisionError(code:"timeout")`，其余 → `code:"http"` + `provision HTTP <status>`；保留 `isTimeoutError` 兜底原始 `AbortError`/`TimeoutError`；永不将 `error.message`（含信封 `msg`）写入持久化错误串。
+- [x] **测试更新**：成功 mock 改为返回 models 信封 `{code:0,msg:"ok",data}`（SDK 严格校验信封）；`authorization` header 断言改用 SDK 实际发送的 `Authorization`（大写）。签名格式、`x-service-name`/`x-correlation-id`、缺 secret/空 service/401/403/timeout fail-closed、日志不泄露密钥 全部仍通过。
+- [x] **全量 CI gate**：`typecheck` ✅ / `test` 19 文件 61 用例 ✅ / `lint:baseline` 809≤832 ✅ / `build` ✅ / 浏览器包零泄漏 ✅。
+- [x] P2 完成。adapter 现为薄封装：配置校验 → 构造 signed client（带 correlation + 超时）→ `seedanceCredentials.create` → 映射 + 脱敏错误。签名算法、信封、超时、`x-service-name` 全部收敛到 SDK，Lovart 不再复制任何 models 合同细节。
+
 ## 最终状态汇总
 
 | 项 | 状态 |
@@ -147,18 +159,18 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 | P1 并发互斥（advisory lock + in-flight 状态） | ✅ 完成 |
 | P1 correlation ID / 脱敏日志 / 超时 fail closed | ✅ 完成 |
 | P1 严格 no-fallback | ✅ 保持 |
-| P2 适配器 fetch 替换 | ⏳ 条件未满足（0.2.9 核验无 `seedanceCredentials`），保留 `fetch`，条件已在 Cycle 5/6 落地 |
-| 远端凭据状态校验（防超时重复发放） | ⏳ 待 models 提供查询端点 |
+| P2 适配器 fetch 替换 | ✅ 完成（Cycle 9，SDK 0.2.10 typed `seedanceCredentials.create`） |
+| 远端凭据状态校验（防超时重复发放） | ⏳ 待 models 提供按 (ssoUserId,ssoTeamId) 查询端点 |
 | 浏览器包零泄漏 | ✅ 验证通过 |
 | 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
-| 全量 CI gate 本地核验 | ✅ 完成（Cycle 8：verify:migrations / typecheck / test 58 / lint:baseline 813≤832 / build） |
-| 类型检查 / 全量测试 | ✅ `tsc` 通过，58 用例通过 |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 9：verify:migrations / typecheck / test 61 / lint:baseline 809≤832 / build） |
+| 类型检查 / 全量测试 | ✅ `tsc` 通过，61 用例通过 |
 
 ## 待办（外部依赖解锁后）
 
 1. ~~`@dofe/models-sdk@0.2.9` 发布到 npmjs 后升级并重生成 lockfile~~ ✅ 已完成（2026-07-20，`package.json` 锁 `^0.2.9`，lockfile 解析 0.2.9）。
-2. models 发布 `seedanceCredentials.create` typed method 后，替换 adapter `fetch`（见 Cycle 5 条件）。
-3. models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。
+2. ~~models 发布 `seedanceCredentials.create` typed method 后，替换 adapter `fetch`（见 Cycle 5 条件）~~ ✅ 已完成（Cycle 9，SDK 0.2.10，`package.json` 锁 `^0.2.10`）。
+3. models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。**（仅剩这一项，仍阻塞在 models 侧）**
 4. ~~部署前确保 `pnpm --filter @lovart.dofe/server db:migrate` 已应用 `0014` 迁移~~ ✅ 已改为 API 启动自动迁移（Cycle 7）；如部署环境用外部迁移作业，设 `LOVART_RUN_MIGRATIONS_ON_BOOT=0` opt out。

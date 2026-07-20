@@ -23,21 +23,27 @@ function makeConfig(overrides?: {
   };
 }
 
+const PROVISION_DATA = {
+  apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
+  assetCredential: {
+    id: "acid",
+    accessKeyId: "AKtest",
+    secretAccessKey: "AKSKsecret",
+  },
+};
+
+// The SDK strictly unwraps models' `{ code, msg, data }` envelope, so success
+// mocks must return it (code 0 = ok). Without the envelope the SDK raises an
+// "unexpected response envelope" error.
+function successResponse() {
+  return Response.json({ code: 0, msg: "ok", data: PROVISION_DATA });
+}
+
+
 describe("provisionSeedanceCredentials", () => {
   it("uses the SDK HMAC format compatible with models InternalAuthGuard", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
-    const fetchMock = vi.fn(async () =>
-      Response.json({
-        data: {
-          apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
-          assetCredential: {
-            id: "acid",
-            accessKeyId: "AKtest",
-            secretAccessKey: "AKSKsecret",
-          },
-        },
-      }),
-    );
+    const fetchMock = vi.fn(async () => successResponse());
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -51,7 +57,9 @@ describe("provisionSeedanceCredentials", () => {
         string,
         { headers: Record<string, string> },
       ];
-      const authorization = call[1].headers.authorization;
+      // The SDK's jsonHeaders emits `Authorization` (capital A); HTTP headers
+      // are case-insensitive on the wire, but we inspect the raw object here.
+      const authorization = call[1].headers.Authorization;
       const timestampSec = 1_700_000_000;
       const expectedSignature = createHmac("sha256", INTERNAL_API_SECRET)
         .update(`${timestampSec}:${SERVICE_NAME}`)
@@ -66,18 +74,7 @@ describe("provisionSeedanceCredentials", () => {
   });
 
   it("sends x-service-name and x-correlation-id headers", async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json({
-        data: {
-          apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
-          assetCredential: {
-            id: "acid",
-            accessKeyId: "AKtest",
-            secretAccessKey: "AKSKsecret",
-          },
-        },
-      }),
-    );
+    const fetchMock = vi.fn(async () => successResponse());
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -219,18 +216,7 @@ describe("provisionSeedanceCredentials", () => {
   });
 
   it("does not log apiKey, secretAccessKey, Authorization, or response body", async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json({
-        data: {
-          apiKey: { id: "akid", keyPrefix: "sk-test", apiKey: "sk-secret" },
-          assetCredential: {
-            id: "acid",
-            accessKeyId: "AKtest",
-            secretAccessKey: "AKSKsecret",
-          },
-        },
-      }),
-    );
+    const fetchMock = vi.fn(async () => successResponse());
     vi.stubGlobal("fetch", fetchMock);
     const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
     const logger = {
