@@ -481,6 +481,8 @@ stateDiagram-v2
 | 104（复审循环 BT：异步作业日志最小化） | agent-run metadata、job publish 与 RabbitMQ connection/consumer 错误改用 operational failureCategory；不再输出 run/job/queue、消息 handler 或 AMQP 原始错误。 | Server 71 项测试、typecheck 与触及 logger 文件 Biome 检查通过；静态复核确认重试补偿、nack/requeue 行为未变。 | 已完成异步作业与消息队列日志收敛；下一轮处理 database/cache/worker 进程级日志。 |
 | 105（复审循环 BU：连接层日志与类型收敛） | Postgres pool rollback/idle、Redis 与 LangGraph checkpointer 连接错误改用 stable failureCategory；Redis 动态加载返回类型从 `any` 收紧为 `IORedis`。 | Server 71 项测试、typecheck、Redis 回归测试及触及文件 Biome 检查通过。 | 已完成连接层原始驱动错误清理；下一轮处理 worker payload、任务 ID 与 executor 错误。 |
 | 106（复审循环 BV：worker 运行日志最小化） | worker 的启动、停止、成功、非法消息、重试、死信和 fatal 日志使用无任意 context 的 outcome/failure category；不再输出 payload、job ID、worker tag 或 executor 原始错误。 | Server 72 项测试、typecheck 与 worker/operational-log Biome 检查通过。 | 已完成 worker 日志收敛；任务状态持久化的用户可见失败文案保持既有业务语义。 |
+| 107（复审循环 BW：生成 provider 与目录日志最小化） | Google/Vertex 视频生成、polling、operation、download token、DoFe model catalog stale-cache/sync 错误均改用 stable category；权限判断和既有 GenerationError 文案不变。 | Server 72 项测试、typecheck、model-router 回归测试及 router/register Biome 检查通过。 | 已完成第三方生成响应与目录错误日志收敛；下一步全仓复审剩余旧式 console 调用。 |
+| 108（复审循环 BX：五轮全仓复核与遗留日志重分类） | 复核第 103-107 轮后，直接 console 所在 Server 文件从审计起点的 33 降至 22；其中包含安全 operational logger 和固定状态输出。剩余原始上下文风险明确收敛为 server/migration、agent runtime/stream adapter、brand kit、canvas writer、job executors 与 skill import/marketplace。 | `pnpm test` 通过（workspace 15、Web 73、Server 72），全 workspace typecheck、token gate 与 Biome `787 <= 832` 通过。 | 五轮业务日志实施闭环完成；遗留六个领域是本地 P1，不能归入外部验收，也不能据此声称全应用日志治理已完成。 |
 
 ### 外部阻塞项
 
@@ -491,13 +493,13 @@ stateDiagram-v2
 - 生产仪表盘、指标保留期和告警策略仍由 observability owner 在批准平台创建；Lovart 已输出最小化事件、拒绝类别，并提供 [字段、查询、阈值和处置运行手册](./auth-transfer-observability-runbook.md)。
 - 受管 Redis 的 DNS/TLS CA/ACL/网络策略和 `REDIS_URL` secret 仍为平台发布操作；配置后必须以 `auth_transfer_telemetry_redis_ready` 与健康检查记录证明实例可承接流量。
 - `sso-e2e` Environment 当前没有 variables/secrets 或 protection rule；workflow 预检会失败直至设置准确的非生产凭据和 selector，不能将该失败视为测试通过。
-- 全仓 `biome check .` 当前有 805 个既有诊断，受 832 上限的 `lint:baseline` 已成为只减不增 CI 门禁，基线包含工具版本和规则配置 hash。全量 `pnpm lint` 在债务清零前仍会失败，不能伪装为质量通过。
+- 全仓 `biome check .` 当前有 787 个既有诊断，受 832 上限的 `lint:baseline` 已成为只减不增 CI 门禁，基线包含工具版本和规则配置 hash。全量 `pnpm lint` 在债务清零前仍会失败，不能伪装为质量通过。
 
 ### 最终完成度矩阵
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 73 项、Server 67 项、workspace 15 项自动化测试、全 workspace type-check、token 门禁、Biome `805 <= 832` ratchet、Web production build 和 public static CI gate 已通过。第 51-102 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线、匿名授权漏斗、Redis 就绪/强制配置、refresh E2E、token 发布物完整性、跨文档耗时修复、SSO preflight、告警契约、Docker CI 网络 override、WebSocket/HSTS smoke、WebSocket 凭据最小化和凭据/身份/agent 错误日志边界。全应用 legacy 直接日志治理仍按第 102 轮本地 P1 推进。 |
+| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 73 项、Server 72 项、workspace 15 项自动化测试、全 workspace type-check、token 门禁、Biome `787 <= 832` ratchet、Web production build 和 public static CI gate 已通过。第 51-108 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线、匿名授权漏斗、Redis 就绪/强制配置、refresh E2E、token 发布物完整性、跨文档耗时修复、SSO preflight、告警契约、Docker CI 网络 override、WebSocket/HSTS smoke、WebSocket 凭据最小化和凭据/身份/agent/异步任务/provider 日志边界。全应用 legacy 直接日志治理仍按第 108 轮本地 P1 推进。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、账户中心 | 已实现并接入 | locale、账户中心与发布的 token 包均已接入；后续版本升级使用 npm semver，不使用相对路径或生产 CSS 抓取。 |
 | 多模态图片/视频生成模型接入与文档 | 已与 `docs/tech/generation-models-reference.md` 统一 | 视频默认模型统一为 `seedance-2.0` 且全部使用 ixicai 模型 ID；`image/videoGenerationPayloadSchema` 与 `/api/agent/generate-*` 支持 `quality`、`inputImages`、`inputVideo`、`enableAudio` 等 Tool 层字段；文档已重写为 DoFe / ixicai 网关架构。 |

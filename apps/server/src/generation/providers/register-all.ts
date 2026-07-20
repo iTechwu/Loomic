@@ -28,36 +28,50 @@ export function registerAllProviders(env: ServerEnv): void {
     registerVideoProvider(videoProvider);
 
     const catalog = createDofeModelCatalog(env);
-    void catalog?.listImageModels().then((models) => {
-      imageProvider.setModels(models.map((model) => ({
-        id: model.id,
-        displayName: model.id,
-        description: "Image generation via ixicai.cn",
-      })));
-    }).catch(() => {
-      logOperationalFailure(
-        "[model-router] image catalog sync failed",
-        "model_catalog_image_sync",
-      );
-    });
-    void catalog?.listVideoModels().then((models) => {
-      videoProvider.setModels(models.map((model) => ({
-        id: model.id,
-        displayName: model.id,
-        description: "Video generation via ixicai.cn",
-        capabilities: {
-          textToVideo: true,
-          imageToVideo: true,
-          videoToVideo: false,
-          audio: false,
-        },
-        limits: { maxDuration: 16, maxResolution: "1080p", maxInputImages: 3 },
-      })));
-    }).catch(() => {
-      logOperationalFailure(
-        "[model-router] video catalog sync failed",
-        "model_catalog_video_sync",
-      );
-    });
+    void catalog
+      ?.listImageModels()
+      .then((models) => {
+        imageProvider.setModels(
+          models.map((model) => ({
+            id: model.id,
+            displayName: model.id,
+            description: "Image generation via ixicai.cn",
+          })),
+        );
+      })
+      .catch(() => {
+        logOperationalFailure(
+          "[model-router] image catalog sync failed",
+          "model_catalog_image_sync",
+        );
+      });
+    void catalog
+      ?.listVideoModels()
+      .then((models) => {
+        videoProvider.setModels(
+          models.map((model) => ({
+            id: model.id,
+            displayName: model.id,
+            description: "Video generation via ixicai.cn",
+            capabilities: {
+              textToVideo: true,
+              imageToVideo: true,
+              videoToVideo: false,
+              audio: false,
+            },
+            limits: {
+              maxDuration: 16,
+              maxResolution: "1080p",
+              maxInputImages: 3,
+            },
+          })),
+        );
+      })
+      .catch(() => {
+        logOperationalFailure(
+          "[model-router] video catalog sync failed",
+          "model_catalog_video_sync",
+        );
+      });
   }
 }
