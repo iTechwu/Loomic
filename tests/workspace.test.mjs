@@ -175,6 +175,7 @@ test("credentialed SSO workflow rejects a missing protected environment", async 
 test("WebSocket commands cannot override the authenticated handshake token", async () => {
   const websocketHandler = await readText("apps/server/src/ws/handler.ts");
   const websocketClient = await readText("apps/web/src/hooks/use-websocket.ts");
+  const app = await readText("apps/server/src/app.ts");
 
   assert.match(websocketHandler, /const runToken = token/);
   assert.doesNotMatch(websocketHandler, /accessToken \?\? token/);
@@ -183,4 +184,14 @@ test("WebSocket commands cannot override the authenticated handshake token", asy
     /accessToken: _accessToken, \.\.\.commandPayload/,
   );
   assert.doesNotMatch(websocketClient, /\/api\/ws\?token=/);
+  assert.match(app, /maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES/);
+  assert.match(websocketHandler, /failureCategory: "websocket_auth_error"/);
+  assert.doesNotMatch(websocketHandler, /log\.info\("connected", \{ userId/);
+  assert.doesNotMatch(
+    websocketHandler,
+    /log\.error\("socket_error", \{ userId/,
+  );
+  assert.doesNotMatch(websocketHandler, /log\.info\("started", \{ prompt/);
+  assert.doesNotMatch(websocketHandler, /log\.lap\("run_created", \{ runId/);
+  assert.match(websocketHandler, /failureCategory: "agent_stream"/);
 });

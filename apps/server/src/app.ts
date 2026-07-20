@@ -116,6 +116,8 @@ export type BuildAppOptions = {
   viewerService?: ViewerService;
 };
 
+const MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
+
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const env = loadServerEnv(options.env);
 
@@ -130,7 +132,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   void app.register(async (instance) => {
     await instance.register(websocket, {
-      options: { handleProtocols: selectWebSocketAuthProtocol },
+      options: {
+        handleProtocols: selectWebSocketAuthProtocol,
+        maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
+      },
     });
     await registerWsRoute(instance, {
       agentRuns,

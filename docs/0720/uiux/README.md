@@ -451,6 +451,16 @@ stateDiagram-v2
 | 74（复审循环 AP：WebSocket 命令凭据最小化） | 浏览器发送 `agent.run` 前剥离 `RunCreateRequest.accessToken`，凭据只在握手 subprotocol 中传输一次，不再复制到每个 WebSocket command frame。 | Web typecheck、workspace 15 项与 Biome 检查通过；契约同时锁定客户端不存在旧 `/api/ws?token=` URL。 | 已完成 token 副本最小化；下一轮将拒绝事件接入运行手册与部署验收。 |
 | 75（复审循环 AQ：WebSocket 认证代理契约） | Nginx 明确转发 `Sec-WebSocket-Protocol`，而非依赖默认 header 行为；可观测性运行手册增加 `websocket_connection_rejected` 的字段、dashboard 与告警处置，且不记录协议或 token 内容。 | 两份 Nginx 配置、workspace 15 项、Biome 与 Compose 合并配置通过。 | 五轮 WebSocket 安全闭环完成；生产 ingress/WAF 仍需保持 protocol 转发且脱敏 header/query 日志。 |
 | 76（复审循环 AR：WebSocket 安全全量复核） | 复核第 71-75 轮的认证传输、连接身份、command 凭据、Nginx 与观测契约；确认 token 不再出现在 URL 或 command frame，且文档状态不超出代码/平台事实。 | `pnpm test` 通过（workspace 15、Web 72、Server 58），全 workspace typecheck、token gate、Compose config、脚本语法通过；Biome ratchet 为 `813 <= 832`。 | 五轮业务代码与运行契约闭环完成；剩余项均为外部平台验收。 |
+| 77（复审循环 AS：WebSocket 消息上限） | Fastify websocket plugin 设定 `maxPayload=1_048_576`，限制单一实时帧的内存占用。 | Server typecheck 与 workspace contract 通过。 | 已完成消息边界；超大附件继续使用既有 HTTP 上传路径。 |
+| 78（复审循环 AT：受限存储降级） | WebSocket reconnect ID 的 sessionStorage 读取/写入改为 best-effort，隐私模式或嵌入上下文拒绝存储时回退内存 ID，不阻断画布连接。 | 新增 jsdom 拒绝 storage 测试；Web typecheck 与 73 项测试通过。 | 已完成浏览器存储降级。 |
+| 79（复审循环 AU：认证错误脱敏） | WebSocket authenticate catch 不再记录底层 error 文本，仅记录稳定 `websocket_auth_error` 类别。 | Server typecheck 与 workspace contract 通过。 | 已完成认证异常脱敏；平台日志后端不得补采 header/protocol 内容。 |
+| 80（复审循环 AV：连接日志身份最小化） | connected/disconnected/socket_error/pong/cancel/canvas resume 生命周期日志移除 raw userId 与 connectionId；保留非身份化状态、时序和 failure category。 | workspace contract 锁定连接日志不再含 userId；Server typecheck 通过。 | 已完成实时连接日志收敛。 |
+| 81（复审循环 AW：本轮复核） | 对消息大小、存储可用性、认证错误和身份日志四项进行代码/测试/文档对账。 | workspace 15 项、Web/Server typecheck 与新增 websocket 单测通过。 | 本轮五个可本地实施项完成；Redis、SSO E2E、仪表盘与 Docker 首跑仍为外部验收。 |
+| 82（复审循环 AX：Prompt 日志最小化） | agent.run `started` 不再写入用户 prompt 片段。 | workspace 契约禁止该日志字段，Server typecheck 通过。 | 已完成用户输入日志收敛。 |
+| 83（复审循环 AY：会话与运行标识最小化） | pipeline logger 不再以 userId/sessionId 为 base context，run-created/first-token/stream-done/persist 日志不再附带 runId。 | workspace 契约与 Server typecheck 通过。 | 已完成高基数身份/运行标识收敛。 |
+| 84（复审循环 AZ：内部解析失败分类） | thread/model resolution 失败仅记录稳定 failureCategory，不输出依赖层错误字符串。 | Server typecheck 与 workspace 验证通过。 | 已完成内部错误脱敏。 |
+| 85（复审循环 BA：stream/persist 错误脱敏） | stream 与 assistant message persistence 失败日志去除 runId/error text，保留可聚合 failureCategory；用户可见失败事件仍保留业务必要消息。 | Server typecheck 与 workspace 契约通过。 | 已完成 pipeline 日志与业务错误输出边界分离。 |
+| 86（复审循环 BB：日志最小化复核） | 复核第 82-85 轮，确认 prompt、身份、会话、run ID 与底层错误文本未进入 pipeline log。 | workspace 15 项、Server typecheck、Biome ratchet 通过。 | 五轮日志治理完成；平台日志留存/访问权限仍由 observability owner 验收。 |
 
 ### 外部阻塞项
 
