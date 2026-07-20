@@ -12,6 +12,7 @@ import { ImageAttachmentBar } from "./image-attachment-bar";
 import { ImageModelPreferencePopover } from "./image-model-preference";
 
 type ChatInputProps = {
+  accessToken?: string | undefined;
   onSend: (message: string) => void;
   disabled?: boolean;
   attachments?: ImageAttachmentState[];
@@ -31,6 +32,7 @@ export type ChatInputHandle = {
 };
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput({
+  accessToken,
   onSend,
   disabled,
   attachments,
@@ -318,6 +320,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 open={modelPopoverOpen}
                 onClose={() => setModelPopoverOpen(false)}
                 anchorRef={modelBtnRef}
+                accessToken={accessToken}
               />
             </div>
           </div>

@@ -326,8 +326,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     viewerService,
   });
   void registerModelRoutes(app, env);
-  void registerImageModelRoutes(app, { auth, viewerService });
-  void registerVideoModelRoutes(app, { auth, viewerService });
+  void registerImageModelRoutes(app, { auth });
+  void registerVideoModelRoutes(app, { auth });
   void registerChatRoutes(app, {
     auth,
     chatService,

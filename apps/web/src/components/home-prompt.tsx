@@ -24,6 +24,7 @@ export type HomePromptHandle = {
 };
 
 type HomePromptProps = {
+  accessToken?: string | undefined;
   onSubmit: (
     prompt: string,
     attachments?: ReadyAttachment[],
@@ -63,6 +64,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
   function HomePrompt(
     {
       onSubmit,
+      accessToken,
       disabled,
       attachments,
       onAddFiles,
@@ -332,6 +334,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
                         open={modelPopoverOpen}
                         onClose={() => setModelPopoverOpen(false)}
                         anchorRef={agentBtnRef}
+                        accessToken={accessToken}
                       />
                     </div>
                   );

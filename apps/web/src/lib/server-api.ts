@@ -431,8 +431,12 @@ export type ImageModelInfo = {
   minTier?: string;
 };
 
-export async function fetchImageModels(): Promise<{ models: ImageModelInfo[] }> {
-  const response = await fetch(`${getServerBaseUrl()}/api/image-models`);
+export async function fetchImageModels(
+  accessToken: string,
+): Promise<{ models: ImageModelInfo[] }> {
+  const response = await fetch(`${getServerBaseUrl()}/api/image-models`, {
+    headers: authHeaders(accessToken),
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch image models: ${response.status}`);
   }
@@ -450,8 +454,12 @@ export type VideoModelInfo = {
   minTier?: string;
 };
 
-export async function fetchVideoModels(): Promise<{ models: VideoModelInfo[] }> {
-  const response = await fetch(`${getServerBaseUrl()}/api/video-models`);
+export async function fetchVideoModels(
+  accessToken: string,
+): Promise<{ models: VideoModelInfo[] }> {
+  const response = await fetch(`${getServerBaseUrl()}/api/video-models`, {
+    headers: authHeaders(accessToken),
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch video models: ${response.status}`);
   }

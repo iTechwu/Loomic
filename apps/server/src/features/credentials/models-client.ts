@@ -1,15 +1,16 @@
 import { createSignedModelsInternalDataClient } from "@dofe/models-sdk/internal-node";
+import type { ModelsInternalSeedanceCredentialsStatus } from "@dofe/models-sdk/internal-types";
 import { ModelsInternalApiError } from "@dofe/models-sdk/response";
 
 /**
  * Client for models.dofe.ai (ixicai.cn) service-to-service credential APIs.
  *
  * The only operation lovart needs today is provisioning a per-user design
- * apikey + seedance asset AK/SK via `POST /internal/seedance/credentials`. As
- * of `@dofe/models-sdk@0.2.10` that route is exposed as the typed
- * `seedanceCredentials.create` method, so this adapter delegates to the SDK's
+ * apikey + seedance asset AK/SK via `POST /internal/seedance/credentials`.
+ * `@dofe/models-sdk@0.2.10` exposes typed create and 0.2.11 adds the
+ * metadata-only status get method. This adapter delegates both to the SDK's
  * signed data client (HMAC auth, x-service-name, timeout, envelope unwrap) and
- * only owns: config validation, correlation-id propagation, sanitized logging,
+ * only owns config validation, correlation-id propagation, sanitized logging,
  * and mapping SDK errors onto lovart's `ModelsProvisionError`.
  *
  * The SDK import is server-side only and must never leak into the browser bundle.
@@ -39,17 +40,6 @@ export type ProvisionedCredentials = {
   assetCredential: { id: string; accessKeyId: string; secretAccessKey: string };
 };
 
-/**
- * Secret-free recovery metadata returned by models-sdk@0.2.11. This proves the
- * remote state after an uncertain provision result but is never a second
- * credential-delivery channel.
- */
-export type SeedanceCredentialsStatus = {
-  state: "absent" | "incomplete" | "ready";
-  apiKey?: { id: string; keyPrefix: string; status: string };
-  assetCredential?: { id: string; accessKeyId: string; status: string };
-};
-
 export type ModelsProvisionErrorCode = "http" | "timeout" | "sdk" | "state";
 
 export class ModelsProvisionError extends Error {
@@ -71,10 +61,10 @@ export class ModelsProvisionError extends Error {
  * Provision a per-user design apikey and seedance asset AK/SK via the SDK's
  * typed `seedanceCredentials.create` method.
  *
- * NOTE: models' provision endpoint is **not idempotent** — every successful
- * call mints fresh credentials. Callers must guard re-invocation (see
- * CredentialsService.ensureProvisioned, which uses a database-level lock and
- * in-flight state).
+ * Models implements create as an owner-scoped ensure and returns the existing
+ * pair on recovery. Callers still guard re-invocation (see
+ * CredentialsService.ensureProvisioned) so concurrent login paths do not make
+ * redundant remote calls or race the local encrypted-record write.
  */
 export async function provisionSeedanceCredentials(
   config: ModelsProvisionConfig,
@@ -227,7 +217,7 @@ export async function getSeedanceCredentialsStatus(
     correlationId: string;
     logger?: Logger;
   },
-): Promise<SeedanceCredentialsStatus> {
+): Promise<ModelsInternalSeedanceCredentialsStatus> {
   validateConfig(config);
   const client = createSignedModelsInternalDataClient({
     baseUrl: config.baseUrl,

@@ -97,7 +97,8 @@ export interface VideoModelInfo extends ModelInfo {
     videoToVideo: boolean;
     audio: boolean;
   };
-  limits: {
+  /** Omitted when the authorized models catalog does not project limit metadata. */
+  limits?: {
     maxDuration: number;
     allowedDurations?: number[];
     maxResolution: "480p" | "720p" | "1080p" | "2160p";

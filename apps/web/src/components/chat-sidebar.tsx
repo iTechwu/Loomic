@@ -259,7 +259,7 @@ export function ChatSidebar({
   useEffect(() => {
     let cancelled = false;
 
-    fetchImageModels()
+    fetchImageModels(accessToken)
       .then((data) => {
         if (cancelled) return;
         setImageModelMentionItems(
@@ -279,7 +279,7 @@ export function ChatSidebar({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accessToken]);
 
   // Fetch enabled workspace skills for @ mention
   useEffect(() => {
@@ -993,6 +993,7 @@ export function ChatSidebar({
         )}
         <ChatInput
           ref={chatInputRef}
+          accessToken={accessToken}
           onSend={handleSend}
           disabled={streaming || sessionsLoading}
           attachments={imageAttachments}

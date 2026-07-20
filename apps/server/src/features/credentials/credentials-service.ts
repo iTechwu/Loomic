@@ -131,7 +131,8 @@ export function createCredentialsService(
       // re-provisioning during the migration/identity-change path.
       if (lock.status === "ready") {
         return;
-      } else if (lock.status === "in_flight") {
+      }
+      if (lock.status === "in_flight") {
         logger.info("[credentials] ensure_skipped_in_flight", {
           attemptCount: lock.row.provisionAttemptCount,
         });
@@ -288,10 +289,7 @@ export function createCredentialsService(
         logger.error("[credentials] decrypt_failed", {
           failureCategory: "credential_decrypt_failed",
           cryptoEnabled: crypto.enabled,
-          message:
-            error instanceof Error
-              ? error.name
-              : "unknown",
+          message: error instanceof Error ? error.name : "unknown",
         });
         throw new CredentialsNotProvisionedError(userId);
       }

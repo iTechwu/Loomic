@@ -70,7 +70,7 @@ export function VideoGeneratorPanel({
   // Fetch available models with error logging
   useEffect(() => {
     let cancelled = false;
-    fetchVideoModels()
+    fetchVideoModels(accessToken)
       .then((r) => {
         if (!cancelled) setModels(r.models);
       })
@@ -78,7 +78,7 @@ export function VideoGeneratorPanel({
         console.warn("[video-gen] Failed to fetch models:", err);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [accessToken]);
 
   // Close dropdowns when clicking outside the panel
   useEffect(() => {

@@ -110,7 +110,12 @@ function makeService(repository: UserCredentialsRepository, logger?: Logger) {
 
 describe("CredentialsService", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // Most retry tests exercise normal recovery. Individual tests override
+    // this baseline to cover ready, incomplete, and lookup-error outcomes.
+    vi.mocked(getSeedanceCredentialsStatus).mockResolvedValue({
+      state: "absent",
+    });
   });
   afterEach(() => {
     vi.clearAllMocks();
@@ -151,6 +156,7 @@ describe("CredentialsService", () => {
     });
 
     expect(provisionSeedanceCredentials).toHaveBeenCalledTimes(1);
+    expect(getSeedanceCredentialsStatus).not.toHaveBeenCalled();
     expect(provisionSeedanceCredentials).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -377,6 +383,46 @@ describe("CredentialsService", () => {
       expect.stringMatching(/models provision state \(remote_state\) corr=/),
       { retainInFlight: true },
     );
+  });
+
+  it("defers retry without POST when remote status cannot be determined", async () => {
+    const repository = makeRepository({
+      lock: {
+        status: "locked",
+        row: readyRow({
+          provisionState: "provisioning",
+          provisionAttemptCount: 2,
+          apikeyCiphertext: null,
+        }),
+      },
+    });
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    vi.mocked(getSeedanceCredentialsStatus).mockRejectedValue(
+      new (await import("./models-client.js")).ModelsProvisionError(
+        "status lookup timed out",
+        0,
+        "timeout",
+      ),
+    );
+
+    await makeService(repository, {
+      info: () => {},
+      warn: (message, data = {}) => logs.push({ message, data }),
+      error: () => {},
+    }).ensureProvisioned({
+      userId: LOCAL_USER_ID,
+      ssoUserId: SSO_USER_ID,
+      ssoTeamId: TEAM_ID,
+    });
+
+    expect(provisionSeedanceCredentials).not.toHaveBeenCalled();
+    expect(repository.saveFailed).toHaveBeenCalledWith(
+      LOCAL_USER_ID,
+      TEAM_ID,
+      expect.stringMatching(/models provision timeout \(timeout\) corr=/),
+      { retainInFlight: true },
+    );
+    expect(JSON.stringify(logs)).toContain("models_provision_outcome_unknown");
   });
 
   it("does not write local identity, SSO identity, team, or storage errors to logs", async () => {

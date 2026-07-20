@@ -12,10 +12,33 @@
  * catalog is the sole model-id authority.
  */
 import type { ServerEnv } from "../../config/env.js";
-import { createDofeModelCatalog } from "../../models/dofe-model-router.js";
+import {
+  type DofeRouterModel,
+  createDofeModelCatalog,
+} from "../../models/dofe-model-router.js";
 import { logOperationalFailure } from "../../utils/operational-log.js";
+import type { VideoModelInfo } from "../types.js";
 import { DofeImageProvider, DofeVideoProvider } from "./dofe-generation.js";
 import { registerImageProvider, registerVideoProvider } from "./registry.js";
+
+export function toCatalogVideoModelInfo(
+  model: DofeRouterModel,
+): VideoModelInfo {
+  const capabilities = new Set(model.capabilities ?? []);
+  return {
+    id: model.id,
+    displayName: model.id,
+    description: "Video generation via ixicai.cn",
+    capabilities: {
+      textToVideo: capabilities.has("text_to_video"),
+      imageToVideo: capabilities.has("image_to_video"),
+      videoToVideo: capabilities.has("video_to_video"),
+      // The public catalog response does not project provider audio metadata.
+      // Keep the control disabled until models exposes an explicit capability.
+      audio: false,
+    },
+  };
+}
 
 export function registerAllProviders(env: ServerEnv): void {
   // DoFe gateway is the sole image/video data plane. Credentials are per-user
@@ -48,24 +71,7 @@ export function registerAllProviders(env: ServerEnv): void {
     void catalog
       ?.listVideoModels()
       .then((models) => {
-        videoProvider.setModels(
-          models.map((model) => ({
-            id: model.id,
-            displayName: model.id,
-            description: "Video generation via ixicai.cn",
-            capabilities: {
-              textToVideo: true,
-              imageToVideo: true,
-              videoToVideo: false,
-              audio: false,
-            },
-            limits: {
-              maxDuration: 16,
-              maxResolution: "1080p",
-              maxInputImages: 3,
-            },
-          })),
-        );
+        videoProvider.setModels(models.map(toCatalogVideoModelInfo));
       })
       .catch(() => {
         logOperationalFailure(

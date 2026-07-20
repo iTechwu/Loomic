@@ -2,19 +2,21 @@
 
 审查日期：2026-07-20。本文是 Lovart 的实施单，不修改 models、agents 或 DataEyes 的权威数据。
 
+> 阅读说明：Cycle 1–19 记录当时 SDK 0.2.9/0.2.10 的证据，不能视为当前接口状态；当前有效结论以 Cycle 20–24 与“最终状态汇总”为准。
+
 ## 已确认的基线
 
-models 已完成并发布 `@dofe/models-sdk@0.2.9`，npm `latest` 已指向该版本。该版本保持 `0.2.8` 的公开 exports 和 `/internal/*` 合同；它不是图片/视频 generation data-plane SDK，也没有新增 `seedanceCredentials.create` typed client method。
+初始基线为 `@dofe/models-sdk@0.2.9`，当时没有 `seedanceCredentials` typed client method。当前已发布并接入 `@dofe/models-sdk@0.2.11`：`create` 负责幂等发放，`get({ query: { userId, ssoTeamId } })` 提供 secret-free 状态查询；它仍不是图片/视频 generation data-plane SDK。
 
-Lovart 当前不依赖 SDK。`apps/server/src/features/credentials/models-client.ts` 在服务端直接调用 `POST /internal/seedance/credentials`，并复制 HMAC 签名算法；`credentials-service.ts` 负责将返回的 design API key 与 Seedance asset AK/SK 加密保存。这个职责划分是合理的：Lovart 不拥有模型目录、provider key、availability、路由、usage，也不得从 `docs/dataeyes-docs` 复制 alias、operation、价格或 provider 配置。
+Lovart 当前仅在服务端 credential adapter 依赖 SDK：`models-client.ts` 通过 signed data client 调用 typed `seedanceCredentials.create` 与 `get`，不复制 HMAC、path、query、envelope 或响应类型；`credentials-service.ts` 负责将 create 返回的 design API key 与 Seedance asset AK/SK 加密保存。这个职责划分是合理的：Lovart 不拥有模型目录、provider key、availability、路由、usage，也不得从 `docs/dataeyes-docs` 复制 alias、operation、价格或 provider 配置。
 
 ## 接口影响
 
 | 连接面 | 当前实现 | 0.2.9 影响 | 正确目标 |
 | --- | --- | --- | --- |
-| 内部认证 | 本地 `signModelsInternalToken` | SDK 已有等价 `createModelsInternalApiAuthorization` | npm 版本可用后改用 SDK helper，签名只在服务端生成 |
-| Seedance 凭据发放 | 手写 `fetch` 与松散 JSON 解包 | 没有可替换的 SDK endpoint method | 保持一个 Lovart adapter；等待 models 发布 Zod/ts-rest typed method 后再删除过渡 fetch |
-| 多模态调用 | 使用发放的 tenant API key | 没有新的 SDK generation client | 仅用 models 已发布且授权可用的 `/v1/*` 或 `/v1/generation/tasks`，不硬编码 DataEyes 候选能力 |
+| 内部认证 | SDK signed data client | SDK 负责 HMAC、service name、timeout 与 envelope | 签名只在服务端生成 |
+| Seedance 凭据发放/状态 | typed `seedanceCredentials.create/get` | 0.2.10/0.2.11 已提供 endpoint methods | 保持唯一 Lovart adapter；不复制 models 合同 |
+| 多模态调用 | 使用发放的 tenant API key | 没有新的 SDK generation client | 仅用 models 授权 catalog 与 `/v1/*` 或 `/v1/generation/tasks`，不硬编码 DataEyes 候选能力 |
 | 目录、路由、计费 | 未在 Lovart 本地维护 | 无变化 | 始终由 models 决策与记录 |
 
 ## 实施顺序
@@ -28,7 +30,7 @@ Lovart 当前不依赖 SDK。`apps/server/src/features/credentials/models-client
 
 ### P1：消除凭据重复发放风险
 
-models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 目前通过“先查 ready row”避免重复。并发登录、重试超时或两个 worker 同时进入时，仍可能在本地写入前发出两次远端创建请求。
+models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢复路径返回已有凭据；Lovart 仍须通过“先查 ready row”避免冗余远端调用，并防止并发登录、重试超时或两个 worker 在本地密文写入前发生竞态。
 
 1. 在 `ensureProvisioned` 周围增加按 `userId + ssoTeamId` 的事务性互斥或数据库唯一的 in-flight 状态；只有持有者可以调用 models。
 2. 将 provision 请求关联到一个非敏感 correlation ID，并记录远端 credential ID、耗时、状态码类别和重试次数；日志不得记录 `apiKey`、`secretAccessKey`、完整 Authorization 或响应体。
@@ -37,7 +39,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 
 ### P2：为将来的 SDK endpoint 做好替换条件
 
-只有 models 在 contracts 中增加并发布 `seedanceCredentials.create`（请求、响应、错误和认证均为 Zod-first/ts-rest），且 SDK data client 暴露该方法时，才将 adapter 内部的 `fetch` 替换成 SDK 调用。Lovart 不应自行声明“兼容 SDK”的 endpoint 类型来绕过该发布步骤。
+只有 models 在 contracts 中增加并发布 `seedanceCredentials.create`（请求、响应、错误和认证均为 Zod-first/ts-rest），且 SDK data client 暴露该方法时，才将 adapter 内部的 `fetch` 替换成 SDK 调用。Lovart 不应自行声明“兼容 SDK”的 endpoint 类型来绕过该发布步骤。该条件已在 Cycle 9 满足；状态查询条件已在 Cycle 20 满足。
 
 ## DataEyes 与多模态一致性要求
 
@@ -63,9 +65,9 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   - 固定 timestamp + service name 验证 Authorization 格式与 models `InternalAuthGuard` 兼容；
   - 缺失 secret、空 service name、401/403、timeout 均 fail closed；
   - 验证日志不泄露 apiKey、secretAccessKey、Authorization、响应体。
-- [ ] P1：并发互斥与 in-flight 状态（待 Cycle 2）。
-- [ ] P1：correlation ID 与可观测性（待 Cycle 3-4）。
-- [ ] P2：SDK endpoint 替换条件（待 Cycle 5）。
+- [x] P1：并发互斥与 in-flight 状态（Cycle 2–3）。
+- [x] P1：correlation ID 与可观测性（Cycle 3–4）。
+- [x] P2：SDK endpoint 替换条件（Cycle 5，Cycle 9 实施）。
 
 ### Cycle 2 — P1：并发互斥与 in-flight 状态（2026-07-20）
 
@@ -75,7 +77,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   - `ready` 直接返回；未超时的 `provisioning` 返回 `in_flight`；其他情况更新为 `provisioning` 并递增 `attempt_count`；
   - `saveReady` 重置 `provisioning_started_at = null`、`provision_attempt_count = 0`；
   - `saveFailed` 仅重置 `provisioning_started_at`，保留 `attempt_count` 用于后续重试观察。
-- [ ] `credentials-service.ts` 尚未接入 `takeProvisionLock`（待 Cycle 3）。
+- [x] `credentials-service.ts` 已接入 `takeProvisionLock`（Cycle 3）。
 
 ### Cycle 3 — P1：凭据服务接入互斥与 correlation ID 日志（2026-07-20）
 
@@ -86,7 +88,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   - 失败/超时仅写入脱敏错误串（`models provision <code> (<statusCategory>) corr=<id>`），不含响应体或密钥；
   - 保留严格 no-fallback：`getByUserId` 未就绪仍抛 `CredentialsNotProvisionedError`。
 - [x] 更新 `credentials-service.test.ts`：覆盖 ready 复用、in_flight 跳过、失败重试 attemptCount 递增、无降级。
-- [ ] app/worker 的 logger 注入与类型检查（待 Cycle 4）。
+- [x] app/worker 的 logger 注入与类型检查（Cycle 4）。
 
 ### Cycle 4 — P1：logger 注入、类型检查与全量测试（2026-07-20）
 
@@ -102,7 +104,7 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
   2. `@dofe/models-sdk` 的 data client（`createSignedModelsInternalDataClient` / `ModelsInternalDataClient`）暴露该 typed method；
   3. Lovart 才可将 `provisionSeedanceCredentials` 内部的 `fetch` 替换为该 SDK 调用，并在替换后删除本地 response-shape 解包逻辑。
 - [x] 在替换前，Lovart 不自行声明任何“兼容 SDK”的 endpoint 类型来绕过 models 的发布步骤。
-- [x] 远端状态校验待办：models 暂未提供按 `(ssoUserId, ssoTeamId)` 查询已发放凭据的端点；当前超时/崩溃后仅依赖 `provisioning_started_at` TTL 避免立即重发。待 models 暴露查询端点后，在 `takeProvisionLock` 的 `locked` 分支前补一次远端状态校验，杜绝超时窗口内的重复发放。
+- [x] 历史远端状态校验待办已由 Cycle 20–23 完成：models 现提供按 `(ssoUserId, ssoTeamId)` 查询的 SDK 方法；Lovart 在重试锁定分支、发放前进行状态对账，未知或不完整状态均不重放 create。
 
 ### Cycle 6 — 0.2.9 发布确认与 P2 可行性核验（2026-07-20）
 
@@ -163,25 +165,25 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 
 | 项 | 状态 |
 | --- | --- |
-| P0 SDK 认证收敛 + 互操作测试 | ✅ 完成（当前 `@dofe/models-sdk@^0.2.10`，lockfile 已解析到 0.2.10；0.2.9 为初始接入版本） |
+| P0 SDK 认证收敛 + 互操作测试 | ✅ 完成（当前 `@dofe/models-sdk@^0.2.11`，lockfile 已解析到 0.2.11；0.2.9 为初始接入版本） |
 | P1 并发互斥（advisory lock + in-flight 状态） | ✅ 完成 |
 | P1 correlation ID / 脱敏日志 / 超时 fail closed | ✅ 完成 |
 | P1 严格 no-fallback | ✅ 保持 |
 | P2 适配器 fetch 替换 | ✅ 完成（Cycle 9，SDK 0.2.10 typed `seedanceCredentials.create`） |
-| 远端凭据状态校验（防超时重复发放） | ⏳ 待 models 提供按 (ssoUserId,ssoTeamId) 查询端点 |
+| 远端凭据状态校验（防超时重复发放） | ✅ 完成（Cycle 20–23，SDK 0.2.11 `get`；`incomplete`/查询失败 fail closed） |
 | 浏览器包零泄漏 | ✅ 验证通过 |
 | 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
-| 全量 CI gate 本地核验 | ✅ 完成（Cycle 14：verify:migrations / typecheck / test 71 / lint:baseline 806≤832 / build） |
-| 类型检查 / 全量测试 | ✅ Cycle 19 全量质量门通过（server 79 / web 73 / shared 24 用例） |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 29：verify:migrations / typecheck / test / lint:baseline 780≤832 / build） |
+| 类型检查 / 全量测试 | ✅ Cycle 29 全量质量门通过（workspace 15 / server 86 / web 73 / shared 24 用例） |
 
 ### Cycle 20 — 上游解锁：SDK 0.2.11 状态查询面接入准备（2026-07-20）
 
 - **上游核验**：models 已发布 `@dofe/models-sdk@0.2.11`（npm `latest` 指向 0.2.11），新增 HMAC-only `seedanceCredentials.get({ query: { userId, ssoTeamId } })` → `GET /internal/seedance/credentials/status`。
 - [x] `apps/server/package.json` 由 `^0.2.10` 升级为 `^0.2.11`，`pnpm-lock.yaml` 解析 `@dofe/models-sdk@0.2.11` 并锁定 npmjs registry integrity。
 - [x] 新方法是 Zod-first/ts-rest typed data-client surface；响应仅为 `absent` / `incomplete` / `ready` 与安全元数据，**不**返回 API key、AK/SK 或密文。Lovart 不声明本地兼容类型。
-- [ ] 下一轮：在唯一 server credential adapter 封装状态查询与脱敏错误映射。
+- [x] 下一轮已完成：在唯一 server credential adapter 封装状态查询与脱敏错误映射（Cycle 21）。
 
 ### Cycle 21 — 远端状态 adapter：typed query、correlation 与脱敏（2026-07-20）
 
@@ -189,6 +191,77 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - [x] adapter 使用每次尝试的 `x-correlation-id`、既有 service name 和 timeout；日志仅记录 `state`、延迟与是否存在安全元数据，不记录 API key、AK/SK、密文、Authorization、请求 user/team 或上游 response body。
 - [x] 查询 timeout/HTTP/未知错误映射为既有 `ModelsProvisionError` 并 fail closed，供 service 决定保留 in-flight lease。
 - [x] `models-client.test.ts` 新增 status URL/header、secret-free log 与 timeout 测试；`pnpm --filter @lovart.dofe/server test src/features/credentials/models-client.test.ts`（11 tests）、server typecheck 与本轮 Biome 检查通过。
+
+### Cycle 22 — 重试前对账：状态驱动的 fail-closed 恢复（2026-07-20）
+
+- [x] `credentials-service.ts` 仅在 `attemptCount > 1` 时调用远端状态 adapter；首发和显式 SSO 主体变更保持单次 create，不额外增加登录路径的远端往返。
+- [x] `absent` 继续 SDK typed provision；`ready` 也继续调用 models 的服务端幂等 ensure，以恢复 Lovart 本地加密保存所需的 secret，而不是新增危险的 secret-read 接口。
+- [x] `incomplete` 转为稳定的 `ModelsProvisionError(code: "state")`，记录 `remote_state` 分类并以 `retainInFlight: true` fail closed；不覆盖 models 已存在的部分/禁用凭据，也不盲目重放 POST。
+- [x] 测试隔离改为 `resetAllMocks`，基线状态为 `absent`；新增 ready 秘钥恢复与 incomplete 阻断用例。`credentials-service.test.ts`（11 tests）、`models-client.test.ts`（11 tests）和 server typecheck 通过；SDK 发布包的 sourcemap 提示不影响测试结果。
+
+### Cycle 23 — 查询故障边界：未知结果不触发 create（2026-07-20）
+
+- [x] 首次 provision 的服务测试明确断言不查询远端状态，保证优化只影响可能丢失响应的重试路径。
+- [x] 新增 retry status timeout 用例：查询不可判定时不调用 `seedanceCredentials.create`、以 `models provision timeout (timeout)` 的脱敏分类保存失败，并保留 in-flight lease 直到 TTL，避免检测链路异常时错误重放。
+- [x] 复审结论：`absent` 是唯一允许直接继续 create 的未知本地恢复状态；`ready` 经 models 幂等 ensure 恢复 secret；`incomplete` 和查询失败均 fail closed。`credentials-service.test.ts`（12 tests）、server typecheck、四个改动文件 Biome 与 `git diff --check` 通过。
+
+### Cycle 24 — 最终质量门、包边界与文档收敛（2026-07-20）
+
+- [x] 完整门禁通过：`pnpm run verify:migrations`（13 migrations）、`pnpm test`（workspace 15；server 23 files / 84 tests；web 23 files / 73 tests；shared 24 tests）、`pnpm run lint:baseline`（780 <= 832）及 `pnpm build`。
+- [x] 浏览器边界复审：`apps/web/src` 与 `apps/web/out` 未检出 `@dofe/models-sdk`、`INTERNAL_API_SECRET`、`LOVART_CREDENTIAL_ENCRYPTION_KEY`、`designApiKey` 或 `secretAccessKey`；SDK 仅可经 server credential adapter 使用。
+- [x] 计划的所有非历史 checkbox 已清零；将“待 models 提供查询端点”和当前 SDK 版本统一更新为已完成 / `0.2.11`。npm `latest` 已核验为 `@dofe/models-sdk@0.2.11`，不再存在本计划范围内的后续实施项。
+
+### Cycle 25 — 当前基线文档漂移修正（2026-07-20）
+
+- [x] 修正“已确认的基线”和连接面表：Lovart 当前仅在 server credential adapter 使用 SDK typed `create/get`，不再手写 fetch 或 HMAC；保留 Cycle 1–19 作为历史证据，不把旧结论当作当前实现。
+- [x] 复审结果：当前 SDK 0.2.11 package export 提供 `internal-types`，可直接消费 `ModelsInternalSeedanceCredentialsStatus`；下一轮移除 adapter 中的重复 status 形状，防止 SDK contract 漂移。
+
+### Cycle 26 — SDK status 合同去重（2026-07-20）
+
+- [x] `getSeedanceCredentialsStatus` 现直接返回 `@dofe/models-sdk/internal-types` 的 `ModelsInternalSeedanceCredentialsStatus`；删除本地 `SeedanceCredentialsStatus` 副本，不再将 status、key status 或 asset status 枚举降级为宽松字符串。
+- [x] 验证：`models-client.test.ts`（11 tests）、server typecheck、改动文件 Biome 与 `git diff --check` 通过。审查下一项发现注释和历史 P1 描述仍假定 create 非幂等，需以 models 0.2.11 实际 ensure 语义修正。
+
+### Cycle 27 — 幂等语义校正（2026-07-20）
+
+- [x] 修正 `models-client.ts` 和当前 P1 描述：models create 是 owner-scoped 幂等 ensure，恢复时可返回同一对凭据；不再错误声称每次调用都会铸造新凭据。
+- [x] 保留 Lovart advisory lock、in-flight lease 与状态对账：它们继续保护本地加密记录写入、抑制并发冗余请求，并保守处理无法确认的网络结果，不依赖错误的非幂等前提。
+- [x] 验证：credentials adapter/service 聚焦测试（23 tests）、改动文件 Biome 与 `git diff --check` 通过。审查下一项发现 video catalog 将模型能力和 limits 写死，需改为 models 返回的 capability projection。
+
+### Cycle 28 — 授权 catalog 能力投影（2026-07-20）
+
+- [x] `register-all.ts` 现仅将公开 catalog 的 `text_to_video`、`image_to_video`、`video_to_video` 映射为 UI capability；未投影的音频 metadata 保守为不支持。
+- [x] `VideoModelInfo.limits` 改为可选；models catalog 未返回时不再声称 `16s / 1080p / 3 images` 等固定限制。既有直连 provider 的完整 limits 保持不变。
+- [x] Cycle 29 已完成：为映射添加 text/image/video-only 回归测试，并执行完整质量门。
+
+### Cycle 29 — catalog 映射回归与质量门（2026-07-20）
+
+- [x] 新增 `register-all.test.ts`：验证公开 `text_to_video` / `image_to_video` 才会开启对应控件，`video_to_video` 不会被误推为 T2V/I2V，未公开的 audio 与 limits 保持关闭/缺省。
+- [x] 聚焦验证通过：catalog、credential adapter、credential service 共 29 tests，server typecheck、五个改动文件 Biome 与 `git diff --check` 通过。
+- [x] 完整质量门通过：`verify:migrations`（13）、workspace 15、server 24 files / 86 tests、web 23 files / 73 tests、shared 24 tests、`lint:baseline`（780 <= 832）和 `build`。
+- [x] 最终边界复审：浏览器目录未命中 SDK、内部认证 secret 或 tenant credential 字段；`DOFE_IMAGE_MODELS` / `DOFE_VIDEO_MODELS` 仅保留为未注册的源兼容常量，运行时模型列表唯一来自授权 catalog。无当前未勾选实施项。
+
+### Cycle 30 — catalog 路由认证边界审查（2026-07-20）
+
+- **发现**：`/api/image-models` 和 `/api/video-models` 虽接收 `RequestAuthenticator`，实际未调用认证；浏览器 `fetchImageModels` / `fetchVideoModels` 也没有 bearer header。这会公开服务端 catalog 投影，且与其他 workspace API 的 SSO 边界不一致。
+- [x] 确认修复范围：仅透传既有 SSO session token，服务端继续保管 gateway/tenant key；不把 models credential、SDK 或内部 secret 传到浏览器。
+- [x] Cycle 31–34 已完成：收紧 browser client 与两条路由、更新所有调用点、补回归测试和完整质量门。
+
+### Cycle 31 — browser catalog bearer 透传（2026-07-20）
+
+- [x] `fetchImageModels` / `fetchVideoModels` 现接受 SSO bearer 并复用统一 `authHeaders`；未引入 models API key、内部 secret 或浏览器 SDK。
+- [x] 验证：web typecheck 与既有 web tests 通过；审查下一项要求将 token 设为必填并更新所有调用点，避免未来调用遗漏 header。
+
+### Cycle 32 — 显式 session token 调用链（2026-07-20）
+
+- [x] catalog client 的 token 参数现为必填；canvas image/video panel、chat image mention 和 image/video 偏好弹窗均使用已有 SSO session token。无 session 的可复用弹窗保持空列表，不发匿名请求。
+- [x] 修正组件测试发现的 context 耦合：token 作为显式 prop 自上而下传递，而不是在可复用弹窗内部假定 `AuthProvider`。
+- [x] 验证：web typecheck 与全量 web 23 files / 73 tests 通过。审查下一项收紧 server routes 并复用项目标准 401 schema。
+
+### Cycle 33 — server catalog 路由鉴权（2026-07-20）
+
+- [x] `/api/image-models` 与 `/api/video-models` 现先执行 `RequestAuthenticator.authenticate`；缺失或无效 SSO bearer 返回统一 `401 unauthorized`，不读取 catalog projection。
+- [x] 移除两条 route 的未使用 `ViewerService` 参数，保留 registry 作为 server-side-only 投影；响应仍只包含模型显示元数据，不包含 bearer、API key 或资产凭据。
+- [ ] Cycle 34：完成 route 回归、全局 lint/build/边界扫描，并在无待办时收束本轮。
 
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 
@@ -229,11 +302,11 @@ models 的 provision endpoint 每次成功都会创建新的凭据，而 Lovart 
 - [x] SDK 0.2.10 类型面复核：`seedanceCredentials` 仍只有 `create`，没有按 `(ssoUserId, ssoTeamId)` 查询、list 或 get 方法，因此剩余远端状态校验不能在 Lovart 本地伪造实现。
 - [x] 修正最终状态表中的历史版本与测试数，确保文档与当前 `package.json` / lockfile / CI 结果一致。
 
-## 待办（外部依赖解锁后）
+## 历史待办（均已解锁）
 
 1. ~~`@dofe/models-sdk@0.2.9` 发布到 npmjs 后升级并重生成 lockfile~~ ✅ 已完成（2026-07-20，`package.json` 锁 `^0.2.9`，lockfile 解析 0.2.9）。
 2. ~~models 发布 `seedanceCredentials.create` typed method 后，替换 adapter `fetch`（见 Cycle 5 条件）~~ ✅ 已完成（Cycle 9，SDK 0.2.10，`package.json` 锁 `^0.2.10`）。
-3. models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。**（仅剩这一项，仍阻塞在 models 侧）**
+3. ~~models 提供按 `(ssoUserId, ssoTeamId)` 查询凭据端点后，在 `takeProvisionLock` 重试路径补远端状态校验。~~ ✅ 已完成（Cycle 20–23，SDK 0.2.11）。
 4. ~~部署前确保 `pnpm --filter @lovart.dofe/server db:migrate` 已应用 `0014` 迁移~~ ✅ 已改为 API 启动自动迁移（Cycle 7）；如部署环境用外部迁移作业，设 `LOVART_RUN_MIGRATIONS_ON_BOOT=0` opt out。
 
 ### Cycle 11 — 深审补强：stale-takeover 分支测试覆盖（2026-07-20）

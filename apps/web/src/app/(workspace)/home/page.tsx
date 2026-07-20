@@ -255,6 +255,7 @@ export default function HomePage() {
         <motion.div variants={fadeUp} custom={3} className="w-full">
           <HomePrompt
             ref={promptRef}
+            accessToken={session?.access_token}
             onSubmit={handlePromptSubmit}
             disabled={creating}
             attachments={imageAttachments}
