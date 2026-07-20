@@ -22,11 +22,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lovart.dofe/web exec playwright install --with-deps chromium
-      - name: Validate protected E2E origins
-        run: node --input-type=module -e "for (const value of [process.env.E2E_BASE_URL, process.env.E2E_SSO_ORIGIN]) { const url = new URL(value); if (url.protocol !== 'https:' || url.username || url.password) throw new Error('E2E origins must be credential-free HTTPS URLs.'); }"
+      - name: Validate protected E2E environment
+        run: node scripts/verify-real-sso-e2e-env.mjs
         env:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
           E2E_SSO_ORIGIN: ${{ vars.E2E_SSO_ORIGIN }}
+          E2E_SSO_PASSWORD: ${{ secrets.E2E_SSO_PASSWORD }}
+          E2E_SSO_PASSWORD_SELECTOR: ${{ secrets.E2E_SSO_PASSWORD_SELECTOR }}
+          E2E_SSO_SUBMIT_SELECTOR: ${{ secrets.E2E_SSO_SUBMIT_SELECTOR }}
+          E2E_SSO_USERNAME: ${{ secrets.E2E_SSO_USERNAME }}
+          E2E_SSO_USERNAME_SELECTOR: ${{ secrets.E2E_SSO_USERNAME_SELECTOR }}
       - run: pnpm run verify:same-origin-runtime
         env:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}

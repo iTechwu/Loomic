@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   registerAuthTransferTelemetryReadiness,
   registerAuthTransferTelemetryRoute,
+  waitForRedisReadiness,
 } from "./auth-transfer-telemetry.js";
 
 const apps: ReturnType<typeof Fastify>[] = [];
@@ -72,6 +73,12 @@ describe("auth transfer telemetry", () => {
     app.get("/health", async () => ({ ok: true }));
 
     await expect(app.inject("/health")).resolves.toMatchObject({ statusCode: 200 });
+  });
+
+  it("bounds a Redis readiness probe that never responds", async () => {
+    await expect(
+      waitForRedisReadiness({ ping: async () => new Promise<"PONG">(() => {}) }, 10),
+    ).rejects.toThrow("Redis readiness probe timed out.");
   });
 
   it("accepts only the documented non-identifying transition fields", async () => {

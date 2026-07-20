@@ -69,7 +69,7 @@ test("legacy login uses the same-origin OIDC entry before the provider redirect"
   await expect(page).toHaveURL(/\/oauth\/authorize/);
 });
 
-test("credentialed SSO restores a deep link, refreshes after reload, and completes global logout", async ({
+test("credentialed SSO restores a deep link, refreshes after reload, and re-authenticates after global logout", async ({
   page,
 }) => {
   const username = process.env.E2E_SSO_USERNAME;
@@ -126,4 +126,9 @@ test("credentialed SSO restores a deep link, refreshes after reload, and complet
 
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/?\?signed_out=1$/, { timeout: 30_000 });
+
+  // A global logout must not leave a stale Lovart session that can reopen the
+  // original workspace URL. The next protected navigation begins OIDC again.
+  await page.goto("/projects?filter=mine#recent", { waitUntil: "networkidle" });
+  await expect(page).toHaveURL(/\/oauth\/authorize/, { timeout: 30_000 });
 });

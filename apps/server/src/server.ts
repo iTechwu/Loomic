@@ -11,6 +11,7 @@ if (process.env.GLOBAL_AGENT_HTTP_PROXY) {
 
 import { buildApp } from "./app.js";
 import { loadServerEnv } from "./config/env.js";
+import { withStartupTimeout } from "./startup-timeout.js";
 
 const env = loadServerEnv();
 const app = buildApp({
@@ -20,13 +21,13 @@ const app = buildApp({
 const host = process.env.HOST ?? "127.0.0.1";
 
 try {
-  await app.listen({
-    host,
-    port: env.port,
-  });
+  await withStartupTimeout(app.listen({ host, port: env.port }));
 
   console.log(`@lovart.dofe/server listening on http://${host}:${env.port}`);
 } catch (error) {
-  app.log.error(error);
-  process.exitCode = 1;
+  app.log.error({ error }, "server_startup_failed");
+  // app.close() itself can wait on the unresolved app.listen() promise. Start
+  // cleanup without awaiting it, then terminate this failed entrypoint.
+  void app.close().catch(() => undefined);
+  process.exit(1);
 }

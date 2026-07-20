@@ -6,6 +6,17 @@ const Redis = require("ioredis") as new (
   value: string,
   options: Record<string, unknown>,
 ) => any;
+const MAX_REDIS_CONNECTION_RETRIES = 2;
+
+/**
+ * Keep startup bounded when Redis is a required limiter dependency. ioredis
+ * retries forever by default, which would leave Fastify waiting in onReady
+ * without ever becoming healthy or failing the deployment.
+ */
+export function redisRetryDelay(attempt: number): number | null {
+  if (attempt > MAX_REDIS_CONNECTION_RETRIES) return null;
+  return attempt * 200;
+}
 
 export type RedisClient = {
   close(): Promise<void>;
@@ -27,6 +38,7 @@ export function createRedisClient(url: string): RedisClient {
     connectTimeout: 2_000,
     enableOfflineQueue: false,
     maxRetriesPerRequest: 2,
+    retryStrategy: redisRetryDelay,
   });
   client.on("error", (error: Error) => console.error("[redis] client error", { message: error.message }));
   return {

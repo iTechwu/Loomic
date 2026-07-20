@@ -1,6 +1,13 @@
 services:
   # This override is CI-only. Production receives its database, object storage
   # and Redis values from the deployment secret store instead.
+  web:
+    build:
+      args:
+        NODE_BASE_IMAGE: node:22-alpine
+        NGINX_BASE_IMAGE: nginx:1.27-alpine
+        NPM_REGISTRY: https://registry.npmjs.org
+
   server:
     build:
       args:

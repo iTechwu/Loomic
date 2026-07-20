@@ -8,7 +8,7 @@
 >
 > 目标：让用户从任意需要身份的操作直接进入 DoFe SSO，在完成授权后无损返回原始工作位置；同时以 SSO 的设计系统为唯一上游，消除 Lovart 与 DoFe 在语言、视觉密度、控件语义和反馈方式上的割裂。
 
-> 实施状态：本仓库可实施项已完成。第 10 节记录每个“实施 -> 标注 -> 复审”循环；未经 SSO 外部契约确认的事项明确保留为阻塞项。
+> 实施状态：本仓库可实施项已完成。第 10 节记录每个“实施 -> 标注 -> 复审”循环；未经 SSO 外部契约确认的事项明确保留为阻塞项。授权交接的仪表盘、告警和外部交付细节见 [可观测性运行手册](./auth-transfer-observability-runbook.md)。
 
 ## 1. 决策摘要
 
@@ -310,7 +310,7 @@ stateDiagram-v2
 | 1. 直接跳转（2-3 天） | CTA 直达 SSO；workspace 深链 returnTo；/login、/register HTTP 兼容；logout 回首页 | 现有 API/proxy | 无认证态访问任何受保护路由不会先返回 login HTML。 |
 | 2. 交接可靠性（2-3 天） | callback 状态机、可恢复错误页、关联日志、端到端回归 | SSO 测试 client | 所有错误不循环、不泄密、可重试。 |
 | 3. 设计系统（1 个 sprint） | token package 接入、Typography/locale/theme 收敛、button/input/nav 审计 | SSO token 发布物 | token hash、视觉回归和 a11y 门禁通过。 |
-| 4. 渐进发布（1 个 sprint） | feature flag、10% -> 50% -> 100%、仪表盘、旧路由观察期 | 数据分析/运维 | 指标不回退，旧 URL 30 天无异常后移除兼容代码。 |
+| 4. 渐进发布（1 个 sprint） | 同源 ingress canary `10% -> 50% -> 100%`、仪表盘、完整部署回滚与旧路由观察期；不得使用会返回已删除本地身份 UI 的 feature flag。 | 数据分析/运维 | 指标不回退；任一门槛失败即回滚到上一完整部署，旧 URL 30 天无异常后移除兼容代码。 |
 
 **发布约束：** 旧中转页已经删除，因此不得实现一个会回到不存在 UI 的 feature flag。生产 rollout 应只在已准备好的独立环境中按流量切换同源 ingress；紧急回退是恢复上一版完整部署，不得回退 PKCE、token 校验或把登录逻辑移到客户端。
 
@@ -350,7 +350,8 @@ stateDiagram-v2
 | 从 auth intent 到回到目标页的完成率 | 发布前 7 天 | 不低于基线 | >= 97% |
 | P95 授权交接耗时 | 发布前 7 天 | 不增加 >10% | <= 5 秒（不含用户填写凭证时间） |
 | callback 错误率 | 发布前 7 天 | 不增加 | < 1% |
-| 用户取消后 24h 重试成功率 | 新增采集 | 观察 | >= 70% |
+| 授权交接终态分布与耗时 bucket | 发布前 7 天 | 建立基线 | 完成率 >= 97%，P95 <= 5 秒 |
+| 跨 session 24h 重试成功率 | 不采集，待隐私/observability 决策 | 不设上线门槛 | 需先定义允许的匿名关联与留存策略 |
 | 与 SSO token 视觉差异 | 建立截图基线 | 0 个未豁免差异 | 0 |
 | Auth transfer WCAG AA 阻塞项 | 发布前审计 | 0 | 0 |
 | 认证相关支持工单 | 发布前 30 天 | 不增加 | 30 天内下降 20% |
@@ -424,10 +425,20 @@ stateDiagram-v2
 | 48（复审循环 P：租户空态） | `TenantTeamNav` 不再在 SSO 缺失 tenant context 时消失；它显示“个人工作区”与解释性 tooltip/辅助描述，且明确不从本地数据推断团队。正常 tenant trigger 同步扩至 44px。 | 组件测试覆盖已授权团队和空 context 两种状态；空态只呈现个人工作区，不泄露或臆造 tenant/team。下一轮精确区分 callback 的 provider 与本地 transaction 失败。 | 已完成。 |
 | 49（复审循环 Q：callback 错误语义） | callback 现在按稳定协议码分类：`invalid_callback` 显示失效交接信息；`server_error`、`temporarily_unavailable`、`sso_not_configured` 及网络失败显示可恢复的服务不可用状态；授权拒绝仍为取消。 | 回归测试验证无效 PKCE transaction 和 provider 暂不可用分别进入正确错误文案，request ID 继续仅在可安全提供时展示。下一轮处理部署配置中可本地修复的构建阻断。 | 已完成。 |
 | 50（复审循环 R：发布构建真实性） | 修正 Vercel 构建命令中已不存在的 `@loomic/*` workspace 包名为实际 `@lovart.dofe/*`，并移除 Next 的 `ignoreBuildErrors`，使生产构建不能绕过 TypeScript 门禁。 | Root workspace 测试现在锁定 Vercel 包名和 TypeScript 构建失败策略；仍不把 Vercel 标为可用，因为它没有同源 Fastify API runtime，见外部阻塞项。 | 已完成。 |
-| 51（复审循环 S：同源 Fastify runtime） | Nginx 的生产型 Lovart 配置直接服务 `apps/web/out`，仅将 `/api` 与 `/api/ws` 交给 Fastify；runtime smoke 同时验证 `/login`、`/register`、provider redirect 和 PKCE cookie 属性。Compose 版本化 Web Nginx + 私有 Fastify/worker 拓扑，并在普通 CI 配置真实 build/up 后验证 health、历史入口、安全头及未配置 SSO 时 `/api/auth/oidc/start` 的 typed `503`，防止 API 被静态 fallback 吞掉。 | CI runtime smoke 使用独立无密钥 override，仅验证控制面不访问数据平面；本机严格 TLS smoke 已通过，HTTPS ingress 可用 `E2E_REQUIRE_SECURITY_HEADERS=1` 强制完整验证。 | 代码与 CI runtime gate 已版本化；待首次具备镜像网络的 CI 成功记录。生产 TLS ingress、secret 和 client 注册仍是平台发布操作。 |
+| 51（复审循环 S：同源 Fastify runtime） | Nginx 的生产型 Lovart 配置直接服务 `apps/web/out`，仅将 `/api` 与 `/api/ws` 交给 Fastify；runtime smoke 同时验证 `/login`、`/register`、provider redirect 和 PKCE cookie 属性。Compose 版本化 Web Nginx + 私有 Fastify/worker 拓扑，并在普通 CI 配置真实 build/up 后验证 health、历史入口、安全头及未配置 SSO 时 `/api/auth/oidc/start` 的 typed `503`，防止 API 被静态 fallback 吞掉。 | 修复认证遥测插件外部 await 导致的 Fastify ready 阻塞后，本机以 `REDIS_URL` 空的开发路径启动 Fastify；向 Node 注入 mkcert root CA 后，严格 TLS smoke 已验证 health、历史入口、PKCE 与 provider origin。CI runtime smoke 仍使用独立无密钥 override。 | 代码与本机 strict TLS smoke 已通过；CI runtime gate 待首次具备镜像网络的成功记录。生产 TLS ingress、可达受管 Redis、secret 和 client 注册仍是平台发布操作。 |
 | 52（复审循环 T：视觉与 axe 门禁） | Playwright static runner 现覆盖 1440/768/320 的 Landing、callback error，另覆盖 dark/reduced-motion 和 keyboard skip link；快照路径不再绑定 darwin。暗色 axe 发现导航 CTA 2.57:1 对比度，已改用主题对应前景 token。 | public static gate 在 CI 执行；工作区与 callback loading 继续由可信凭据 E2E 覆盖。 | 已完成 public gate；authenticated surface 仍待外部测试账户。 |
-| 53（复审循环 U：授权交接指标） | 入口跳转前写入 tab-scoped 随机 flow 并上报 `intent_started`，callback 上报终态；Fastify 仅接受 allowlisted 字段，以 `auth_transfer_viewed` 记录，并按 IP 限为 30 events/minute。生产 `REDIS_URL` 使用共享计数器，并在 Fastify ready 阶段主动 `PING`，不可达不会进入健康流量；本地未配置 Redis 时保留进程内保护。 | Web/Server 测试覆盖关联 flow、PII 字段拒绝、限流、跨 Fastify 实例共享计数及 Redis 失败/本地模式的就绪语义。 | 已完成应用侧漏斗与分布式限流；24h 跨 session 指标、留存和告警需 observability/隐私决策。 |
+| 53（复审循环 U：授权交接指标） | 入口跳转前写入 tab-scoped 随机 flow 并上报 `intent_started`，callback 上报终态；Fastify 仅接受 allowlisted 字段，以 `auth_transfer_viewed` 记录，并按 IP 限为 30 events/minute。生产 `REDIS_URL` 使用共享计数器，并在 Fastify ready 阶段主动 `PING`，不可达不会进入健康流量；本地未配置 Redis 时保留进程内保护。跨外部 SSO 文档导航的耗时使用 `Date.now()`，不会因 `performance.now()` 时间原点重置而全部落入 `<1s` bucket。 | Web/Server 测试覆盖关联 flow、PII 字段拒绝、限流、跨 Fastify 实例共享计数、Redis 失败/本地模式的就绪语义及跨文档耗时 bucket。 | 已完成 tab 级匿名漏斗与分布式限流；跨 session 24h 重试、留存和告警需 observability/隐私决策。 |
 | 54（复审循环 V：真实浏览器 E2E） | 受保护 workflow 先验证同源 runtime、PKCE cookie 与安全头，再以非生产 secrets 执行凭据登录；用例断言 `/projects?filter=mine#recent` 深链恢复、整页 reload 后通过 HttpOnly refresh cookie 恢复会话，以及 `/?signed_out=1` 全局登出回跳。 | 本机隔离浏览器不信任 mkcert CA，故不以 `ignoreHTTPSErrors` 伪造通过；GitHub runner 必须访问公网可信预发 TLS 或使用受控自托管 runner。 | 代码与 workflow 已完成；真实环境、client、secrets 与证书信任仍等待平台验收。 |
+| 55（复审循环 W：Redis 限流就绪） | 为共享遥测 Redis 增加 Fastify `onReady` `PING`，并限制 ioredis 至两次重连、ready probe 至 5 秒；服务整体启动再设 15 秒 deadline，失败记录 `server_startup_failed` 后以非零状态退出。配置 `REDIS_URL` 的实例在限流器不可达时不得成为健康副本，未配置 Redis 的本地模式继续使用进程内限流。 | Server 单测覆盖重连上限、不可达/无响应 Redis、本地模式与启动 deadline；本机以实际 `.env.local` 验证 15 秒后 fail-closed。 | 已完成代码与本机失败路径验证；平台仍需注入可达的受管 TLS Redis URL 后取得成功启动记录。 |
+| 56（复审循环 X：SSO refresh E2E） | 凭据 E2E 在深链恢复后执行整页 reload，确认内存 token 被丢弃后仍由 HttpOnly refresh cookie 恢复同一 URL；全局登出后再次访问同一深链必须重新进入 provider authorization endpoint，不能重开工作区。 | Web typecheck 与 Playwright 测试枚举通过；真实执行依赖受保护 `sso-e2e` 环境。 | 已完成代码覆盖；等待可信预发执行记录。 |
+| 57（复审循环 Y：token 发布物完整性） | 构建前 token gate 进一步验证 manifest 的字体/圆角/light-dark primary 结构、CSS 内嵌版本及 `background`/`foreground`/`primary`/`border`/`ring` 等关键角色。 | `verify:design-tokens` 与 Web typecheck 通过。 | 已完成 Lovart 侧门禁；跨仓同 commit hash/视觉比对仍待 SSO CI artifact。 |
+| 58（复审循环 Z：Compose API 所有权） | CI Compose smoke 在无 SSO 凭据的隔离 override 中验证 `/api/auth/oidc/start` 返回带 request ID 的 Fastify `503/sso_not_configured`，确保 API 不会回退为静态 HTML。 | 脚本语法、Compose 合并配置与 Server OIDC 契约测试通过；本机镜像拉取仍受 Docker Hub 网络限制。 | 已完成 gate 代码；等待具备镜像网络的 CI 首次执行。 |
+| 59（复审循环 AA：跨文档遥测时钟） | 匿名授权 flow 的持久化开始时间从 `performance.now()` 改为 `Date.now()`，保证外部 SSO 回调后的耗时 bucket 真实可用；payload 构造提取为纯 allowlist 函数。 | Web 单测验证无额外字段与 6.5 秒跨文档时长进入 `5_to_10s`。 | 已完成；跨 session 关联明确不在当前隐私模型中采集。 |
+| 60（复审循环 AB：容器最小权限） | server/worker 镜像改为专用非 root 用户并 drop 全部 capability；Compose 对 Web、server、worker 均启用 `no-new-privileges`，server/worker 根文件系统只读，只将 `/tmp` 作为 agent sandbox、运行日志和可选 Vertex 凭据的 tmpfs。Web 保留 Nginx master 所需 capability 以切换至其 worker 用户。 | Compose 渲染与 Server typecheck 验证；本机 Docker build 仍受镜像网络限制。 | 已完成部署定义加固；生产首发须验证受管平台的 tmpfs/只读卷支持。 |
+| 61（复审循环 AC：真实 SSO 环境预检） | `sso-e2e` GitHub Environment 已创建；workflow 在安装 Playwright 后先校验两个 URL variables 和五个 non-production account/selector secrets，缺失时明确失败，绝不跳过或输出 secret 值。 | 本机分别验证缺失配置失败和 dummy HTTPS/distinct-origin 配置通过；workspace 测试锁定该预检。 | workflow 已完成；首次 dispatch 仍待 owner 写入 secrets、设置 environment protection 并提供可信预发 TLS。 |
+| 62（复审循环 AD：交接告警事件） | 匿名遥测限流触发时写入 `auth_transfer_telemetry_rejected` 与稳定 `failureCategory=auth_transfer_rate_limited`；日志不包含由 IP 推导的 limiter key。可观测性运行手册定义 dashboard、分母保护、7 天基线与告警初始阈值。 | Server 遥测限流回归测试与类型检查覆盖端点行为；事件字段已由严格 schema 和代码审查约束。 | 应用事件已完成；实际 logs-based metrics、dashboard 和告警待 observability owner 在批准平台创建。 |
+| 63（复审循环 AE：Docker CI 网络可配置性） | Web Dockerfile 的 Node、Nginx 和 pnpm registry 与 server 的镜像/registry 一样可通过 CI smoke override 指定；quality workflow 启用 BuildKit。CI 使用公共 `node:22-alpine`、`node:25-alpine`、`nginx:1.27-alpine` 和 npm registry，而不依赖开发环境镜像站。 | 合并 Compose config 已验证三项 Web build args；真实 build/up 仍取决于 runner 可达外部 registry。 | 部署代码已完成；需以首次 GitHub Actions Compose 成功记录完成网络验收。 |
+| 64（复审循环 AF：Biome 存量治理） | `biome-baseline.json` 锁定 Biome `1.9.4`、`biome.json` SHA-256 与当前 832 条 error；`lint:baseline` 重新计算全仓报告，只有诊断增加、工具版本或规则配置变化才失败。普通 `pnpm lint` 仍保留为完整债务扫描，未被伪装为通过的 gate。 | 本机验证新增脚本初始造成 2 条诊断时 ratchet 失败；格式化后恢复 `832 <= 832`，并已接入 quality workflow。 | 已完成只减不增门禁；后续每个 PR 应顺手清理触及文件，基线仅可在审查中下调。 |
 
 ### 外部阻塞项
 
@@ -435,15 +446,18 @@ stateDiagram-v2
 - SSO 当前不允许自助注册；本次实现统一进入标准授权登录端点，不伪造 `screen_hint` 或注册 URL。
 - theme 传递协议待其 owner 确认，因此不在本次客户端实现中猜测 query 参数；账户中心地址必须通过 `NEXT_PUBLIC_SSO_ACCOUNT_URL` 显式配置。
 - 真实 Lovart 回跳验收的证书 SAN、Fastify、Nginx 路由与 SSO authorization redirect 已完成；需在信任本地 mkcert CA 的浏览器执行一次 `/api/auth/oidc/start?returnTo=%2Fhome` -> SSO -> `/auth/callback`，核对深链恢复、会话 cookie 与退出回跳。受控应用内浏览器使用独立信任库，不能作为该项的 TLS 验收工具。
-- production 仪表盘、指标保留期和告警阈值不由 Lovart 浏览器代码决定；当前已输出最小化 `auth_transfer_viewed` 结构化事件，须由 observability owner 接入日志管道后建立 7 天基线。
+- 生产仪表盘、指标保留期和告警策略仍由 observability owner 在批准平台创建；Lovart 已输出最小化事件、拒绝类别，并提供 [字段、查询、阈值和处置运行手册](./auth-transfer-observability-runbook.md)。
+- 受管 Redis 的 DNS/TLS CA/ACL/网络策略和 `REDIS_URL` secret 仍为平台发布操作；配置后必须以 `auth_transfer_telemetry_redis_ready` 与健康检查记录证明实例可承接流量。
+- `sso-e2e` Environment 当前没有 variables/secrets 或 protection rule；workflow 预检会失败直至设置准确的非生产凭据和 selector，不能将该失败视为测试通过。
+- 全仓 `biome check .` 仍有 832 个既有诊断；`lint:baseline` 已成为只减不增 CI 门禁，基线包含工具版本和规则配置 hash。全量 `pnpm lint` 在债务清零前仍会失败，不能伪装为质量通过。
 
 ### 最终完成度矩阵
 
 | 类别 | 状态 | 准确说明 |
 | --- | --- | --- |
-| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 69 项、Server 33 项、workspace 13 项自动化测试、全 workspace type-check、token 门禁、Web production build 和 public static CI gate 已通过。第 51-54 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线和匿名授权漏斗。 |
+| 本地身份入口、受保护深链、callback、登出、locale、账户入口、主题与最新 a11y 收敛 | 已完成并自动验证 | Lovart Web 70 项、Server 39 项、workspace 14 项自动化测试、全 workspace type-check、token 门禁、Biome 832 error ratchet、Web production build 和 public static CI gate 已通过。第 51-64 轮新增同源 runtime smoke、1440/768/320 visual/axe 基线、匿名授权漏斗、Redis 就绪、refresh E2E、token 发布物完整性、跨文档耗时修复、SSO preflight、告警契约与 Docker CI 网络 override。 |
 | 本地登录/注册体验 | 已移除 | 不再有表单、AuthShell 或 callback -> `/login` 回退；静态 preview fallback 只执行无 UI 的顶层 redirect。 |
 | SSO 设计 token、语言、账户中心 | 已实现并接入 | locale、账户中心与发布的 token 包均已接入；后续版本升级使用 npm semver，不使用相对路径或生产 CSS 抓取。 |
 | 多模态图片/视频生成模型接入与文档 | 已与 `docs/tech/generation-models-reference.md` 统一 | 视频默认模型统一为 `seedance-2.0` 且全部使用 ixicai 模型 ID；`image/videoGenerationPayloadSchema` 与 `/api/agent/generate-*` 支持 `quality`、`inputImages`、`inputVideo`、`enableAudio` 等 Tool 层字段；文档已重写为 DoFe / ixicai 网关架构。 |
-| 真实 Lovart SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 部分完成，保留可信环境验收 | production static artifact 已有 1440/768/320 visual+axe gate；真实 workflow 仅从受保护 `sso-e2e` Environment 读取 Lovart/SSO origins 与测试 secrets，并验证深链、登出、PKCE 与安全头。生产应用已支持 Redis shared limiter，平台仍需注入受管 `REDIS_URL`，并配置公网可信预发 TLS、自托管 runner 或受信任 CA、SSO client、secrets 与 observability 仪表盘/告警。 |
+| 真实 Lovart SSO 浏览器 E2E、生产代理 headers、视觉回归、axe 与指标基线 | 部分完成，保留可信环境验收 | production static artifact 已有 1440/768/320 visual+axe gate；真实 workflow 仅从受保护 `sso-e2e` Environment 读取 Lovart/SSO origins 与测试 secrets，并验证深链、登出、PKCE 与安全头。生产应用已支持 Redis shared limiter 和脱敏拒绝日志；平台仍需注入受管 `REDIS_URL`，配置公网可信预发 TLS/受信任 runner、SSO client/secrets，并按运行手册创建 dashboard/alerts。 |
 | Vercel 静态部署 | 环境阻塞 | 已排除 `/api` 的 SPA rewrite，防止返回静态 HTML；仍须由平台提供同源 Fastify proxy 或 serverless API 后才能启用 Vercel 的历史 URL redirect。 |

@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import type { UserCredentialsRepository } from "./credentials-repository.js";
 import type { CredentialCrypto } from "./crypto.js";
 import {
+  type Logger,
   type ModelsProvisionConfig,
+  ModelsProvisionError,
   provisionSeedanceCredentials,
 } from "./models-client.js";
 
@@ -41,6 +45,11 @@ export type CredentialsService = {
    * next call, so a transient models outage never blocks login/viewer. Strict
    * no-fallback is enforced at getByUserId time instead.
    *
+   * Concurrency: a database-level advisory lock + in-flight state guarantees at
+   * most one in-flight POST to models per (userId, ssoTeamId). Concurrent or
+   * retried callers that arrive while provisioning is in flight (and not stale)
+   * return immediately without touching models.
+   *
    * `ssoTeamId` is required on first provisioning (the OIDC login path carries
    * it). When omitted (e.g. the ensureViewer retry path, which only has a
    * user id), it is recovered from any existing row; if no row exists yet the
@@ -65,39 +74,86 @@ export type CredentialsServiceOptions = {
   provisionConfig: ModelsProvisionConfig;
   /** Display name recorded on the models side during provisioning. */
   provisionName?: string;
+  /** Structured logger; defaults to console when not provided (e.g. worker). */
+  logger?: Logger;
+  /**
+   * How long an in-flight `provisioning` row is considered active before another
+   * caller may take it over. Must be >= the models request timeout.
+   */
+  inFlightTimeoutMs?: number;
 };
 
 const DEFAULT_PROVISION_NAME = "lovart.dofe.ai integration";
+const DEFAULT_IN_FLIGHT_TIMEOUT_MS = 15_000;
 
 export function createCredentialsService(
   options: CredentialsServiceOptions,
 ): CredentialsService {
   const { repository, crypto, provisionConfig } = options;
+  const logger = options.logger ?? consoleLogger;
+  const inFlightTimeoutMs =
+    options.inFlightTimeoutMs ??
+    Math.max(
+      provisionConfig.timeoutMs ?? 8_000,
+      DEFAULT_IN_FLIGHT_TIMEOUT_MS,
+    );
 
   return {
     async ensureProvisioned({ userId, ssoUserId, ssoTeamId }) {
-      const ready = await repository.findReady(userId, ssoTeamId);
-      // A matching ready row is reusable. Rows created before SSO subject
-      // tracking are refreshed once, so Models owns the SSO user rather than
-      // the local design profile id.
-      if (ready && (!ssoUserId || ready.ssoUserId === ssoUserId)) return;
-
       // Retry path (ensureViewer) may arrive without ssoTeamId; recover it from
       // any existing row. If we have neither, we cannot provision — defer to
       // the next login which carries the real team id.
       const resolvedTeamId =
         ssoTeamId ?? (await repository.findAny(userId))?.ssoTeamId;
       if (!resolvedTeamId) {
-        console.warn("[credentials] ensure_skipped_no_team", { userId });
+        logger.warn("[credentials] ensure_skipped_no_team", { userId });
         return;
       }
       const resolvedSsoUserId =
-        ssoUserId ?? ready?.ssoUserId ?? (await repository.findAny(userId))?.ssoUserId;
+        ssoUserId ??
+        (await repository.findAny(userId))?.ssoUserId ??
+        undefined;
       if (!resolvedSsoUserId) {
-        console.warn("[credentials] ensure_skipped_no_sso_subject", { userId, ssoTeamId: resolvedTeamId });
+        logger.warn("[credentials] ensure_skipped_no_sso_subject", {
+          userId,
+          ssoTeamId: resolvedTeamId,
+        });
         return;
       }
 
+      const lock = await repository.takeProvisionLock({
+        userId,
+        ssoUserId: resolvedSsoUserId,
+        ssoTeamId: resolvedTeamId,
+        timeoutMs: inFlightTimeoutMs,
+      });
+
+      // A matching ready row is reusable. Rows created before SSO subject
+      // tracking are refreshed once, so Models owns the SSO user rather than
+      // the local design profile id.
+      if (lock.status === "ready") {
+        if (!ssoUserId || lock.row.ssoUserId === ssoUserId) return;
+        // SSO subject changed since last provision — fall through to re-provision.
+      } else if (lock.status === "in_flight") {
+        logger.info("[credentials] ensure_skipped_in_flight", {
+          userId,
+          ssoTeamId: resolvedTeamId,
+          attemptCount: lock.row.provisionAttemptCount,
+        });
+        return;
+      }
+
+      const correlationId = randomUUID();
+      const attemptCount = lock.row.provisionAttemptCount;
+      logger.info("[credentials] provision_attempt", {
+        correlationId,
+        userId,
+        ssoUserId: resolvedSsoUserId,
+        ssoTeamId: resolvedTeamId,
+        attemptCount,
+      });
+
+      const startedAt = performance.now();
       try {
         const provisioned = await provisionSeedanceCredentials(
           provisionConfig,
@@ -105,6 +161,8 @@ export function createCredentialsService(
             userId: resolvedSsoUserId,
             ssoTeamId: resolvedTeamId,
             name: options.provisionName ?? DEFAULT_PROVISION_NAME,
+            correlationId,
+            logger,
           },
         );
         await repository.saveReady({
@@ -120,26 +178,46 @@ export function createCredentialsService(
             provisioned.assetCredential.secretAccessKey,
           ),
         });
-        console.info("[credentials] provision_ok", {
+        logger.info("[credentials] provision_ok", {
+          correlationId,
           userId,
           ssoUserId: resolvedSsoUserId,
           ssoTeamId: resolvedTeamId,
           keyPrefix: provisioned.apiKey.keyPrefix,
+          modelsApiKeyId: provisioned.apiKey.id,
+          modelsCredentialId: provisioned.assetCredential.id,
+          attemptCount,
           cryptoEnabled: crypto.enabled,
+          latencyMs: Math.round(performance.now() - startedAt),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("[credentials] provision_failed", {
+        const code =
+          error instanceof ModelsProvisionError ? error.code : "http";
+        const status =
+          error instanceof ModelsProvisionError ? error.status : 0;
+        const statusCategory =
+          code === "timeout"
+            ? "timeout"
+            : `${Math.floor(status / 100) || 5}xx`;
+        // Sanitized error: correlationId + classification only, never the raw
+        // message (which may carry response fragments) or any secret.
+        const sanitizedError = `models provision ${code} (${statusCategory}) corr=${correlationId}`;
+        logger.error("[credentials] provision_failed", {
+          correlationId,
           userId,
           ssoTeamId: resolvedTeamId,
-          message,
+          attemptCount,
+          code,
+          statusCategory,
+          status,
+          latencyMs: Math.round(performance.now() - startedAt),
         });
         // Record the failure so it shows up in ops queries; swallow save errors
         // so a DB hiccup never propagates into the login path.
         await repository
-          .saveFailed(userId, resolvedTeamId, message)
+          .saveFailed(userId, resolvedTeamId, sanitizedError)
           .catch((saveError) => {
-            console.error("[credentials] save_failed_error", {
+            logger.error("[credentials] save_failed_error", {
               userId,
               ssoTeamId: resolvedTeamId,
               message:
@@ -166,3 +244,9 @@ export function createCredentialsService(
     },
   };
 }
+
+const consoleLogger: Logger = {
+  info: (message, data) => console.info(message, data ?? {}),
+  warn: (message, data) => console.warn(message, data ?? {}),
+  error: (message, data) => console.error(message, data ?? {}),
+};

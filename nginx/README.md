@@ -72,3 +72,9 @@ LOVART_ENV_FILE=.env.production docker compose -f deploy/docker-compose.yml up -
 Terminate TLS at the platform ingress in front of port `8080`, preserve the
 public host, and never publish Fastify port `3105`. The bundled runtime config
 sets CSP, HSTS, frame, referrer, permission and MIME-sniffing protections.
+
+The API and worker images run as a dedicated non-root user with read-only root
+filesystems and no Linux capabilities. Their only writable path is the
+ephemeral `/tmp` tmpfs used for agent sandboxes and optional Vertex
+service-account material; do not mount the application source tree as writable
+in production.

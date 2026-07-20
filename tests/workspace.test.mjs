@@ -85,12 +85,18 @@ test("shared package placeholder exists for the upcoming contract task", async (
 test("root lint baseline is wired through Biome", async () => {
   const manifest = await readJson("package.json");
   const biomeConfig = await readJson("biome.json");
+  const biomeBaseline = await readJson("biome-baseline.json");
+  const baselineVerifier = await readText("scripts/verify-biome-baseline.mjs");
 
   assert.equal(typeof manifest.devDependencies["@biomejs/biome"], "string");
   assert.match(manifest.scripts.lint, /biome/);
+  assert.match(manifest.scripts["lint:baseline"], /verify-biome-baseline/);
   assert.match(biomeConfig.$schema, /biome/);
   assert.equal(biomeConfig.formatter.enabled, true);
   assert.equal(biomeConfig.linter.enabled, true);
+  assert.equal(typeof biomeBaseline.maximumErrors, "number");
+  assert.match(baselineVerifier, /maximumErrors/);
+  assert.match(baselineVerifier, /createHash/);
 });
 
 test("Vercel builds the deployed Lovart workspace packages", async () => {
@@ -135,8 +141,20 @@ test("deployment and CI keep the same-origin edge versioned", async () => {
   assert.match(runtimeNginx, /proxy_pass http:\/\/server:3105/);
   assert.match(runtimeNginx, /Content-Security-Policy/);
   assert.match(composeSmoke, /DATABASE_URL/);
+  assert.match(composeSmoke, /NGINX_BASE_IMAGE/);
+  assert.match(composeSmoke, /NPM_REGISTRY/);
   assert.match(composeSmoke, /profiles: \[worker\]/);
   assert.match(runtimeCheck, /lovart-dofe-server/);
   assert.match(workflow, /verify:compose-runtime/);
   assert.match(workflow, /test:e2e:static/);
+  assert.match(workflow, /lint:baseline/);
+});
+
+test("credentialed SSO workflow rejects a missing protected environment", async () => {
+  const workflow = await readText(".github/workflows/real-sso-e2e.yml");
+  const preflight = await readText("scripts/verify-real-sso-e2e-env.mjs");
+
+  assert.match(workflow, /verify-real-sso-e2e-env/);
+  assert.match(preflight, /E2E_SSO_PASSWORD/);
+  assert.match(preflight, /must be distinct origins/);
 });

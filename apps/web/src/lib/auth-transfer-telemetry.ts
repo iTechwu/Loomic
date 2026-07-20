@@ -17,7 +17,7 @@ export type AuthTransferFlow = {
   startedAt: number;
 };
 
-type AuthTransferTelemetryEvent = {
+export type AuthTransferTelemetryEvent = {
   durationMsBucket: "lt_1s" | "1_to_5s" | "5_to_10s" | "over_10s";
   entryPoint: AuthTransferEntryPoint;
   flowId: string;
@@ -53,7 +53,10 @@ export function beginAuthTransferFlow(
   const flow = {
     entryPoint,
     flowId: createAuthTransferFlowId(),
-    startedAt: performance.now(),
+    // performance.now() resets on the external SSO document navigation. This
+    // value is persisted in sessionStorage, so it must use a cross-document
+    // clock or callback durations collapse into the smallest bucket.
+    startedAt: Date.now(),
   };
   writeAuthTransferFlow(flow);
   reportAuthTransferEvent({ ...flow, state: "intent_started" });
@@ -66,7 +69,7 @@ export function getOrCreateAuthTransferFlow(): AuthTransferFlow {
     readAuthTransferFlow() ?? {
       entryPoint: "callback",
       flowId: createAuthTransferFlowId(),
-      startedAt: performance.now(),
+      startedAt: Date.now(),
     }
   );
 }
@@ -93,14 +96,7 @@ export function reportAuthTransferEvent(
 ): void {
   if (typeof navigator === "undefined") return;
 
-  const payload: AuthTransferTelemetryEvent = {
-    durationMsBucket: toDurationBucket(
-      Math.max(0, performance.now() - event.startedAt),
-    ),
-    entryPoint: event.entryPoint,
-    flowId: event.flowId,
-    state: event.state,
-  };
+  const payload = createAuthTransferTelemetryEvent(event);
   const body = JSON.stringify(payload);
 
   // Beacon survives the callback navigation and sends no credentials beyond
@@ -122,6 +118,22 @@ export function reportAuthTransferEvent(
   }).catch(() => {
     // Telemetry is best-effort and must never change authentication behavior.
   });
+}
+
+/** Builds the exact allowlisted telemetry payload before transport selection. */
+export function createAuthTransferTelemetryEvent(
+  event: Omit<AuthTransferTelemetryEvent, "durationMsBucket"> & {
+    startedAt: number;
+  },
+): AuthTransferTelemetryEvent {
+  return {
+    durationMsBucket: toDurationBucket(
+      Math.max(0, Date.now() - event.startedAt),
+    ),
+    entryPoint: event.entryPoint,
+    flowId: event.flowId,
+    state: event.state,
+  };
 }
 
 function readAuthTransferFlow(): AuthTransferFlow | null {

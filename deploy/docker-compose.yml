@@ -8,8 +8,11 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
+    init: true
     read_only: true
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
       - /var/cache/nginx
       - /var/run
@@ -30,7 +33,15 @@ services:
       SERVICE_MODE: api
     expose:
       - "3105"
+    init: true
+    read_only: true
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
     healthcheck:
       test:
         [
@@ -51,4 +62,12 @@ services:
       - ${LOVART_ENV_FILE:-.env.production}
     environment:
       SERVICE_MODE: worker
+    init: true
+    read_only: true
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp

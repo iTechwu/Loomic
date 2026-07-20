@@ -7,7 +7,7 @@ import { join } from "node:path";
  * - stdout: human-readable one-liner with color-coded level
  * - file: JSON lines, one file per day (pipeline-YYYY-MM-DD.log)
  *
- * Log directory: apps/server/logs/
+ * Log directory: an ephemeral runtime path (defaults to /tmp).
  *
  * Usage:
  *   const log = createPipelineLogger("ws");
@@ -22,7 +22,7 @@ const LEVEL_NUM: Record<LogLevel, number> = { info: 30, warn: 40, error: 50 };
 const LEVEL_LABEL: Record<LogLevel, string> = { info: "INFO", warn: "WARN", error: "ERROR" };
 
 // Ensure log directory exists
-const LOG_DIR = join(import.meta.dirname ?? ".", "..", "..", "logs");
+const LOG_DIR = process.env.LOVART_DOFE_LOG_DIR ?? "/tmp/lovart-dofe-logs";
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch { /* ignore */ }
 
 /** Returns today's log file path: pipeline-YYYY-MM-DD.log */

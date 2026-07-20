@@ -12,6 +12,9 @@ jobs:
   test-and-static-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,6 +27,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
+      - run: pnpm run lint:baseline
       - run: LOVART_ENV_FILE=.env.production.example docker compose -f deploy/docker-compose.yml config
       - name: Build and smoke-test the same-origin Compose runtime
         run: |

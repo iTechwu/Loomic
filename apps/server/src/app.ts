@@ -171,6 +171,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
             serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
             internalApiSecret: env.internalApiSecret,
           },
+          logger: {
+            info: (message, data) => app.log.info(data ?? {}, message),
+            warn: (message, data) => app.log.warn(data ?? {}, message),
+            error: (message, data) => app.log.error(data ?? {}, message),
+          },
         })
       : undefined;
   const auth = options.auth ?? createSsoRequestAuthenticator(env, identities);
