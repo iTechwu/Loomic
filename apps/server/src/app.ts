@@ -76,6 +76,8 @@ import { registerProjectRoutes } from "./http/projects.js";
 import { registerRunRoutes } from "./http/runs.js";
 import { registerSettingsRoutes } from "./http/settings.js";
 import { registerUploadRoutes } from "./http/uploads.js";
+import { registerUsageRoutes } from "./http/usage.js";
+import { registerBillingRoutes } from "./http/billing.js";
 import { registerSkillRoutes } from "./http/skills.js";
 import { registerMarketplaceRoutes } from "./http/skills-marketplace.js";
 import { registerViewerRoutes } from "./http/viewer.js";
@@ -92,6 +94,7 @@ import {
   type CredentialsService,
 } from "./features/credentials/credentials-service.js";
 import { createUserCredentialsRepository } from "./features/credentials/credentials-repository.js";
+import { createBillingService } from "./features/billing/billing-service.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import { createCanvasElementWriter } from "./features/canvas/canvas-element-writer.js";
 import { createSsoRequestAuthenticator, type RequestAuthenticator } from "./auth/sso-authenticator.js";
@@ -183,6 +186,20 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
             warn: (message, data) => app.log.warn(data ?? {}, message),
             error: (message, data) => app.log.error(data ?? {}, message),
           },
+        })
+      : undefined;
+
+  // Usage/billing/pricing reads from models.dofe.ai. Requires the same internal
+  // HMAC config as credential provisioning but does not need the encryption key.
+  const billingService =
+    env.internalApiSecret && env.dofeModelBaseUrl
+      ? createBillingService({
+          modelsClientConfig: {
+            baseUrl: env.dofeModelBaseUrl,
+            serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+            internalApiSecret: env.internalApiSecret,
+          },
+          credentialsRepository: createUserCredentialsRepository(databasePool),
         })
       : undefined;
   const auth = options.auth ?? createSsoRequestAuthenticator(env, identities);
@@ -337,6 +354,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     uploadService,
     viewerService,
   });
+  void registerUsageRoutes(app, { auth, billingService });
+  void registerBillingRoutes(app, { auth, billingService });
   void registerGenerateRoutes(app, {
     auth,
     uploadService,

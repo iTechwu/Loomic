@@ -14,7 +14,9 @@ import { ImageModelPreferencePopover } from "./image-model-preference";
 type ChatInputProps = {
   accessToken?: string | undefined;
   onSend: (message: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
   attachments?: ImageAttachmentState[];
   onAddFiles?: (files: File[]) => void;
   onRemoveAttachment?: (id: string) => void;
@@ -34,7 +36,9 @@ export type ChatInputHandle = {
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput({
   accessToken,
   onSend,
+  onStop,
   disabled,
+  isStreaming,
   attachments,
   onAddFiles,
   onRemoveAttachment,
@@ -324,23 +328,41 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               />
             </div>
           </div>
-          <button
-            onClick={handleSubmit}
-            disabled={disabled || !hasContent || isUploading}
-            className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/80 active:bg-primary/90 disabled:opacity-20 disabled:cursor-not-allowed"
-          >
-            <svg
-              className="h-[14px] w-[14px]"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
+          {isStreaming ? (
+            <button
+              onClick={onStop}
+              type="button"
+              title="停止生成"
+              aria-label="停止生成"
+              className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/80 active:bg-primary/90"
             >
-              <path d="M7 11.5V2.5" />
-              <path d="M3 6.5L7 2.5L11 6.5" />
-            </svg>
-          </button>
+              <svg
+                className="h-[14px] w-[14px]"
+                viewBox="0 0 14 14"
+                fill="currentColor"
+              >
+                <rect x="3" y="3" width="8" height="8" rx="1.5" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={disabled || !hasContent || isUploading}
+              className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/80 active:bg-primary/90 disabled:opacity-20 disabled:cursor-not-allowed"
+            >
+              <svg
+                className="h-[14px] w-[14px]"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinecap="round"
+              >
+                <path d="M7 11.5V2.5" />
+                <path d="M3 6.5L7 2.5L11 6.5" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

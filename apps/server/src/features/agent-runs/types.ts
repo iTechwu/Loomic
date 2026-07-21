@@ -2,7 +2,8 @@ export type PersistedAgentRunStatus =
   | "accepted"
   | "running"
   | "completed"
-  | "failed";
+  | "failed"
+  | "canceled";
 
 export type CreateAcceptedAgentRunInput = {
   model?: string;

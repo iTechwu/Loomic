@@ -1243,7 +1243,7 @@ function toFailedEvent(
 async function updatePersistedRunStatus(
   agentRunMetadataService: AgentRunMetadataService | undefined,
   run: RuntimeRunRecord,
-  status: "running" | "completed",
+  status: "running" | "completed" | "canceled",
   options?: {
     completedAt?: string;
   },
@@ -1287,6 +1287,13 @@ async function syncPersistedRunFromEvent(
 ) {
   if (event.type === "run.completed") {
     await updatePersistedRunStatus(agentRunMetadataService, run, "completed", {
+      completedAt: now(),
+    });
+    return;
+  }
+
+  if (event.type === "run.canceled") {
+    await updatePersistedRunStatus(agentRunMetadataService, run, "canceled", {
       completedAt: now(),
     });
     return;

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useBreakpoint } from "../hooks/use-breakpoint";
 import type {
   ContentBlock,
   ImageArtifact,
@@ -13,6 +12,7 @@ import type {
   VideoGenerationPreference,
 } from "@lovart.dofe/shared";
 import { useAgentModel } from "../hooks/use-agent-model";
+import { useBreakpoint } from "../hooks/use-breakpoint";
 import { mapServerMessages, useChatSessions } from "../hooks/use-chat-sessions";
 import { useChatStream } from "../hooks/use-chat-stream";
 import {
@@ -26,22 +26,26 @@ import { useImageModelPreference } from "../hooks/use-image-model-preference";
 import { useVideoModelPreference } from "../hooks/use-video-model-preference";
 import type { WebSocketHandle } from "../hooks/use-websocket";
 import { fetchBrandKit } from "../lib/brand-kit-api";
-import { fetchImageModels, fetchWorkspaceSkills, saveMessage } from "../lib/server-api";
+import {
+  fetchImageModels,
+  fetchWorkspaceSkills,
+  saveMessage,
+} from "../lib/server-api";
 import type { CanvasSelectedElement } from "./canvas-editor";
 import {
   type BrandKitMentionItem,
   type CanvasImageItem,
   type ImageModelMentionItem,
-  type SkillMentionItem,
   MessageMentionPicker,
   type MessageMentionPickerItem,
+  type SkillMentionItem,
 } from "./canvas-image-picker";
 import { ChatInput } from "./chat-input";
 import { ChatMessage } from "./chat-message";
 import { ChatSkills } from "./chat-skills";
-import { useToast } from "./toast";
 import { ErrorBoundary } from "./error-boundary";
 import { SessionSelector } from "./session-selector";
+import { useToast } from "./toast";
 
 type ChatSidebarProps = {
   accessToken: string;
@@ -128,6 +132,8 @@ export function ChatSidebar({
   const initialPromptSent = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
+  const activeRunIdRef = useRef<string | null>(null);
+  const pendingCancelRef = useRef(false);
   const messageMentionsRef = useRef(messageMentions);
   messageMentionsRef.current = messageMentions;
   const selectedCanvasElementsRef = useRef(selectedCanvasElements);
@@ -225,7 +231,9 @@ export function ChatSidebar({
         document.removeEventListener("touchcancel", handleTouchEnd);
       };
 
-      document.addEventListener("touchmove", handleTouchMove, { passive: false });
+      document.addEventListener("touchmove", handleTouchMove, {
+        passive: false,
+      });
       document.addEventListener("touchend", handleTouchEnd);
       document.addEventListener("touchcancel", handleTouchEnd);
     },
@@ -291,7 +299,9 @@ export function ChatSidebar({
         if (cancelled) return;
         const allSkills = data.skills ?? [];
         const enabledSkills = allSkills.filter((s) => s.enabled);
-        console.log(`[chat-sidebar] Workspace skills loaded: ${allSkills.length} total, ${enabledSkills.length} enabled`);
+        console.log(
+          `[chat-sidebar] Workspace skills loaded: ${allSkills.length} total, ${enabledSkills.length} enabled`,
+        );
         setSkillMentionItems(
           enabledSkills.map((s) => ({
             kind: "skill" as const,
@@ -425,7 +435,9 @@ export function ChatSidebar({
           ...(mention.textContent !== undefined
             ? { textContent: mention.textContent }
             : {}),
-          ...(mention.fileUrl !== undefined ? { fileUrl: mention.fileUrl } : {}),
+          ...(mention.fileUrl !== undefined
+            ? { fileUrl: mention.fileUrl }
+            : {}),
         };
       });
       const userMsg = {
@@ -463,6 +475,10 @@ export function ChatSidebar({
       ]);
       setStreaming(true);
       abortRef.current = false;
+      activeRunIdRef.current = null;
+      pendingCancelRef.current = false;
+
+      const runIdRef = { current: "" };
 
       try {
         const perf = {
@@ -476,7 +492,6 @@ export function ChatSidebar({
         const streamDone = new Promise<void>((r) => {
           resolveStream = r;
         });
-        const runIdRef = { current: "" };
 
         const cleanup = ws.onEvent((event) => {
           if (!runIdRef.current || event.runId !== runIdRef.current) return;
@@ -503,9 +518,11 @@ export function ChatSidebar({
 
           // Fire canvas insertion callbacks for image/video artifacts.
           // Skip if the backend already inserted the element (elementId in output).
-          const backendInserted = event.type === "tool.completed"
-            && event.output
-            && typeof (event.output as Record<string, unknown>).elementId === "string";
+          const backendInserted =
+            event.type === "tool.completed" &&
+            event.output &&
+            typeof (event.output as Record<string, unknown>).elementId ===
+              "string";
           if (
             event.type === "tool.completed" &&
             event.artifacts &&
@@ -588,6 +605,17 @@ export function ChatSidebar({
               );
               const id = ack.payload.runId as string;
               runIdRef.current = id;
+              activeRunIdRef.current = id;
+
+              // User clicked stop before the ack arrived — cancel immediately.
+              if (pendingCancelRef.current) {
+                console.log("[chat] canceling run immediately after ack", {
+                  runId: id,
+                });
+                ws.cancelRun(id);
+                pendingCancelRef.current = false;
+              }
+
               resolve(id);
             },
           );
@@ -614,6 +642,12 @@ export function ChatSidebar({
         );
       } finally {
         setStreaming(false);
+        // Only clear the active run ref if it still belongs to this invocation,
+        // so a subsequent run isn't accidentally clobbered by the old finally.
+        if (activeRunIdRef.current === runIdRef.current) {
+          activeRunIdRef.current = null;
+        }
+        pendingCancelRef.current = false;
       }
     },
     [
@@ -631,10 +665,30 @@ export function ChatSidebar({
       autoTitleSession,
       accessTokenRef,
       activeSessionIdRef,
+      setStreaming,
+      showToast,
     ],
   );
 
-  // ── Mention picker ──
+  // ── Stop a running assistant output ──
+  const handleStop = useCallback(() => {
+    const runId = activeRunIdRef.current;
+    if (!runId && !streaming) return;
+
+    abortRef.current = true;
+    pendingCancelRef.current = true;
+
+    if (runId) {
+      console.log("[chat] user requested stop", { runId });
+      ws.cancelRun(runId);
+      activeRunIdRef.current = null;
+    } else {
+      console.log("[chat] user requested stop before ack");
+    }
+
+    // Allow immediate re-input; the run.canceled event will finalize the message.
+    setStreaming(false);
+  }, [streaming, ws, setStreaming]);
   const mentionPickerItems: MessageMentionPickerItem[] = [
     ...(onRequestCanvasImages ? onRequestCanvasImages() : []),
     ...brandKitMentionItems,
@@ -657,9 +711,18 @@ export function ChatSidebar({
       setMessageMentions((prev) => {
         let nextMention: MessageMention;
         if (item.kind === "image-model") {
-          nextMention = { mentionType: "image-model", id: item.id, label: item.label };
+          nextMention = {
+            mentionType: "image-model",
+            id: item.id,
+            label: item.label,
+          };
         } else if (item.kind === "skill") {
-          nextMention = { mentionType: "skill", id: item.id, label: item.label, slug: item.slug };
+          nextMention = {
+            mentionType: "skill",
+            id: item.id,
+            label: item.label,
+            slug: item.slug,
+          };
         } else {
           nextMention = {
             mentionType: "brand-kit-asset",
@@ -669,9 +732,7 @@ export function ChatSidebar({
             ...(item.textContent !== undefined
               ? { textContent: item.textContent }
               : {}),
-            ...(item.fileUrl !== undefined
-              ? { fileUrl: item.fileUrl }
-              : {}),
+            ...(item.fileUrl !== undefined ? { fileUrl: item.fileUrl } : {}),
           };
         }
 
@@ -815,9 +876,11 @@ export function ChatSidebar({
 
             // Fire canvas insertion callbacks for artifacts arriving after reconnect.
             // Skip if the backend already inserted the element (elementId in output).
-            const wsBackendInserted = evt.type === "tool.completed"
-              && evt.output
-              && typeof (evt.output as Record<string, unknown>).elementId === "string";
+            const wsBackendInserted =
+              evt.type === "tool.completed" &&
+              evt.output &&
+              typeof (evt.output as Record<string, unknown>).elementId ===
+                "string";
             if (
               evt.type === "tool.completed" &&
               evt.artifacts &&
@@ -952,7 +1015,11 @@ export function ChatSidebar({
           console.error("[chat-sidebar] message area render crashed:", err)
         }
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-6 px-4 py-4" aria-live="polite" aria-relevant="additions">
+        <div
+          className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-6 px-4 py-4"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
           {sessionsLoading || messagesLoading ? (
             <div className="flex h-full items-center justify-center">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-foreground" />
@@ -995,7 +1062,9 @@ export function ChatSidebar({
           ref={chatInputRef}
           accessToken={accessToken}
           onSend={handleSend}
+          onStop={handleStop}
           disabled={streaming || sessionsLoading}
+          isStreaming={streaming}
           attachments={imageAttachments}
           onAddFiles={addFiles}
           onRemoveAttachment={removeAttachment}
@@ -1056,9 +1125,7 @@ export function ChatSidebar({
         onTouchStart={handleTouchStart}
         onKeyDown={handleResizeKeyDown}
       />
-      <div className="flex flex-1 flex-col bg-card min-w-0">
-        {panelContent}
-      </div>
+      <div className="flex flex-1 flex-col bg-card min-w-0">{panelContent}</div>
     </div>
   );
 }

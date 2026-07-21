@@ -37,6 +37,7 @@ export const runStatusSchema = z.enum([
   "running",
   "completed",
   "failed",
+  "canceled",
 ]);
 
 export const imageAttachmentSchema = z.object({

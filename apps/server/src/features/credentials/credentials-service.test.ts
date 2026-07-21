@@ -55,6 +55,9 @@ function makeRepository(initial: {
   let saveReadyCalls = 0;
   let saveFailedCalls = 0;
   return {
+    findByApiKeyId: vi.fn(async (_userId, apiKeyId) =>
+      savedReady?.modelsApiKeyId === apiKeyId ? savedReady : null,
+    ),
     findReady: vi.fn(async () => savedReady),
     findReadyCandidates: vi.fn(async () => (savedReady ? [savedReady] : [])),
     findAny: vi.fn(async () => savedReady ?? current.row),
@@ -567,6 +570,7 @@ describe("CredentialsService", () => {
     // see CredentialsNotProvisionedError, not a raw crypto stack trace.
     const repository: UserCredentialsRepository = {
       findReady: vi.fn(async () => readyRow()),
+      findByApiKeyId: vi.fn(async () => readyRow()),
       findReadyCandidates: vi.fn(async () => [readyRow()]),
       findAny: vi.fn(async () => readyRow()),
       takeProvisionLock: vi.fn(),
@@ -618,6 +622,9 @@ describe("CredentialsService", () => {
 
     const repository: UserCredentialsRepository = {
       findReady: vi.fn(async () =>
+        readyCommitted ? readyRow({ provisionAttemptCount: 0 }) : null,
+      ),
+      findByApiKeyId: vi.fn(async () =>
         readyCommitted ? readyRow({ provisionAttemptCount: 0 }) : null,
       ),
       findReadyCandidates: vi.fn(async () =>

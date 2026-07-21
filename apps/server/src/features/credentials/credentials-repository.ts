@@ -42,6 +42,14 @@ export type UserCredentialsRepository = {
     ssoTeamId?: string,
   ): Promise<UserCredentialRow | null>;
   /**
+   * Ready record for a local user and a specific models-side api key id. Used to
+   * authorize bot-scoped usage/billing queries.
+   */
+  findByApiKeyId(
+    userId: string,
+    apiKeyId: string,
+  ): Promise<UserCredentialRow | null>;
+  /**
    * Ready records for a local user, capped at two because callers only need to
    * distinguish the usable single-team case from an unsafe ambiguity. Runtime
    * model calls do not carry an active SSO team, so they must never silently
@@ -117,6 +125,18 @@ export function createUserCredentialsRepository(
          order by provisioned_at desc
          limit 1`,
         [userId, ssoTeamId ?? null],
+      );
+      const row = result.rows[0];
+      return row ? toCamelCase(row) : null;
+    },
+
+    async findByApiKeyId(userId, apiKeyId) {
+      const result = await pool.query<DbRow>(
+        `select ${SELECT_COLS} from user_credentials
+         where user_id = $1 and models_api_key_id = $2 and provision_state = 'ready'
+         order by provisioned_at desc
+         limit 1`,
+        [userId, apiKeyId],
       );
       const row = result.rows[0];
       return row ? toCamelCase(row) : null;

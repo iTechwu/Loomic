@@ -120,6 +120,10 @@ export const applicationErrorCodeSchema = z.enum([
   "checkout_failed",
   "generation_failed",
   "credentials_not_provisioned",
+  "usage_query_failed",
+  "billing_query_failed",
+  "pricing_query_failed",
+  "forbidden",
 ]);
 
 export const applicationErrorResponseSchema = z.object({

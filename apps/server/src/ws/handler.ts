@@ -6,24 +6,24 @@ import {
   wsCommandSchema,
   wsRpcResponseSchema,
 } from "@lovart.dofe/shared";
+import type { ContentBlock, ToolBlock } from "@lovart.dofe/shared";
 import type { AgentRunService } from "../agent/runtime.js";
-import type { AgentRunMetadataService } from "../features/agent-runs/agent-run-service.js";
-import type { ThreadService } from "../features/chat/thread-service.js";
-import type { SettingsService } from "../features/settings/settings-service.js";
-import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type {
   AuthenticatedUser,
   RequestAuthenticator,
 } from "../auth/sso-authenticator.js";
-import type { ConnectionManager } from "./connection-manager.js";
-import type { CanvasEventBuffer } from "./event-buffer.js";
+import type { AgentRunMetadataService } from "../features/agent-runs/agent-run-service.js";
+import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type { ChatService } from "../features/chat/chat-service.js";
-import type { ContentBlock, ToolBlock } from "@lovart.dofe/shared";
-import { createPipelineLogger } from "./logger.js";
+import type { ThreadService } from "../features/chat/thread-service.js";
+import type { SettingsService } from "../features/settings/settings-service.js";
 import {
   parseWebSocketAuthRequest,
   selectWebSocketAuthProtocol,
 } from "./auth-protocol.js";
+import type { ConnectionManager } from "./connection-manager.js";
+import type { CanvasEventBuffer } from "./event-buffer.js";
+import { createPipelineLogger } from "./logger.js";
 
 export { selectWebSocketAuthProtocol } from "./auth-protocol.js";
 
@@ -45,32 +45,36 @@ export async function registerWsRoute(
 ) {
   const { agentRuns, connectionManager } = options;
 
-  app.get("/api/ws", { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
-    const credentials = parseWebSocketAuthRequest(
-      request.url,
-      request.headers["sec-websocket-protocol"],
-    );
-
-    const authenticator = options.auth;
-    if (!credentials || !authenticator) {
-      request.log.warn(
-        { failureCategory: "invalid_websocket_auth" },
-        "websocket_connection_rejected",
+  app.get(
+    "/api/ws",
+    { websocket: true },
+    (socket: WebSocket, request: FastifyRequest) => {
+      const credentials = parseWebSocketAuthRequest(
+        request.url,
+        request.headers["sec-websocket-protocol"],
       );
-      socket.close(4001, "Unauthorized");
-      return;
-    }
 
-    void authenticateAndBind(
-      socket,
-      credentials.accessToken,
-      credentials.connectionId,
-      authenticator,
-      options,
-      agentRuns,
-      connectionManager,
-    );
-  });
+      const authenticator = options.auth;
+      if (!credentials || !authenticator) {
+        request.log.warn(
+          { failureCategory: "invalid_websocket_auth" },
+          "websocket_connection_rejected",
+        );
+        socket.close(4001, "Unauthorized");
+        return;
+      }
+
+      void authenticateAndBind(
+        socket,
+        credentials.accessToken,
+        credentials.connectionId,
+        authenticator,
+        options,
+        agentRuns,
+        connectionManager,
+      );
+    },
+  );
 }
 
 async function authenticateAndBind(
@@ -109,14 +113,16 @@ async function authenticateAndBind(
 
   // Heartbeat with pong timeout (spec §1.3: 60s no-pong → disconnect)
   let lastPong = Date.now();
-  socket.on("pong", () => { lastPong = Date.now(); });
+  socket.on("pong", () => {
+    lastPong = Date.now();
+  });
 
   const pingInterval = setInterval(() => {
-      if (Date.now() - lastPong > 60_000) {
-        log.warn("pong_timeout");
-        socket.terminate();
-        return;
-      }
+    if (Date.now() - lastPong > 60_000) {
+      log.warn("pong_timeout");
+      socket.terminate();
+      return;
+    }
     if (socket.readyState === 1) {
       socket.ping();
     }
@@ -125,7 +131,9 @@ async function authenticateAndBind(
   socket.on("message", (raw: Buffer | string) => {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf-8"));
+      parsed = JSON.parse(
+        typeof raw === "string" ? raw : raw.toString("utf-8"),
+      );
     } catch {
       socket.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
       return;
@@ -139,8 +147,12 @@ async function authenticateAndBind(
         connectionManager.handleRpcResponse(connectionId, {
           type: rpcResponse.type,
           id: rpcResponse.id,
-          ...(rpcResponse.result !== undefined ? { result: rpcResponse.result } : {}),
-          ...(rpcResponse.error !== undefined ? { error: rpcResponse.error } : {}),
+          ...(rpcResponse.result !== undefined
+            ? { result: rpcResponse.result }
+            : {}),
+          ...(rpcResponse.error !== undefined
+            ? { error: rpcResponse.error }
+            : {}),
         });
       } catch {
         // Ignore malformed RPC responses
@@ -153,7 +165,9 @@ async function authenticateAndBind(
       try {
         msg = wsCommandSchema.parse(parsed);
       } catch {
-        socket.send(JSON.stringify({ type: "error", message: "Invalid command format" }));
+        socket.send(
+          JSON.stringify({ type: "error", message: "Invalid command format" }),
+        );
         return;
       }
 
@@ -169,19 +183,21 @@ async function authenticateAndBind(
           },
           connectionId,
           {
-          sessionId: p.sessionId,
-          conversationId: p.conversationId,
-          prompt: p.prompt,
-          ...(p.canvasId !== undefined ? { canvasId: p.canvasId } : {}),
-          ...(p.attachments !== undefined ? { attachments: p.attachments } : {}),
-          ...(p.imageGenerationPreference !== undefined
-            ? { imageGenerationPreference: p.imageGenerationPreference }
-            : {}),
-          ...(p.videoGenerationPreference !== undefined
-            ? { videoGenerationPreference: p.videoGenerationPreference }
-            : {}),
-          ...(p.mentions !== undefined ? { mentions: p.mentions } : {}),
-          ...(p.model !== undefined ? { model: p.model } : {}),
+            sessionId: p.sessionId,
+            conversationId: p.conversationId,
+            prompt: p.prompt,
+            ...(p.canvasId !== undefined ? { canvasId: p.canvasId } : {}),
+            ...(p.attachments !== undefined
+              ? { attachments: p.attachments }
+              : {}),
+            ...(p.imageGenerationPreference !== undefined
+              ? { imageGenerationPreference: p.imageGenerationPreference }
+              : {}),
+            ...(p.videoGenerationPreference !== undefined
+              ? { videoGenerationPreference: p.videoGenerationPreference }
+              : {}),
+            ...(p.mentions !== undefined ? { mentions: p.mentions } : {}),
+            ...(p.model !== undefined ? { model: p.model } : {}),
           },
           agentRuns,
           connectionManager,
@@ -191,7 +207,12 @@ async function authenticateAndBind(
         log.info("run_cancel");
         const cancelResult = agentRuns.cancelRun(msg.payload.runId);
         if (!cancelResult) {
-          socket.send(JSON.stringify({ type: "error", message: `Run not found: ${msg.payload.runId}` }));
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              message: `Run not found: ${msg.payload.runId}`,
+            }),
+          );
         }
       } else if (msg.action === "canvas.resume") {
         const p = msg.payload;
@@ -200,7 +221,8 @@ async function authenticateAndBind(
         // Re-bind this connection to the canvas
         connectionManager.bindCanvas(connectionId, p.canvasId);
 
-        const missed = options.eventBuffer?.getAfter(p.canvasId, p.lastSeq) ?? [];
+        const missed =
+          options.eventBuffer?.getAfter(p.canvasId, p.lastSeq) ?? [];
         const activeRun = connectionManager.getActiveRun(p.canvasId);
 
         // IMPORTANT: Send ACK FIRST so client registers event listener
@@ -256,27 +278,34 @@ async function handleRunCommand(
     (async (): Promise<string | undefined> => {
       if (!services.threadService) return undefined;
       try {
-        const sessionThread = await services.threadService.resolveOwnedSessionThread(
-          authenticatedUser,
-          payload.sessionId,
-        );
+        const sessionThread =
+          await services.threadService.resolveOwnedSessionThread(
+            authenticatedUser,
+            payload.sessionId,
+          );
         return sessionThread.threadId;
       } catch {
-        log.warn("thread_resolve_failed", { failureCategory: "thread_resolution" });
+        log.warn("thread_resolve_failed", {
+          failureCategory: "thread_resolution",
+        });
         return undefined;
       }
     })(),
     (async (): Promise<string | undefined> => {
-      if (!services.settingsService || !services.viewerService) return undefined;
+      if (!services.settingsService || !services.viewerService)
+        return undefined;
       try {
-        const viewer = await services.viewerService.ensureViewer(authenticatedUser);
+        const viewer =
+          await services.viewerService.ensureViewer(authenticatedUser);
         const settings = await services.settingsService.getWorkspaceSettings(
           authenticatedUser,
           viewer.workspace.id,
         );
         return settings.defaultModel;
       } catch {
-        log.warn("model_resolve_failed", { failureCategory: "model_resolution" });
+        log.warn("model_resolve_failed", {
+          failureCategory: "model_resolution",
+        });
         return undefined;
       }
     })(),
@@ -340,6 +369,7 @@ async function handleRunCommand(
   // Accumulate assistant content blocks for server-side persistence
   const assistantText: string[] = [];
   const assistantBlocks: ContentBlock[] = [];
+  let runCanceled = false;
 
   try {
     let firstEvent = true;
@@ -374,40 +404,41 @@ async function handleRunCommand(
         });
       } else if (event.type === "tool.completed") {
         const idx = assistantBlocks.findIndex(
-          (b) => b.type === "tool" && (b as ToolBlock).toolCallId === event.toolCallId,
+          (b) =>
+            b.type === "tool" &&
+            (b as ToolBlock).toolCallId === event.toolCallId,
         );
         if (idx >= 0) {
           assistantBlocks[idx] = {
             ...(assistantBlocks[idx] as ToolBlock),
             status: "completed" as const,
             ...(event.output ? { output: event.output } : {}),
-            ...(event.outputSummary ? { outputSummary: event.outputSummary } : {}),
+            ...(event.outputSummary
+              ? { outputSummary: event.outputSummary }
+              : {}),
             ...(event.artifacts ? { artifacts: event.artifacts } : {}),
           };
         }
       }
-    }
-    log.lap("stream_done");
 
-    // ── Server-side assistant message persistence ──
-    if (services.chatService && (assistantText.length > 0 || assistantBlocks.length > 0)) {
-      try {
-        await services.chatService.createMessage(
-          authenticatedUser,
-          payload.sessionId,
-          {
-            role: "assistant",
-            content: assistantText.join(""),
-            contentBlocks: assistantBlocks,
-          },
-        );
-        log.lap("assistant_message_persisted");
-      } catch {
-        log.warn("assistant_message_persist_failed", {
-          failureCategory: "assistant_message_persistence",
-        });
+      if (event.type === "run.canceled") {
+        runCanceled = true;
       }
     }
+    log.lap("stream_done", { runCanceled });
+
+    // ── Server-side assistant message persistence ──
+    // Persist partial output even when the user canceled, so reconnecting
+    // clients see what had already been generated.
+    await persistAssistantMessage(
+      services.chatService,
+      authenticatedUser,
+      payload.sessionId,
+      assistantText,
+      assistantBlocks,
+      runCanceled,
+      log,
+    );
   } catch (error) {
     log.error("stream_error", { failureCategory: "agent_stream" });
     const failedEvent = {
@@ -424,5 +455,44 @@ async function handleRunCommand(
   } finally {
     clearInterval(keepAlive);
     connectionManager.clearActiveRun(canvasId);
+  }
+}
+
+async function persistAssistantMessage(
+  chatService: ChatService | undefined,
+  authenticatedUser: AuthenticatedUser,
+  sessionId: string,
+  assistantText: string[],
+  assistantBlocks: ContentBlock[],
+  wasCanceled: boolean,
+  log: ReturnType<typeof createPipelineLogger>,
+) {
+  if (
+    !chatService ||
+    (assistantText.length === 0 && assistantBlocks.length === 0)
+  ) {
+    return;
+  }
+
+  const blocks = wasCanceled
+    ? assistantBlocks.map((block) =>
+        block.type === "tool" && block.status === "running"
+          ? { ...block, status: "completed" as const }
+          : block,
+      )
+    : assistantBlocks;
+
+  try {
+    await chatService.createMessage(authenticatedUser, sessionId, {
+      role: "assistant",
+      content: assistantText.join(""),
+      contentBlocks: blocks,
+    });
+    log.lap("assistant_message_persisted", { wasCanceled });
+  } catch {
+    log.warn("assistant_message_persist_failed", {
+      failureCategory: "assistant_message_persistence",
+      wasCanceled,
+    });
   }
 }

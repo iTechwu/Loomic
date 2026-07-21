@@ -5,9 +5,9 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { WebSocketHandle } from "../src/hooks/use-websocket";
 import { ChatSidebar } from "../src/components/chat-sidebar";
 import { ToastProvider } from "../src/components/toast";
+import type { WebSocketHandle } from "../src/hooks/use-websocket";
 
 const {
   createSessionMock,
@@ -119,18 +119,18 @@ describe("ChatSidebar", () => {
 
   it("starts runs via WebSocket with the active real session id", async () => {
     render(
-      <ToastProvider><ChatSidebar
-        accessToken="token_abc"
-        canvasId="canvas-1"
-        open
-        onToggle={() => {}}
-        ws={mockWs}
-      /></ToastProvider>,
+      <ToastProvider>
+        <ChatSidebar
+          accessToken="token_abc"
+          canvasId="canvas-1"
+          open
+          onToggle={() => {}}
+          ws={mockWs}
+        />
+      </ToastProvider>,
     );
 
-    const input = await screen.findByPlaceholderText(
-      /从一个想法开始/,
-    );
+    const input = await screen.findByPlaceholderText(/从一个想法开始/);
     await userEvent.type(input, "hello loom{Enter}");
 
     await waitFor(() =>
@@ -149,6 +149,42 @@ describe("ChatSidebar", () => {
         sessionId: "session-canvas-1",
       }),
       expect.anything(),
+    );
+  });
+
+  it("shows a stop button during generation and calls cancelRun when clicked", async () => {
+    // Capture the event listener so we can keep the run "alive".
+    let eventHandler: ((event: Record<string, unknown>) => void) | undefined;
+    mockWs.onEvent = vi.fn((handler) => {
+      eventHandler = handler;
+      return () => {};
+    });
+
+    render(
+      <ToastProvider>
+        <ChatSidebar
+          accessToken="token_abc"
+          canvasId="canvas-1"
+          open
+          onToggle={() => {}}
+          ws={mockWs}
+        />
+      </ToastProvider>,
+    );
+
+    const input = await screen.findByPlaceholderText(/从一个想法开始/);
+    await userEvent.type(input, "hello loom{Enter}");
+
+    await waitFor(() => expect(mockWs.startRun).toHaveBeenCalled());
+
+    // The stop button should replace the send button while streaming.
+    const stopButton = await screen.findByLabelText(/停止生成/);
+    expect(stopButton).toBeInTheDocument();
+
+    await userEvent.click(stopButton);
+
+    await waitFor(() =>
+      expect(mockWs.cancelRun).toHaveBeenCalledWith("run_123"),
     );
   });
 });

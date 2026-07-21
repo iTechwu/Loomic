@@ -78,6 +78,47 @@ const PROVISIONING_ROW: Row = {
   provision_attempt_count: 1,
 };
 
+describe("UserCredentialsRepository.findByApiKeyId", () => {
+  it("returns the matching ready row for a models api key id", async () => {
+    const queries: RecordedQuery[] = [];
+    const pool = {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        return { rows: [READY_ROW], rowCount: 1 };
+      },
+      async transaction<T>() {
+        throw new Error("unexpected transaction");
+      },
+      end: async () => {},
+    };
+    const repository = createUserCredentialsRepository(pool as never);
+
+    const row = await repository.findByApiKeyId("u1", "ak");
+
+    expect(row).not.toBeNull();
+    expect(row?.modelsApiKeyId).toBe("ak");
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.text).toContain("models_api_key_id = $2");
+    expect(queries[0]?.text).toContain("provision_state = 'ready'");
+    expect(queries[0]?.params).toEqual(["u1", "ak"]);
+  });
+
+  it("returns null when no ready row matches the api key id", async () => {
+    const pool = {
+      query: async () => ({ rows: [], rowCount: 0 }),
+      async transaction<T>() {
+        throw new Error("unexpected transaction");
+      },
+      end: async () => {},
+    };
+    const repository = createUserCredentialsRepository(pool as never);
+
+    const row = await repository.findByApiKeyId("u1", "other-key");
+
+    expect(row).toBeNull();
+  });
+});
+
 describe("UserCredentialsRepository.takeProvisionLock", () => {
   it("caps ready candidate lookup at two rows so callers can fail closed on team ambiguity", async () => {
     const queries: RecordedQuery[] = [];
