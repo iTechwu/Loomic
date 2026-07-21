@@ -2,7 +2,7 @@
 
 审查日期：2026-07-20。本文是 Lovart 的实施单，不修改 models、agents 或 DataEyes 的权威数据。
 
-> 阅读说明：Cycle 1–19 记录当时 SDK 0.2.9/0.2.10 的证据，不能视为当前接口状态；当前有效结论以 Cycle 20–24 与“最终状态汇总”为准。
+> 阅读说明：Cycle 1–19 记录当时 SDK 0.2.9/0.2.10 的证据，不能视为当前接口状态；当前有效结论以 Cycle 20–38 与“最终状态汇总”为准。Cycle 35 起的记录按“实施 -> 标注 -> 复审”顺序追加，后续 Cycle 39 继续该序列。
 
 ## 已确认的基线
 
@@ -289,6 +289,15 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 - **发现**：models `/v1/models` 是按 API key 可见性裁剪后的统一 alias 列表，`/capabilities` 公开 `model_type`；上游可见类型包含 `llm`、`image`、`video`、`text_embedding`、`audio`、`speech2text` 和 `transcode`。原 `listChatModels` 仅排除 image/video，会将非对话 alias 提供给 LangChain chat client。
 - [x] `listChatModels` 改为 explicit allow-list：只接纳上游 `llm`，并兼容旧 gateway 的 `text` 投影；缺失或未知 `model_type` 同样不进入 agent selector。
 - [x] 新增混合 catalog 回归：`llm`/`text` 被保留，`text_embedding`/`audio`/`transcode` 均被排除。router + default-model smoke 14 tests、server typecheck、Biome 与 `git diff --check` 通过。
+
+### Cycle 38 — generation 参数边界回归 Models（2026-07-21）
+
+- **发现**：虽然 Cycle 28 已删除 video catalog 的伪造 limits，实际 `DofeVideoProvider` 在未传 resolution 时仍固定发送 `720p`，HTTP schema 还无条件拒绝 `>16s` 和超过 3 张输入图。这些值不是按 alias 的 models capability 得出，既会错误拒绝已授权的模型参数，也可能把不支持 `720p` 的模型请求伪造成有效能力。
+- [x] `dofe-model-router.ts` 现从 Models `/v1/models/:id/capabilities` 的公开 `capabilityMetadata` 提取并验证受限字段：`resolutions`、`ratios`、`durationSeconds`、`maxInputAssets`、`supportsGenerateAudio`。provider-private 或畸形字段不会进入缓存、adapter 或浏览器响应。
+- [x] `register-all.ts` 将 capability-keyed 元数据和显式音频支持投影到 `VideoModelInfo`；`/api/video-models` 在已有 SSO 鉴权后返回该公开投影，image 目录不携带视频字段。
+- [x] `DofeVideoProvider` 仅转发调用者明确给出的 resolution；按实际输入模式（text/image/video）选取对应 capability metadata，在 models 已声明边界时本地 fail closed，并保留 models gateway 的最终参数校验。HTTP 层只执行协议形状校验，不再维护 `16s/3 images` 的全局伪上限。
+- [x] 回归覆盖目录 metadata 白名单、adapter 的无隐式 `720p` 与越界拒绝、route 响应。定向 26 tests、server typecheck、Biome 与 `git diff --check` 通过。
+- [x] 下一轮审查目标：canvas 仍保存并默认发送历史 `5 秒/720p` 选择，需改为消费授权目录的 capability metadata，未声明时省略参数并由 models gateway 选择默认值。
 
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 

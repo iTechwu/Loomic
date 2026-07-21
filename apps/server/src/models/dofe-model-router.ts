@@ -68,7 +68,7 @@ function parseNumberRange(
         ? [[key, candidate]]
         : [];
     }),
-  ) as DofeGenerationCapabilityMetadata["durationSeconds"];
+  ) as NonNullable<DofeGenerationCapabilityMetadata["durationSeconds"]>;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -84,16 +84,13 @@ export function parseDofeGenerationCapabilityMetadata(
     return undefined;
   }
   const metadata = value as Record<string, unknown>;
+  const resolutions = parseStringArray(metadata.resolutions);
+  const ratios = parseStringArray(metadata.ratios);
+  const durationSeconds = parseNumberRange(metadata.durationSeconds);
   const result: DofeGenerationCapabilityMetadata = {
-    ...(parseStringArray(metadata.resolutions)
-      ? { resolutions: parseStringArray(metadata.resolutions) }
-      : {}),
-    ...(parseStringArray(metadata.ratios)
-      ? { ratios: parseStringArray(metadata.ratios) }
-      : {}),
-    ...(parseNumberRange(metadata.durationSeconds)
-      ? { durationSeconds: parseNumberRange(metadata.durationSeconds) }
-      : {}),
+    ...(resolutions ? { resolutions } : {}),
+    ...(ratios ? { ratios } : {}),
+    ...(durationSeconds ? { durationSeconds } : {}),
     ...(typeof metadata.maxInputAssets === "number" &&
     Number.isInteger(metadata.maxInputAssets) &&
     metadata.maxInputAssets >= 0
