@@ -43,6 +43,14 @@ const IMAGE_POLL_INTERVAL_MS = 2_000;
 const IMAGE_POLL_TIMEOUT_MS = 240_000;
 const VIDEO_POLL_INTERVAL_MS = 4_000;
 const VIDEO_POLL_TIMEOUT_MS = 600_000;
+// createTask is SYNCHRONOUS on the ixicai gateway: the POST connection is held
+// open until the generation finishes and the terminal status + presigned output
+// URL are returned in the same response (verified live: gpt-image-2-sp returns
+// HTTP 201 after ~53s, flux-pro-1.1 after ~8s). The earlier 30s budget aborted
+// slow models mid-generation and reported a misleading "createTask request did
+// not complete". This must cover the slowest model's wall-clock time; the cost
+// is a long-lived POST, which is inherent to the gateway's sync task contract.
+const CREATE_TASK_TIMEOUT_MS = 180_000;
 
 // ─── Shared task protocol ────────────────────────────────────────────────────
 
@@ -268,9 +276,19 @@ async function createTask(
           ...body,
           metadata: { source: "lovart.dofe.ai" },
         }),
-        signal: AbortSignal.timeout(30_000),
+        // Sync task contract: the gateway holds the connection until the
+        // generation is done (see CREATE_TASK_TIMEOUT_MS), so this is the full
+        // generation budget, not just a handshake.
+        signal: AbortSignal.timeout(CREATE_TASK_TIMEOUT_MS),
       },
-      { label: "createTask", attempts: 3, backoffMs: 1_000 },
+      // createTask is NOT idempotent: every POST mints a new gateway task and
+      // bills the user (e.g. ~$0.20/image for gpt-image-2-sp). Retrying on a
+      // timeout would create duplicate tasks that all complete server-side
+      // while we discard every response — the old attempts:3 path generated 3
+      // images and charged 3× before failing. Keep attempts at 1 and let the
+      // job-level retry in worker.processMessage handle genuinely transient
+      // transport failures instead.
+      { label: "createTask", attempts: 1, backoffMs: 1_000 },
     );
   } catch (error) {
     const cause =
@@ -623,7 +641,13 @@ export class DofeImageProvider implements ImageProvider {
       elapsedMs: Date.now() - startedAt,
       taskId: terminal.taskId,
       status: terminal.status,
-      assetUrlPrefix: url.slice(0, 80),
+      // The gateway returns an already-presigned TOS URL. Log the signing
+      // state + length instead of a truncated prefix: a prior url.slice(0, 80)
+      // cut off the X-Tos-Signature query string and made a valid presigned
+      // URL look unsigned, sending investigation down the wrong path.
+      assetSigned: url.includes("X-Tos-Signature"),
+      assetUrlLength: url.length,
+      assetHost: new URL(url).host,
       mimeType: asset.mimeType ?? "image/png",
       width,
       height,
@@ -699,7 +723,11 @@ export class DofeVideoProvider implements VideoProvider {
       elapsedMs: Date.now() - startedAt,
       taskId: terminal.taskId,
       status: terminal.status,
-      assetUrlPrefix: url.slice(0, 80),
+      // See generate image done: log signing state + length, not a truncated
+      // prefix that hides the X-Tos-Signature query string.
+      assetSigned: url.includes("X-Tos-Signature"),
+      assetUrlLength: url.length,
+      assetHost: new URL(url).host,
     });
     return {
       url,

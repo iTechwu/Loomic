@@ -19,7 +19,7 @@ export const INITIAL_VIDEO_GENERATION_PREFERENCE_KEY =
 export const INITIAL_AGENT_MODEL_KEY = "lovart.dofe:initial-agent-model";
 
 /**
- * Shared hook for creating an Untitled project and navigating to its canvas.
+ * Shared hook for creating a default-named (未命名) project and navigating to its canvas.
  * Used by Home page, Projects page, and Canvas logo menu.
  */
 export function useCreateProject() {
@@ -96,7 +96,7 @@ export function useCreateProject() {
 
       setCreating(true);
       try {
-        const result = await createProject(token, { name: "Untitled" });
+        const result = await createProject(token, { name: "未命名" });
         const canvasId = result.project.primaryCanvas.id;
 
         const url = opts?.prompt

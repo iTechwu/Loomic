@@ -150,7 +150,7 @@ export function createBrandKitService(options: {
       const workspaceId = await workspace(user.id);
       const row = await options.pool.query<{ id: string }>(
         "insert into brand_kits(workspace_id,name,created_by) values($1,$2,$3) returning id",
-        [workspaceId, input.name?.trim() || "Untitled", user.id],
+        [workspaceId, input.name?.trim() || "未命名", user.id],
       );
       return detail(user.id, row.rows[0]!.id);
     },

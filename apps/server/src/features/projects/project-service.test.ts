@@ -15,8 +15,8 @@ describe("project creation", () => {
     });
     const service = projectService(createProject);
 
-    const first = await service.createProject(user(), { name: "Untitled" });
-    const second = await service.createProject(user(), { name: "Untitled" });
+    const first = await service.createProject(user(), { name: "未命名" });
+    const second = await service.createProject(user(), { name: "未命名" });
 
     expect(createProject).toHaveBeenCalledTimes(2);
     expect(first.slug).not.toBe(second.slug);
@@ -35,7 +35,7 @@ describe("project creation", () => {
     const service = projectService(createProject);
 
     try {
-      const result = await service.createProject(user(), { name: "Untitled" });
+      const result = await service.createProject(user(), { name: "未命名" });
       const firstSlug = createProject.mock.calls[0]?.[0].slug;
       const secondSlug = createProject.mock.calls[1]?.[0].slug;
 
@@ -80,7 +80,7 @@ function projectRow(slug: string) {
     created_at: now,
     description: null,
     id: "project-1",
-    name: "Untitled",
+    name: "未命名",
     slug,
     thumbnail_path: null,
     updated_at: now,
