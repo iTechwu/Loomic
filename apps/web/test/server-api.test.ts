@@ -7,6 +7,7 @@ import {
   fetchViewer,
   fetchProjects,
   createProject,
+  generateVideoDirect,
 } from "../src/lib/server-api";
 
 const mockFetch = vi.fn();
@@ -59,6 +60,34 @@ describe("authenticated server API", () => {
       }),
     });
     await expect(fetchModels("expired")).rejects.toThrow("unauthorized");
+  });
+
+  it("generateVideoDirect omits model-controlled parameters until selected", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        url: "https://example.com/video.mp4",
+        assetId: "asset_1",
+        prompt: "A video",
+        mimeType: "video/mp4",
+        width: 1280,
+        height: 720,
+        durationSeconds: 5,
+      }),
+    });
+
+    await generateVideoDirect("token_abc", "A video", {
+      model: "authorized-video",
+      aspectRatio: "16:9",
+    });
+
+    const request = mockFetch.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toEqual({
+      prompt: "A video",
+      model: "authorized-video",
+      aspectRatio: "16:9",
+    });
   });
 
   it("createRun sends bearer auth when access token is provided", async () => {

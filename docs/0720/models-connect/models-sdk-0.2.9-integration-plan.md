@@ -2,7 +2,7 @@
 
 审查日期：2026-07-20。本文是 Lovart 的实施单，不修改 models、agents 或 DataEyes 的权威数据。
 
-> 阅读说明：Cycle 1–19 记录当时 SDK 0.2.9/0.2.10 的证据，不能视为当前接口状态；当前有效结论以 Cycle 20–38 与“最终状态汇总”为准。Cycle 35 起的记录按“实施 -> 标注 -> 复审”顺序追加，后续 Cycle 39 继续该序列。
+> 阅读说明：Cycle 1–19 记录当时 SDK 0.2.9/0.2.10 的证据，不能视为当前接口状态；当前有效结论以 Cycle 20–39 与“最终状态汇总”为准。Cycle 35–39 按“实施 -> 标注 -> 复审”顺序完成。
 
 ## 已确认的基线
 
@@ -175,8 +175,8 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 | 并发 provision 验收测试（同 user/team 最多一次远端 POST） | ✅ 完成（Cycle 7） |
 | 部署迁移接线（启动自动 migrate） | ✅ 完成（Cycle 7，`server.ts` 启动跑 `migrate()`） |
 | CI 迁移安全门（`verify:migrations`） | ✅ 完成（Cycle 8，接入 quality-gates） |
-| 全量 CI gate 本地核验 | ✅ 完成（Cycle 34：verify:migrations / typecheck / test / lint:baseline 778≤832 / build） |
-| 类型检查 / 全量测试 | ✅ Cycle 34 全量质量门通过（workspace 15 / server 88 / web 73 / shared 24 用例） |
+| 全量 CI gate 本地核验 | ✅ 完成（Cycle 39：verify:migrations / test / lint:baseline 777≤832 / build） |
+| 类型检查 / 全量测试 | ✅ Cycle 39 全量质量门通过（workspace 15 / server 131 / web 76 / shared 24 用例） |
 
 ### Cycle 20 — 上游解锁：SDK 0.2.11 状态查询面接入准备（2026-07-20）
 
@@ -298,6 +298,15 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 - [x] `DofeVideoProvider` 仅转发调用者明确给出的 resolution；按实际输入模式（text/image/video）选取对应 capability metadata，在 models 已声明边界时本地 fail closed，并保留 models gateway 的最终参数校验。HTTP 层只执行协议形状校验，不再维护 `16s/3 images` 的全局伪上限。
 - [x] 回归覆盖目录 metadata 白名单、adapter 的无隐式 `720p` 与越界拒绝、route 响应。定向 26 tests、server typecheck、Biome 与 `git diff --check` 通过。
 - [x] 下一轮审查目标：canvas 仍保存并默认发送历史 `5 秒/720p` 选择，需改为消费授权目录的 capability metadata，未声明时省略参数并由 models gateway 选择默认值。
+
+### Cycle 39 — canvas 与 agent 参数控制面收敛、质量门（2026-07-21）
+
+- **复审发现**：Cycle 38 已使 HTTP/provider 按 models metadata 处理参数，但 canvas 新元素仍保存 `720p`，video panel 固定展示 `4/5/6/8s`；agent `generate_video` schema 仍默认 `5s`、`720p`、`16:9` 和 audio=true，并带有 `16s/7 images` 的 provider 无关限制。任一路径都会重新把本地假设写入 generation 请求。
+- [x] canvas `VideoGeneratorData.resolution` 改为可选，新元素不写 resolution。video panel 从已鉴权 `/api/video-models` 的 capability metadata 派生可选 duration/resolution；仅已声明且当前选择有效时提交，元数据缺失或旧画布参数失效时省略，让 models gateway 选择默认值。画布展示尺寸与实际 provider 参数分离，避免破坏历史 canvas。
+- [x] web `VideoModelInfo` 补齐只读公开 metadata 形状；`generateVideoDirect` 回归测试断言未选择的参数不会序列化到请求体。web 全量 76 tests 和 typecheck 通过。
+- [x] agent `generate_video` 删除 `5s/720p/16:9/audio=true` 默认、`16s` 和 `7 images` 静态上限；job/direct 两条路径均只转发明确输入。新增 queued job 回归，断言没有伪造 model-controlled 参数；日志仅保留 model/job 与耗时，不记录 credential。
+- [x] 最终复审与完整质量门：`verify:migrations`（13）、workspace 15、server 29 files / 131 tests、web 24 files / 76 tests、shared 24 tests、`lint:baseline`（777 <= 832）和 `build` 全部通过。浏览器 `apps/web/src`/构建输出未检出 models SDK、internal secret、tenant design API key 或 asset secret；`git diff --check` 通过。
+- [x] 当前待实施项复审：本任务范围内无未勾选项。遗留的旧直连 provider 文件中的默认值不在 gateway-only provider registration 路径，未作为可执行 Models 对接目录或参数来源。
 
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 

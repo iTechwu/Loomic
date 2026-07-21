@@ -454,6 +454,16 @@ export type VideoModelInfo = {
   creditCost?: number;
   accessible?: boolean;
   minTier?: string;
+  capabilityMetadata?: Record<
+    string,
+    {
+      resolutions?: string[];
+      ratios?: string[];
+      durationSeconds?: { min?: number; max?: number; step?: number };
+      maxInputAssets?: number;
+      supportsGenerateAudio?: boolean;
+    }
+  >;
 };
 
 export async function fetchVideoModels(

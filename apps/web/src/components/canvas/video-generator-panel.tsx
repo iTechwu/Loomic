@@ -27,6 +27,38 @@ type VideoGeneratorPanelProps = {
 const ASPECT_RATIOS = ["16:9", "9:16"] as const;
 const DURATIONS = [4, 5, 6, 8] as const;
 
+type VideoCapabilityMetadata = NonNullable<
+  VideoModelInfo["capabilityMetadata"]
+>[string];
+
+function getDurationOptions(
+  durationSeconds: VideoCapabilityMetadata["durationSeconds"],
+): number[] {
+  if (!durationSeconds) return [];
+  const min = durationSeconds.min ?? DURATIONS[0];
+  const max = durationSeconds.max ?? 8;
+  const step =
+    durationSeconds.step && durationSeconds.step > 0 ? durationSeconds.step : 1;
+  const values: number[] = [];
+  for (
+    let duration = min;
+    duration <= max && values.length < 12;
+    duration += step
+  ) {
+    if (Number.isInteger(duration)) values.push(duration);
+  }
+  return values;
+}
+
+function getActiveCapability(
+  model: VideoModelInfo | undefined,
+  hasInputImages: boolean,
+): VideoCapabilityMetadata | undefined {
+  return model?.capabilityMetadata?.[
+    hasInputImages ? "image_to_video" : "text_to_video"
+  ];
+}
+
 export function VideoGeneratorPanel({
   elementId,
   elementBounds,
@@ -40,11 +72,11 @@ export function VideoGeneratorPanel({
   const [model, setModel] = useState(data.model);
   const [aspectRatio, setAspectRatio] = useState(data.aspectRatio);
   const [duration, setDuration] = useState(data.duration);
-  const [resolution, setResolution] = useState(data.resolution);
-  const [loading, setLoading] = useState(data.status === "generating");
-  const [error, setError] = useState<string | null>(
-    data.errorMessage ?? null,
+  const [resolution, setResolution] = useState<string | undefined>(
+    data.resolution,
   );
+  const [loading, setLoading] = useState(data.status === "generating");
+  const [error, setError] = useState<string | null>(data.errorMessage ?? null);
   const [models, setModels] = useState<VideoModelInfo[]>([]);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showParamsPopover, setShowParamsPopover] = useState(false);
@@ -77,7 +109,9 @@ export function VideoGeneratorPanel({
       .catch((err) => {
         console.warn("[video-gen] Failed to fetch models:", err);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [accessToken]);
 
   // Close dropdowns when clicking outside the panel
@@ -110,10 +144,41 @@ export function VideoGeneratorPanel({
   // Calculate panel screen position from canvas coordinates
   const { scrollX, scrollY, zoom } = canvasScrollZoom;
   const screenX = (elementBounds.x + scrollX) * zoom;
-  const screenY =
-    (elementBounds.y + elementBounds.height + scrollY) * zoom + 8;
+  const screenY = (elementBounds.y + elementBounds.height + scrollY) * zoom + 8;
 
   const currentModel = models.find((m) => m.id === model);
+  const capability = getActiveCapability(
+    currentModel,
+    Boolean(firstFrame || lastFrame),
+  );
+  const resolutionOptions = capability?.resolutions ?? [];
+  const durationOptions = getDurationOptions(capability?.durationSeconds);
+  const requestedResolution = resolutionOptions.includes(resolution ?? "")
+    ? resolution
+    : undefined;
+  const requestedDuration = durationOptions.includes(duration)
+    ? duration
+    : undefined;
+
+  // A metadata refresh or model change may invalidate a persisted selection.
+  // Only persist a value that the currently authorized capability exposes.
+  useEffect(() => {
+    const nextResolution = resolutionOptions[0];
+    if (!nextResolution || resolutionOptions.includes(resolution ?? "")) return;
+    setResolution(nextResolution);
+    updateVideoGeneratorElement(excalidrawApi, elementId, {
+      resolution: nextResolution,
+    });
+  }, [elementId, excalidrawApi, resolution, resolutionOptions]);
+
+  useEffect(() => {
+    const nextDuration = durationOptions[0];
+    if (!nextDuration || durationOptions.includes(duration)) return;
+    setDuration(nextDuration);
+    updateVideoGeneratorElement(excalidrawApi, elementId, {
+      duration: nextDuration,
+    });
+  }, [duration, durationOptions, elementId, excalidrawApi]);
 
   const handleAspectRatioChange = useCallback(
     (ratio: string) => {
@@ -130,6 +195,16 @@ export function VideoGeneratorPanel({
     (d: number) => {
       setDuration(d);
       updateVideoGeneratorElement(excalidrawApi, elementId, { duration: d });
+    },
+    [excalidrawApi, elementId],
+  );
+
+  const handleResolutionChange = useCallback(
+    (value: string) => {
+      setResolution(value);
+      updateVideoGeneratorElement(excalidrawApi, elementId, {
+        resolution: value,
+      });
     },
     [excalidrawApi, elementId],
   );
@@ -180,7 +255,7 @@ export function VideoGeneratorPanel({
       model,
       aspectRatio,
       duration,
-      resolution,
+      ...(requestedResolution ? { resolution: requestedResolution } : {}),
     });
 
     try {
@@ -193,8 +268,10 @@ export function VideoGeneratorPanel({
         prompt.trim(),
         {
           model,
-          duration,
-          resolution,
+          ...(requestedDuration !== undefined
+            ? { duration: requestedDuration }
+            : {}),
+          ...(requestedResolution ? { resolution: requestedResolution } : {}),
           aspectRatio,
           ...(inputImages.length ? { inputImages } : {}),
         },
@@ -205,7 +282,9 @@ export function VideoGeneratorPanel({
 
       // Create embeddable element for inline video playback on canvas.
       // Dynamic import -- excalidraw is client-only.
-      const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+      const { convertToExcalidrawElements } = await import(
+        "@excalidraw/excalidraw"
+      );
       if (controller.signal.aborted) return;
 
       const newElements = convertToExcalidrawElements([
@@ -260,6 +339,8 @@ export function VideoGeneratorPanel({
     aspectRatio,
     duration,
     resolution,
+    requestedDuration,
+    requestedResolution,
     firstFrame,
     lastFrame,
     excalidrawApi,
@@ -269,7 +350,7 @@ export function VideoGeneratorPanel({
     handleGenerationError,
   ]);
 
-  const paramsLabel = `${aspectRatio} \u00B7 ${duration}s`;
+  const paramsLabel = `${aspectRatio} \u00B7 ${requestedDuration ?? "模型默认"}`;
 
   return createPortal(
     <div
@@ -303,9 +384,7 @@ export function VideoGeneratorPanel({
           ) : (
             <>
               <Plus className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">
-                首帧
-              </span>
+              <span className="text-[10px] text-muted-foreground">首帧</span>
             </>
           )}
         </button>
@@ -332,9 +411,7 @@ export function VideoGeneratorPanel({
           ) : (
             <>
               <Plus className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">
-                尾帧
-              </span>
+              <span className="text-[10px] text-muted-foreground">尾帧</span>
             </>
           )}
         </button>
@@ -407,28 +484,52 @@ export function VideoGeneratorPanel({
                   ))}
                 </div>
               </div>
-              {/* Duration row */}
-              <div>
-                <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Duration
+              {durationOptions.length > 0 && (
+                <div className={resolutionOptions.length > 0 ? "mb-3" : ""}>
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Duration
+                  </div>
+                  <div className="flex gap-1">
+                    {durationOptions.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => handleDurationChange(d)}
+                        className={`rounded-lg px-3 py-1 text-xs transition-colors ${
+                          d === duration
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        {d}s
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  {DURATIONS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => handleDurationChange(d)}
-                      className={`rounded-lg px-3 py-1 text-xs transition-colors ${
-                        d === duration
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground hover:bg-muted/60"
-                      }`}
-                    >
-                      {d}s
-                    </button>
-                  ))}
+              )}
+              {resolutionOptions.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Resolution
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {resolutionOptions.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleResolutionChange(value)}
+                        className={`rounded-lg px-3 py-1 text-xs transition-colors ${
+                          value === requestedResolution
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

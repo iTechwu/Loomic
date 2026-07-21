@@ -7,7 +7,11 @@ const RATIO_DIMENSIONS: Record<string, { w: number; h: number }> = {
   "9:16": { w: 576, h: 1024 },
 };
 
-export type VideoGeneratorStatus = "idle" | "generating" | "completed" | "error";
+export type VideoGeneratorStatus =
+  | "idle"
+  | "generating"
+  | "completed"
+  | "error";
 
 export type VideoGeneratorData = {
   type: "video-generator";
@@ -16,15 +20,15 @@ export type VideoGeneratorData = {
   model: string;
   aspectRatio: string;
   duration: number;
-  resolution: string;
+  /** Omitted until the authorized model catalog declares a supported value. */
+  resolution?: string;
   inputImages?: string[];
   errorMessage?: string;
 };
 
 function generateId(): string {
   return (
-    Math.random().toString(36).slice(2) +
-    Math.random().toString(36).slice(2)
+    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
   ).slice(0, 20);
 }
 
@@ -74,7 +78,7 @@ export function createVideoGeneratorElement(
     model: options?.model ?? DEFAULT_VIDEO_MODEL,
     aspectRatio,
     duration: options?.duration ?? 5,
-    resolution: options?.resolution ?? "720p",
+    ...(options?.resolution ? { resolution: options.resolution } : {}),
   };
 
   const id = generateId();
@@ -119,7 +123,9 @@ export function createVideoGeneratorElement(
 /**
  * Check if an Excalidraw element is a video-generator placeholder.
  */
-export function isVideoGeneratorElement(element: any): element is { customData: VideoGeneratorData } & Record<string, unknown> {
+export function isVideoGeneratorElement(
+  element: any,
+): element is { customData: VideoGeneratorData } & Record<string, unknown> {
   return element?.customData?.type === "video-generator";
 }
 
