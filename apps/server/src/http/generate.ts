@@ -9,7 +9,6 @@ import {
 } from "@lovart.dofe/shared";
 
 import type {
-  AuthenticatedUser,
   RequestAuthenticator,
 } from "../auth/sso-authenticator.js";
 import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
@@ -17,7 +16,9 @@ import type { CredentialsService } from "../features/credentials/credentials-ser
 import { CredentialsNotProvisionedError } from "../features/credentials/credentials-service.js";
 import type { JobService } from "../features/jobs/job-service.js";
 import { JobServiceError } from "../features/jobs/job-service.js";
-import type { UploadService } from "../features/uploads/upload-service.js";
+import { persistGeneratedAsset } from "../features/assets/generated-asset-persister.js";
+import type { NativeDataRepository } from "../database/native-data-repository.js";
+import type { TosObjectStorage } from "../storage/tos-object-storage.js";
 import { generateImage } from "../generation/image-generation.js";
 import { resolveImageProviderName } from "../generation/providers/registry.js";
 
@@ -47,8 +48,10 @@ export async function registerGenerateRoutes(
   app: FastifyInstance,
   options: {
     auth: RequestAuthenticator;
+    dataRepository: NativeDataRepository;
+    objectStorage: TosObjectStorage;
+    tosEndpoint?: string;
     jobService?: JobService;
-    uploadService: UploadService;
     viewerService: ViewerService;
     credentialsService?: CredentialsService;
   },
@@ -108,18 +111,35 @@ export async function registerGenerateRoutes(
           : {}),
       });
 
-      // Download and persist to TOS/CDN Storage
-      const { signedUrl, assetId } = await downloadAndUpload(
-        result.url,
-        result.mimeType,
-        payload.prompt,
-        user,
-        options,
-      );
+      if (!options.tosEndpoint) {
+        return reply.code(503).send(
+          applicationErrorResponseSchema.parse({
+            error: {
+              code: "service_unavailable",
+              message: "Image generation storage is not configured.",
+            },
+          }),
+        );
+      }
+
+      const viewer = await options.viewerService.ensureViewer(user);
+
+      // Persist the generated asset into dofe-system, reusing the provider key
+      // when it already points at the dofe-system bucket.
+      const persisted = await persistGeneratedAsset({
+        sourceUrl: result.url,
+        mimeType: result.mimeType,
+        userId: user.id,
+        workspaceId: viewer.workspace.id,
+        dataRepository: options.dataRepository,
+        objectStorage: options.objectStorage,
+        tosEndpoint: options.tosEndpoint,
+        title: payload.prompt,
+      });
 
       return reply.code(200).send({
-        url: signedUrl,
-        assetId,
+        url: persisted.signedUrl,
+        assetId: persisted.assetId,
         prompt: payload.prompt,
         mimeType: result.mimeType,
         width: result.width,
@@ -352,39 +372,4 @@ async function pollJobUntilDone(
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ── Image download + upload helper ──────────────────────────
-
-async function downloadAndUpload(
-  sourceUrl: string,
-  mimeType: string,
-  prompt: string,
-  user: AuthenticatedUser,
-  deps: { uploadService: UploadService; viewerService: ViewerService },
-): Promise<{ signedUrl: string; assetId: string }> {
-  const response = await fetch(sourceUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download generated image: ${response.status}`);
-  }
-  const buffer = Buffer.from(await response.arrayBuffer());
-
-  const ext = mimeType === "image/webp" ? "webp" : "png";
-  const slug = prompt
-    .slice(0, 40)
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  const fileName = `gen-${slug}-${Date.now()}.${ext}`;
-
-  const viewer = await deps.viewerService.ensureViewer(user);
-
-  const result = await deps.uploadService.uploadFile(user, {
-    bucket: "project-assets",
-    fileName,
-    fileBuffer: buffer,
-    mimeType,
-    workspaceId: viewer.workspace.id,
-  });
-
-  return { signedUrl: result.url, assetId: result.asset.id };
 }

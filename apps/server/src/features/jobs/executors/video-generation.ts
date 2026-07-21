@@ -2,6 +2,7 @@ import { DEFAULT_VIDEO_MODEL } from "@lovart.dofe/shared";
 import { registerExecutor, type ExecutorContext } from "../job-executor.js";
 import { generateVideo } from "../../../generation/video-generation.js";
 import { resolveVideoProviderName } from "../../../generation/providers/registry.js";
+import { persistGeneratedAsset } from "../../assets/generated-asset-persister.js";
 
 registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorContext) => {
   const t0 = Date.now();
@@ -13,7 +14,11 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   // Build log tag with traceability context: jobId + sessionId (if available)
   const sessionShort = (jobRow.session_id as string)?.slice(0, 8) ?? "no-session";
   const tag = `[video-job:${jobId.slice(0, 8)} session:${sessionShort}]`;
-  const lap = (label: string) => console.log(`${tag} ${label} +${Date.now() - t0}ms`);
+  const lap = (label: string, extra?: Record<string, unknown>) =>
+    console.log(
+      `${tag} ${label} +${Date.now() - t0}ms`,
+      extra ? JSON.stringify(extra) : "",
+    );
   lap("db_fetch");
 
   const payload = (jobRow.payload ?? {}) as {
@@ -63,38 +68,36 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
     });
     lap("dofe_call_done");
 
-    // Vertex AI returns inline base64 data URIs; Developer API returns HTTP URLs.
-    let buffer: Buffer;
-    if (generated.url.startsWith("data:")) {
-      const commaIdx = generated.url.indexOf(",");
-      if (commaIdx === -1) throw new Error("Invalid data URI: no comma separator");
-      buffer = Buffer.from(generated.url.slice(commaIdx + 1), "base64");
-    } else {
-      const response = await fetch(generated.url);
-      if (!response.ok) {
-        throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
+    // Persist the generated asset into dofe-system, reusing the provider key
+    // when the URL is already a TOS dofe-system object.
+    const tosEndpoint = ctx.env.tos?.endpoint;
+    if (!tosEndpoint) {
+      throw new Error(
+        `TOS endpoint is not configured; cannot persist generated video`,
+      );
     }
-    lap("video_download_done");
 
-    const ext = generated.mimeType === "video/webm" ? "webm" : "mp4";
-    const timestamp = Date.now();
-    const objectPath = `generated/${workspaceId}/${timestamp}-${jobId}.${ext}`;
-    const uploaded = await ctx.objectStorage.put({ body: buffer, contentType: generated.mimeType ?? "video/mp4", key: objectPath });
-    lap("storage_upload_done");
+    const persisted = await persistGeneratedAsset({
+      sourceUrl: generated.url,
+      mimeType: generated.mimeType ?? "video/mp4",
+      userId: createdBy,
+      workspaceId,
+      ...(jobRow.project_id ? { projectId: jobRow.project_id } : {}),
+      dataRepository: ctx.dataRepository,
+      objectStorage: ctx.objectStorage,
+      tosEndpoint,
+    });
 
-    if (!createdBy) throw new Error(`Job ${jobId} has no creator`);
-    const assetRow = await ctx.dataRepository.createAsset({ bucket: "project-assets", byteSize: buffer.length, createdBy, etag: uploaded.etag, mimeType: generated.mimeType ?? "video/mp4", objectPath, ...(jobRow.project_id ? { projectId: jobRow.project_id } : {}), workspaceId });
-    if (!assetRow) throw new Error("Failed to create asset metadata");
-    lap("asset_record_done");
+    lap("asset_record_done", {
+      bucket: persisted.bucket,
+      objectPath: persisted.objectPath,
+    });
 
     lap("total");
     return {
-      asset_id: assetRow.id,
-      signed_url: ctx.objectStorage.createReadUrl(objectPath, 3600),
-      object_path: objectPath,
+      asset_id: persisted.assetId,
+      signed_url: persisted.signedUrl,
+      object_path: persisted.objectPath,
       width: generated.width,
       height: generated.height,
       duration_seconds: generated.durationSeconds,

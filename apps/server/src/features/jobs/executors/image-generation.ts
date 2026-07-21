@@ -3,6 +3,7 @@ import { DEFAULT_IMAGE_MODEL } from "@lovart.dofe/shared";
 import { generateImage } from "../../../generation/image-generation.js";
 import { resolveImageProviderName } from "../../../generation/providers/registry.js";
 import type { GeneratedImage } from "../../../generation/types.js";
+import { persistGeneratedAsset } from "../../assets/generated-asset-persister.js";
 import { type ExecutorContext, registerExecutor } from "../job-executor.js";
 
 registerExecutor(
@@ -97,15 +98,8 @@ registerExecutor(
           (genError as { code?: string })?.code ?? "executor_error";
         throw wrapped;
       }
-      lap(`${providerName}_call_done`, {
-        urlPrefix: generated.url.slice(0, 80),
-        mimeType: generated.mimeType,
-        width: generated.width,
-        height: generated.height,
-      });
-
-      // Validate the provider URL before attempting download. Malformed URLs such
-      // as "dofe-system.https://..." produce confusing DNS errors otherwise.
+      // Validate the provider URL before logging or downloading. Malformed URLs
+      // such as "dofe-system.https://..." produce confusing DNS errors otherwise.
       let imageUrl: URL;
       try {
         imageUrl = new URL(generated.url);
@@ -120,85 +114,63 @@ registerExecutor(
         );
       }
 
-      // Download the generated image from the provider CDN with a small retry.
-      const MAX_DOWNLOAD_ATTEMPTS = 3;
-      let response: Response | undefined;
-      for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt++) {
-        try {
-          response = await fetch(imageUrl.toString());
-          break;
-        } catch (downloadError) {
-          console.warn(
-            `${tag} image download attempt ${attempt}/${MAX_DOWNLOAD_ATTEMPTS} failed`,
-            {
-              url: imageUrl.toString().slice(0, 80),
-              error:
-                downloadError instanceof Error
-                  ? downloadError.message
-                  : String(downloadError),
-            },
-          );
-          if (attempt === MAX_DOWNLOAD_ATTEMPTS) {
-            throw new Error(
-              `Failed to download generated image from ${model} after ${MAX_DOWNLOAD_ATTEMPTS} attempts: ${
-                downloadError instanceof Error
-                  ? downloadError.message
-                  : String(downloadError)
-              }`,
-            );
-          }
-          await new Promise((r) => setTimeout(r, 1_000 * attempt));
-        }
-      }
-      if (!response) {
-        throw new Error(
-          `Failed to download generated image from ${model}: no response after retries`,
-        );
-      }
-      if (!response.ok) {
-        throw new Error(
-          `Failed to download generated image from ${model}: ${response.status} ${response.statusText}`,
-        );
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer: Buffer = Buffer.from(arrayBuffer);
-      lap("image_download_done");
-
-      // Subscription watermarking moves with the credits repository migration.
-      // This job path deliberately does not query TOS/CDN for plan state.
-      const timestamp = Date.now();
-      const objectPath = `generated/${workspaceId}/${timestamp}-${jobId}.png`;
-      const uploaded = await ctx.objectStorage.put({
-        body: buffer,
-        contentType: generated.mimeType ?? "image/png",
-        key: objectPath,
+      lap(`${providerName}_call_done`, {
+        urlHost: imageUrl.hostname,
+        urlPathPrefix: imageUrl.pathname.slice(0, 40),
+        urlHasSignature: imageUrl.search.length > 0,
+        mimeType: generated.mimeType,
+        width: generated.width,
+        height: generated.height,
       });
-      lap("storage_upload_done");
 
-      if (!createdBy) throw new Error(`Job ${jobId} has no creator`);
-      const assetRow = await ctx.dataRepository.createAsset({
-        bucket: "project-assets",
-        byteSize: buffer.length,
-        createdBy,
-        etag: uploaded.etag,
+      // Persist the generated asset. When the provider already returned a TOS
+      // URL in the dofe-system bucket we simply record the key; otherwise we
+      // download and upload into dofe-system.
+      const tosEndpoint = ctx.env.tos?.endpoint;
+      if (!tosEndpoint) {
+        throw new Error(
+          `TOS endpoint is not configured; cannot persist generated image`,
+        );
+      }
+
+      const persisted = await persistGeneratedAsset({
+        sourceUrl: generated.url,
         mimeType: generated.mimeType ?? "image/png",
-        objectPath,
-        ...(jobRow.project_id ? { projectId: jobRow.project_id } : {}),
+        userId: createdBy,
         workspaceId,
+        ...(jobRow.project_id ? { projectId: jobRow.project_id } : {}),
+        dataRepository: ctx.dataRepository,
+        objectStorage: ctx.objectStorage,
+        tosEndpoint,
+        title: payload.title,
       });
-      if (!assetRow) throw new Error("Failed to create asset metadata");
 
-      lap("asset_record_done");
+      lap("asset_record_done", {
+        bucket: persisted.bucket,
+        objectPath: persisted.objectPath,
+        reusedProviderKey: imageUrl.hostname.startsWith("dofe-system."),
+      });
 
       lap("total");
       return {
-        asset_id: assetRow.id,
-        signed_url: ctx.objectStorage.createReadUrl(objectPath, 3600),
-        object_path: objectPath,
+        asset_id: persisted.assetId,
+        signed_url: persisted.signedUrl,
+        object_path: persisted.objectPath,
         width: generated.width,
         height: generated.height,
         mime_type: generated.mimeType ?? "image/png",
       };
+    } catch (executorError) {
+      const detail =
+        executorError instanceof Error
+          ? executorError.message
+          : String(executorError);
+      console.error(`${tag} executor failed after provider call`, {
+        error: detail,
+        model,
+        provider: providerName,
+      });
+      throw executorError;
     } finally {
     }
   },

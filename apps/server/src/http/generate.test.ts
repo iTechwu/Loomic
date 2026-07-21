@@ -24,8 +24,9 @@ describe("generation credential readiness", () => {
             throw new CredentialsNotProvisionedError(USER_ID);
           }),
         } as never,
+        dataRepository: {} as never,
+        objectStorage: {} as never,
         jobService: { createJob } as never,
-        uploadService: {} as never,
         viewerService: {
           ensureViewer: vi.fn(async () => ({
             workspace: { id: "00000000-0000-4000-8000-000000000020" },

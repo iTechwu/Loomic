@@ -34,8 +34,10 @@ export type NativeCanvasRow = {
   project_id: string;
 };
 
+export type AssetBucket = "project-assets" | "user-avatars" | "dofe-system";
+
 export type NativeAssetRow = {
-  bucket: "project-assets" | "user-avatars";
+  bucket: AssetBucket;
   byte_size: number | null;
   created_at: Date;
   etag: string | null;
@@ -49,8 +51,8 @@ export type NativeAssetRow = {
 export type NativeDataRepository = {
   archiveProject(userId: string, projectId: string): Promise<boolean>;
   createAsset(input: {
-    bucket: "project-assets" | "user-avatars";
-    byteSize: number;
+    bucket: AssetBucket;
+    byteSize: number | null;
     createdBy: string;
     etag: string | null;
     mimeType: string;

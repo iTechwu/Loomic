@@ -83,8 +83,9 @@ function resolveFiles(storage: TosObjectStorage, content: CanvasContent): Canvas
   for (const [fileId, file] of Object.entries(files)) {
     const dataURL = typeof file.dataURL === "string" ? file.dataURL : undefined;
     const key = markerKey(dataURL);
+    const bucket = typeof file.bucket === "string" ? (file.bucket as import("@lovart.dofe/shared").AssetBucket) : undefined;
     updated[fileId] = key
-      ? { ...file, dataURL: undefined, storageUrl: storage.createReadUrl(key, SIGNED_URL_EXPIRY_SECONDS) }
+      ? { ...file, dataURL: undefined, storageUrl: (bucket ? storage.forBucket(bucket) : storage).createReadUrl(key, SIGNED_URL_EXPIRY_SECONDS) }
       : file;
   }
   return { ...content, files: updated } as CanvasContent;

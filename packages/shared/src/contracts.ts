@@ -273,7 +273,11 @@ export const chatMessageCreateRequestSchema = z.object({
   contentBlocks: z.array(contentBlockSchema).nullable().optional(),
 });
 
-export const assetBucketSchema = z.enum(["project-assets", "user-avatars"]);
+export const assetBucketSchema = z.enum([
+  "project-assets",
+  "user-avatars",
+  "dofe-system",
+]);
 
 export const assetObjectSchema = z.object({
   id: identifierSchema,

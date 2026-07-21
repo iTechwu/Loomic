@@ -1,6 +1,6 @@
 // apps/server/src/features/canvas/canvas-element-writer.ts
 
-import type { CanvasContent } from "@lovart.dofe/shared";
+import type { AssetBucket, CanvasContent } from "@lovart.dofe/shared";
 
 import type { NativeDataRepository } from "../../database/native-data-repository.js";
 import type { TosObjectStorage } from "../../storage/tos-object-storage.js";
@@ -14,6 +14,7 @@ type CanvasElement = Record<string, unknown>;
 type ImageInsertOpts = {
   canvasId: string;
   objectPath: string;       // Storage path for oss:// marker (already uploaded by worker)
+  bucket: AssetBucket;      // Bucket that owns objectPath; dofe-system for generated assets
   width: number;
   height: number;
   mimeType: string;
@@ -227,6 +228,7 @@ export function createCanvasElementWriter(options: { repository: NativeDataRepos
       dataURL: `${TOS_MARKER_PREFIX}${opts.objectPath}`,
       mimeType: opts.mimeType,
       created: Date.now(),
+      bucket: opts.bucket,
     },
   };
 

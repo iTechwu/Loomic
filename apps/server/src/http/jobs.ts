@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 
-import type { BackgroundJobStatus, BackgroundJobType } from "@lovart.dofe/shared";
+import type {
+  BackgroundJobStatus,
+  BackgroundJobType,
+} from "@lovart.dofe/shared";
 import {
   applicationErrorResponseSchema,
   createImageJobRequestSchema,
@@ -10,12 +13,12 @@ import {
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
 
-import {
-  JobServiceError,
-  type JobService,
-} from "../features/jobs/job-service.js";
-import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
 import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
+import type { ViewerService } from "../features/bootstrap/ensure-user-foundation.js";
+import {
+  type JobService,
+  JobServiceError,
+} from "../features/jobs/job-service.js";
 
 export async function registerJobRoutes(
   app: FastifyInstance,
@@ -70,9 +73,20 @@ export async function registerJobRoutes(
       return reply.code(201).send(jobResponseSchema.parse({ job }));
     } catch (error) {
       if (isZodError(error)) {
-        return reply
-          .code(400)
-          .send({ issues: error.issues, message: "Invalid request body" });
+        const summary = error.issues
+          .map(
+            (issue) =>
+              `${(issue as { path: (string | number)[] }).path.join(".")}: ${(issue as { message: string }).message}`,
+          )
+          .join(", ");
+        return reply.code(400).send(
+          applicationErrorResponseSchema.parse({
+            error: {
+              code: "invalid_request",
+              message: `Invalid request body: ${summary}`,
+            },
+          }),
+        );
       }
       return sendJobError(error, reply, "job_create_failed");
     }
@@ -105,21 +119,44 @@ export async function registerJobRoutes(
         payload: {
           prompt: payload.prompt,
           ...(payload.model !== undefined ? { model: payload.model } : {}),
-          ...(payload.duration !== undefined ? { duration: payload.duration } : {}),
-          ...(payload.resolution !== undefined ? { resolution: payload.resolution } : {}),
-          ...(payload.aspect_ratio !== undefined ? { aspect_ratio: payload.aspect_ratio } : {}),
-          ...(payload.input_images !== undefined ? { input_images: payload.input_images } : {}),
-          ...(payload.input_video !== undefined ? { input_video: payload.input_video } : {}),
-          ...(payload.enable_audio !== undefined ? { enable_audio: payload.enable_audio } : {}),
+          ...(payload.duration !== undefined
+            ? { duration: payload.duration }
+            : {}),
+          ...(payload.resolution !== undefined
+            ? { resolution: payload.resolution }
+            : {}),
+          ...(payload.aspect_ratio !== undefined
+            ? { aspect_ratio: payload.aspect_ratio }
+            : {}),
+          ...(payload.input_images !== undefined
+            ? { input_images: payload.input_images }
+            : {}),
+          ...(payload.input_video !== undefined
+            ? { input_video: payload.input_video }
+            : {}),
+          ...(payload.enable_audio !== undefined
+            ? { enable_audio: payload.enable_audio }
+            : {}),
         },
       });
 
       return reply.code(201).send(jobResponseSchema.parse({ job }));
     } catch (error) {
       if (isZodError(error)) {
-        return reply
-          .code(400)
-          .send({ issues: error.issues, message: "Invalid request body" });
+        const summary = error.issues
+          .map(
+            (issue) =>
+              `${(issue as { path: (string | number)[] }).path.join(".")}: ${(issue as { message: string }).message}`,
+          )
+          .join(", ");
+        return reply.code(400).send(
+          applicationErrorResponseSchema.parse({
+            error: {
+              code: "invalid_request",
+              message: `Invalid request body: ${summary}`,
+            },
+          }),
+        );
       }
       return sendJobError(error, reply, "job_create_failed");
     }
@@ -147,7 +184,10 @@ export async function registerJobRoutes(
       if (!user) return sendUnauthenticated(reply);
 
       const query = request.query as { status?: string; job_type?: string };
-      const filters: { status?: BackgroundJobStatus; jobType?: BackgroundJobType } = {};
+      const filters: {
+        status?: BackgroundJobStatus;
+        jobType?: BackgroundJobType;
+      } = {};
       if (query.status) filters.status = query.status as BackgroundJobStatus;
       if (query.job_type) filters.jobType = query.job_type as BackgroundJobType;
       const jobs = await options.jobService.listJobs(user, filters);

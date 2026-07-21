@@ -9,6 +9,17 @@ export type TosConfig = {
   region: string;
   s3Endpoint?: string;
   secretKey: string;
+  /**
+   * Optional override for the DoFe system bucket. Defaults to "dofe-system"
+   * so generated assets can be stored and read from the gateway's output bucket
+   * without re-uploading through the application bucket.
+   */
+  systemBucket?: string;
+  /**
+   * Optional public domain for the DoFe system bucket. When omitted it is
+   * derived from the TOS endpoint as `dofe-system.{endpointHost}`.
+   */
+  systemBucketDomain?: string;
 };
 
 const REQUIRED_TOS_ENVIRONMENT_KEYS = [
@@ -60,6 +71,16 @@ export function parseTosConfig(
       : {}),
     region: values.TOS_REGION!,
     secretKey: values.TOS_SECRET_KEY!,
+    ...(normalize(source.TOS_SYSTEM_BUCKET)
+      ? { systemBucket: normalize(source.TOS_SYSTEM_BUCKET)! }
+      : {}),
+    ...(normalize(source.TOS_SYSTEM_BUCKET_DOMAIN)
+      ? {
+          systemBucketDomain: normalizeHttpsUrl(
+            normalize(source.TOS_SYSTEM_BUCKET_DOMAIN)!,
+          ),
+        }
+      : {}),
   };
 }
 

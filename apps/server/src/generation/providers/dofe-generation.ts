@@ -40,17 +40,21 @@ const DEFAULT_BASE_URL = "https://ixicai.cn/api";
 const TASK_PATH = "/v1/generation/tasks";
 
 const IMAGE_POLL_INTERVAL_MS = 2_000;
-const IMAGE_POLL_TIMEOUT_MS = 240_000;
+// createTask is synchronous, so this poll timeout is a fallback for the rare
+// case where the gateway returns a non-terminal status. Keep it aligned with
+// CREATE_TASK_TIMEOUT_MS so a slow model is not cut off during polling.
+const IMAGE_POLL_TIMEOUT_MS = 300_000;
 const VIDEO_POLL_INTERVAL_MS = 4_000;
 const VIDEO_POLL_TIMEOUT_MS = 600_000;
 // createTask is SYNCHRONOUS on the ixicai gateway: the POST connection is held
 // open until the generation finishes and the terminal status + presigned output
 // URL are returned in the same response (verified live: gpt-image-2-sp returns
-// HTTP 201 after ~53s, flux-pro-1.1 after ~8s). The earlier 30s budget aborted
-// slow models mid-generation and reported a misleading "createTask request did
-// not complete". This must cover the slowest model's wall-clock time; the cost
-// is a long-lived POST, which is inherent to the gateway's sync task contract.
-const CREATE_TASK_TIMEOUT_MS = 180_000;
+// HTTP 201 after ~53s, flux-pro-1.1 after ~8s; flux-2-max has been observed
+// to exceed 180s under load). The earlier 30s budget aborted slow models
+// mid-generation and reported a misleading "createTask request did not
+// complete". This must cover the slowest model's wall-clock time; the cost is
+// a long-lived POST, which is inherent to the gateway's sync task contract.
+const CREATE_TASK_TIMEOUT_MS = 300_000;
 
 // ─── Shared task protocol ────────────────────────────────────────────────────
 

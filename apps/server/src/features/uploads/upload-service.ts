@@ -24,14 +24,15 @@ export function createUploadService(options: { repository: NativeDataRepository;
   return {
     async uploadFile(user, input) {
       const objectPath = buildObjectPath(input.workspaceId, input.projectId, input.fileName);
+      const storage = options.storage.forBucket(input.bucket);
       try {
-        const uploaded = await options.storage.put({ body: input.fileBuffer, contentType: input.mimeType, key: objectPath });
+        const uploaded = await storage.put({ body: input.fileBuffer, contentType: input.mimeType, key: objectPath });
         const asset = await options.repository.createAsset({
           bucket: input.bucket, byteSize: input.fileBuffer.length, createdBy: user.id, etag: uploaded.etag,
           mimeType: input.mimeType, objectPath, ...(input.projectId ? { projectId: input.projectId } : {}), workspaceId: input.workspaceId,
         });
         if (!asset) {
-          await options.storage.delete(objectPath).catch(() =>
+          await storage.delete(objectPath).catch(() =>
             logOperationalFailure(
               "[upload-service] orphan cleanup failed",
               "upload_orphan_cleanup",
@@ -39,7 +40,7 @@ export function createUploadService(options: { repository: NativeDataRepository;
           );
           throw new Error("Metadata authorization failed");
         }
-        return { asset: mapAsset(asset), url: options.storage.createReadUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS) };
+        return { asset: mapAsset(asset), url: storage.createReadUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS) };
       } catch {
         logOperationalFailure("[upload-service] upload failed", "upload_create");
         throw new UploadServiceError("upload_failed", "Unable to upload asset.", 500);
@@ -48,13 +49,13 @@ export function createUploadService(options: { repository: NativeDataRepository;
     async getAssetUrl(user, assetId) {
       const asset = await options.repository.findAsset(user.id, assetId);
       if (!asset) throw new UploadServiceError("asset_not_found", "Asset not found.", 404);
-      return options.storage.createReadUrl(asset.object_path, SIGNED_URL_EXPIRY_SECONDS);
+      return options.storage.forBucket(asset.bucket).createReadUrl(asset.object_path, SIGNED_URL_EXPIRY_SECONDS);
     },
     async deleteAsset(user, assetId) {
       const asset = await options.repository.findAsset(user.id, assetId);
       if (!asset) throw new UploadServiceError("asset_not_found", "Asset not found.", 404);
       try {
-        await options.storage.delete(asset.object_path);
+        await options.storage.forBucket(asset.bucket).delete(asset.object_path);
         if (!await options.repository.removeAsset(user.id, assetId)) throw new UploadServiceError("asset_not_found", "Asset not found.", 404);
       } catch (error) {
         if (error instanceof UploadServiceError) throw error;

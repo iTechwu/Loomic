@@ -48,6 +48,7 @@ import type { DatabasePool } from "../database/pool.js";
 import type { NativeDataRepository } from "../database/native-data-repository.js";
 import type { TosObjectStorage } from "../storage/tos-object-storage.js";
 import type { BrandKitService } from "../features/brand-kit/brand-kit-service.js";
+import { persistGeneratedAsset } from "../features/assets/generated-asset-persister.js";
 
 /**
  * Build the text portion of a user message, appending <input_images> XML
@@ -472,10 +473,11 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
 
           jobLap("job_created", { jobId: job.id, sessionId, runId });
 
-          // Poll until terminal state
-          // Worker image VT=120s, but Replicate calls can take 100s+ plus queue delay.
+          // Poll until terminal state. DoFe createTask is synchronous and can
+          // hold the connection for up to 300s on slow models; leave enough
+          // headroom for the worker to finish + upload the asset.
           const POLL_INTERVAL = 2000;
-          const MAX_WAIT = 240_000; // 4 minutes
+          const MAX_WAIT = 420_000; // 7 minutes
           const start = Date.now();
           let pollCount = 0;
 
@@ -524,6 +526,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
                       {
                         canvasId,
                         objectPath: result.object_path,
+                        bucket: "dofe-system",
                         width: result.width ?? 1024,
                         height: result.height ?? 1024,
                         mimeType: result.mime_type ?? "image/png",
@@ -809,45 +812,30 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
           let persistImage:
             | ((url: string, mime: string, prompt: string) => Promise<string>)
             | undefined;
-          if (options.dataRepository && options.objectStorage && run.userId) {
+          if (
+            options.dataRepository &&
+            options.objectStorage &&
+            options.env.tos?.endpoint &&
+            run.userId
+          ) {
             const userId = run.userId;
+            const tosEndpoint = options.env.tos.endpoint;
             persistImage = async (sourceUrl, mimeType, prompt) => {
-              const response = await fetch(sourceUrl);
-              if (!response.ok)
-                throw new Error(`Download failed: ${response.status}`);
-              const buffer = Buffer.from(await response.arrayBuffer());
-              const ext = mimeType === "image/webp" ? "webp" : "png";
-              const slug = prompt
-                .slice(0, 40)
-                .replace(/[^a-zA-Z0-9]+/g, "-")
-                .replace(/^-|-$/g, "");
-              const fileName = `gen-${slug}-${Date.now()}.${ext}`;
-
               const workspace =
                 await options.dataRepository!.findPersonalWorkspace(userId);
               if (!workspace) throw new Error("No personal workspace found");
-              const objectPath = `generated/${workspace.id}/${randomUUID()}-${fileName}`;
-              const uploaded = await options.objectStorage!.put({
-                body: buffer,
-                contentType: mimeType,
-                key: objectPath,
-              });
-              const asset = await options.dataRepository!.createAsset({
-                bucket: "project-assets",
-                byteSize: buffer.length,
-                createdBy: userId,
-                etag: uploaded.etag,
+
+              const persisted = await persistGeneratedAsset({
+                sourceUrl,
                 mimeType,
-                objectPath,
+                userId,
                 workspaceId: workspace.id,
+                dataRepository: options.dataRepository!,
+                objectStorage: options.objectStorage!,
+                tosEndpoint,
+                title: prompt,
               });
-              if (!asset) {
-                await options
-                  .objectStorage!.delete(objectPath)
-                  .catch(() => undefined);
-                throw new Error("Unable to persist generated image metadata");
-              }
-              return options.objectStorage!.createReadUrl(objectPath, 3600);
+              return persisted.signedUrl;
             };
           }
 

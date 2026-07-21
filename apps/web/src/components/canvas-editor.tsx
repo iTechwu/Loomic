@@ -10,7 +10,7 @@ import type { WebSocketHandle } from "../hooks/use-websocket";
 import { getServerBaseUrl } from "../lib/env";
 import { saveCanvas, uploadThumbnail } from "../lib/server-api";
 import { VideoCanvasElement } from "./canvas/video-canvas-element";
-import { isVideoUrl } from "../lib/canvas-elements";
+import { fetchAsDataURL, isVideoUrl } from "../lib/canvas-elements";
 import { CanvasToolMenu } from "./canvas-tool-menu";
 import { normalizeCanvasElements } from "../lib/canvas-normalize";
 import { ErrorBoundary } from "./error-boundary";
@@ -134,21 +134,13 @@ export function CanvasEditor({
       await Promise.all(
         pendingUrls.map(async ({ fileId, url, meta }) => {
           try {
-            const resp = await fetch(url);
-            if (!resp.ok) {
-              console.warn(`[canvas-editor] Failed to fetch file ${fileId}: ${resp.status}`);
-              return;
-            }
-            const blob = await resp.blob();
-            const reader = new FileReader();
-            const dataURL = await new Promise<string>((resolve, reject) => {
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
+            // Private TOS buckets return presigned URLs that are not served with
+            // permissive CORS headers. Route through the server-side image proxy
+            // so the browser can read the bytes without a CORS preflight failure.
+            const dataURL = await fetchAsDataURL(url);
             resolved[fileId] = {
               id: meta.id ?? fileId,
-              mimeType: meta.mimeType ?? blob.type,
+              mimeType: meta.mimeType ?? "image/png",
               created: meta.created ?? Date.now(),
               dataURL,
             };
