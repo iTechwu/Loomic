@@ -144,6 +144,9 @@ export function loadServerEnv(
   const internalApiSecret =
     overrides.internalApiSecret ??
     normalizeOptionalString(source.INTERNAL_API_SECRET);
+  if (internalApiSecret) {
+    validateInternalApiSecret(internalApiSecret);
+  }
   const googleApiKey =
     overrides.googleApiKey ?? normalizeOptionalString(source.GOOGLE_API_KEY);
   const googleApplicationCredentials =
@@ -318,6 +321,43 @@ function parseBoolean(
   if (normalized === "true" || normalized === "1") return true;
   if (normalized === "false" || normalized === "0") return false;
   throw new Error("LOVART_DOFE_REQUIRE_REDIS must be true or false.");
+}
+
+/**
+ * Known placeholder / example values that must never be promoted to a runnable
+ * environment. The Models repo's `apps/api/.env.example` shipped a concrete hex
+ * example; if an operator copies that value into Lovart's INTERNAL_API_SECRET
+ * the HMAC trust root is publicly known.
+ */
+const KNOWN_PLACEHOLDER_INTERNAL_SECRETS = new Set([
+  "replace-with-server-only-secret",
+  // Models repo example value (apps/api/.env.example) — do not allow.
+  "2f83a27179523d9a19c58dfae4561e9ae4428b266bdb53fe80456646b032b649",
+]);
+
+/**
+ * INTERNAL_API_SECRET is the HMAC trust root Lovart uses to sign
+ * `/internal/seedance/credentials` calls to models.dofe.ai. Reject obviously
+ * insecure values at startup so a misconfigured deployment fails fast instead
+ * of silently authenticating with a known/guessable secret.
+ */
+export function validateInternalApiSecret(secret: string): void {
+  const trimmed = secret.trim();
+  if (KNOWN_PLACEHOLDER_INTERNAL_SECRETS.has(trimmed)) {
+    throw new Error(
+      "INTERNAL_API_SECRET is using a known placeholder/example value. Generate a fresh, server-only secret that matches models.dofe.ai's value.",
+    );
+  }
+  if (trimmed.length < 32) {
+    throw new Error(
+      "INTERNAL_API_SECRET must be at least 32 characters. Generate a fresh secret, e.g. `openssl rand -hex 32`.",
+    );
+  }
+  if (new Set(trimmed).size < 10) {
+    throw new Error(
+      "INTERNAL_API_SECRET has too little entropy. Use a high-entropy random value.",
+    );
+  }
 }
 
 function validateRequiredRedisUrl(redisUrl: string | undefined): void {

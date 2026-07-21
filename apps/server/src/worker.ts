@@ -17,6 +17,7 @@ import {
   createCredentialsService,
 } from "./features/credentials/credentials-service.js";
 import { createCredentialCrypto } from "./features/credentials/crypto.js";
+import { checkInternalApiSecretSmoke } from "./features/credentials/models-client.js";
 import {
   type ExecutorContext,
   getExecutor,
@@ -45,6 +46,37 @@ async function main() {
     throw new Error(
       "DATABASE_URL, RABBITMQ_URL, and complete TOS_* configuration are required for the worker.",
     );
+
+  // Same contract as the API server: a 401 means the shared INTERNAL_API_SECRET
+  // is wrong. Non-fatal (warn) by default so an unreachable models never wedges
+  // the worker; set LOVART_STRICT_INTERNAL_SECRET_SMOKE=true in production to
+  // make a 401 fatal.
+  const strictSecretSmoke =
+    process.env.LOVART_STRICT_INTERNAL_SECRET_SMOKE === "true";
+  if (env.internalApiSecret && env.dofeModelBaseUrl) {
+    const smoke = await checkInternalApiSecretSmoke({
+      baseUrl: env.dofeModelBaseUrl,
+      serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+      internalApiSecret: env.internalApiSecret,
+    });
+    if (!smoke.ok && smoke.status === 401) {
+      const message =
+        "INTERNAL_API_SECRET rejected by models (HTTP 401). Rotate to a fresh value matching models.dofe.ai.";
+      if (strictSecretSmoke) {
+        throw new Error(message);
+      }
+      logOperationalWarning(
+        `[worker] ${message} (non-fatal; set LOVART_STRICT_INTERNAL_SECRET_SMOKE=true to block boot)`,
+        "worker_internal_api_secret_smoke_401",
+      );
+    } else if (!smoke.ok) {
+      logOperationalWarning(
+        `[worker] INTERNAL_API_SECRET smoke check did not return 200 (status=${smoke.status}); continuing because models may be temporarily unreachable.`,
+        "worker_internal_api_secret_smoke_unreachable",
+      );
+    }
+  }
+
   registerAllProviders(env);
 
   const pool = createDatabasePool(env.databaseUrl);

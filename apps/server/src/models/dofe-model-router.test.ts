@@ -4,6 +4,7 @@ import {
   createDofeModelCatalog,
   dofeModelProtocolBaseUrl,
   isChatModelAlias,
+  resetDofeModelProtocolCache,
   resolveDofeModelProtocol,
   toDofeRouterModelId,
 } from "./dofe-model-router.js";
@@ -45,26 +46,40 @@ describe("DoFe model router", () => {
     const fetch = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith("/v1/models")) {
-        return new Response(JSON.stringify({ data: [
-          { id: "glm-5.2", owned_by: "zhipu" },
-          { id: "gpt-5.4", owned_by: "dofe-ai" },
-          { id: "seedream-5.0", owned_by: "bytedance" },
-        ] }));
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: "glm-5.2", owned_by: "zhipu" },
+              { id: "gpt-5.4", owned_by: "dofe-ai" },
+              { id: "seedream-5.0", owned_by: "bytedance" },
+            ],
+          }),
+        );
       }
       const isImage = url.includes("seedream-5.0");
-      return new Response(JSON.stringify({
-        model_type: isImage ? "image" : "text",
-        capabilities: isImage ? [{ capabilityName: "text_to_image" }] : [],
-      }));
+      return new Response(
+        JSON.stringify({
+          model_type: isImage ? "image" : "text",
+          capabilities: isImage ? [{ capabilityName: "text_to_image" }] : [],
+        }),
+      );
     });
-    const catalog = createDofeModelCatalog({
-      dofeModelApiKey: "router-key",
-      dofeModelBaseUrl: "https://ixicai.cn/api",
-    }, { fetch });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
 
     await expect(catalog?.listChatModels()).resolves.toEqual([
       { id: "glm-5.2", ownedBy: "zhipu", modelType: "text", capabilities: [] },
-      { id: "gpt-5.4", ownedBy: "dofe-ai", modelType: "text", capabilities: [] },
+      {
+        id: "gpt-5.4",
+        ownedBy: "dofe-ai",
+        modelType: "text",
+        capabilities: [],
+      },
     ]);
     await catalog?.listChatModels();
 
@@ -80,5 +95,75 @@ describe("DoFe model router", () => {
     expect(fetch).toHaveBeenCalledWith("https://ixicai.cn/api/v1/models", {
       headers: { Authorization: "Bearer router-key" },
     });
+  });
+
+  it("prefers the models-projected protocol over alias-prefix matching", async () => {
+    resetDofeModelProtocolCache();
+    // "glm-5.2" does not start with gemini-/claude-, so without a projection it
+    // would route to openai. The gateway projects preferred_protocol:"gemini",
+    // which must win after a catalog refresh.
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "glm-5.2", owned_by: "zhipu" }] }),
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          model_type: "text",
+          capabilities: [],
+          preferred_protocol: "gemini",
+          supported_protocols: ["gemini", "openai"],
+        }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    const models = await catalog?.listChatModels();
+    expect(models?.[0]?.preferredProtocol).toBe("gemini");
+    expect(models?.[0]?.supportedProtocols).toEqual(["gemini", "openai"]);
+    expect(resolveDofeModelProtocol("glm-5.2")).toBe("gemini");
+    resetDofeModelProtocolCache();
+  });
+
+  it("ignores invalid protocol projection values", async () => {
+    resetDofeModelProtocolCache();
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "glm-5.2", owned_by: "zhipu" }] }),
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          model_type: "text",
+          capabilities: [],
+          preferred_protocol: "bogus",
+          supported_protocols: ["gemini", 42, null, "openai"],
+        }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    const models = await catalog?.listChatModels();
+    expect(models?.[0]?.preferredProtocol).toBeUndefined();
+    expect(models?.[0]?.supportedProtocols).toEqual(["gemini", "openai"]);
+    // No projection cached → falls back to the alias-prefix heuristic.
+    expect(resolveDofeModelProtocol("glm-5.2")).toBe("openai");
+    resetDofeModelProtocolCache();
   });
 });

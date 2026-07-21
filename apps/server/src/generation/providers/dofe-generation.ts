@@ -7,6 +7,7 @@ import type {
   ProviderAuth,
   VideoGenerateParams,
   VideoModelInfo,
+  VideoOperation,
   VideoProvider,
 } from "../types.js";
 import { GenerationError, aspectRatioToDimensions } from "../utils.js";
@@ -167,12 +168,15 @@ function vid(
 
 type ContentPart =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "video_url"; video_url: { url: string } };
+
+type ContentRole = "prompt" | "reference" | "source_video" | "motion_reference";
 
 type GenerationContentItem = {
   part: ContentPart;
   order: number;
-  role?: "prompt" | "reference";
+  role?: ContentRole;
 };
 
 type TaskAsset = {
@@ -210,6 +214,61 @@ function buildContent(
       ? { role: "prompt" as const }
       : { role: "reference" as const }),
   }));
+}
+
+function buildVideoContent(
+  prompt: string,
+  inputImages: string[] | undefined,
+  inputVideo: string | undefined,
+  videoRole: "source_video" | "motion_reference" | undefined,
+): GenerationContentItem[] {
+  const items = buildContent(prompt, inputImages);
+  if (inputVideo && videoRole) {
+    items.push({
+      part: { type: "video_url", video_url: { url: inputVideo } },
+      order: items.length,
+      role: videoRole,
+    });
+  }
+  return items;
+}
+
+type ResolvedVideoOperation = {
+  operation?: VideoOperation;
+  videoRole?: "source_video" | "motion_reference";
+};
+
+function resolveVideoOperation(
+  params: VideoGenerateParams,
+  modelInfo: VideoModelInfo | undefined,
+): ResolvedVideoOperation {
+  if (!params.inputVideo) {
+    return {};
+  }
+
+  if (modelInfo && !modelInfo.capabilities.videoToVideo) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} does not support video-to-video operations.`,
+    );
+  }
+
+  const operation = params.videoOperation ?? "video_edit";
+  if (operation === "motion_control") {
+    return { operation, videoRole: "motion_reference" };
+  }
+  if (operation === "video_edit" || operation === "video_extend") {
+    return { operation, videoRole: "source_video" };
+  }
+
+  // Other operations are not valid when a source video is supplied. Reject
+  // early so the gateway never receives an inconsistent request.
+  throw new GenerationError(
+    "dofe",
+    "invalid_input",
+    `videoOperation "${operation}" is not supported with inputVideo.`,
+  );
 }
 
 function requireAuth(auth: ProviderAuth | undefined): string {
@@ -475,10 +534,18 @@ export class DofeVideoProvider implements VideoProvider {
       params.aspectRatio ?? "16:9",
     );
 
+    const modelInfo = this.models.find((m) => m.id === params.model);
+    const { operation, videoRole } = resolveVideoOperation(params, modelInfo);
+
     const task = await createTask(this.baseUrl, apiKey, {
       model: params.model,
       endpointKind: "video_async",
-      content: buildContent(params.prompt, params.inputImages),
+      content: buildVideoContent(
+        params.prompt,
+        params.inputImages,
+        params.inputVideo,
+        videoRole,
+      ),
       params: {
         ratio: params.aspectRatio,
         resolution,
@@ -486,6 +553,7 @@ export class DofeVideoProvider implements VideoProvider {
         ...(typeof params.enableAudio === "boolean"
           ? { generateAudio: params.enableAudio }
           : {}),
+        ...(operation ? { videoOperation: operation } : {}),
       },
     });
 

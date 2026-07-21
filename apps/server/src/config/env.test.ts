@@ -4,6 +4,7 @@ import {
   DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL,
   loadServerEnv,
   normalizeDofeModelBaseUrl,
+  validateInternalApiSecret,
 } from "./env.js";
 
 describe("DoFe model router environment", () => {
@@ -60,5 +61,49 @@ describe("DoFe model router environment", () => {
         },
       ).requireRedis,
     ).toBe(true);
+  });
+});
+
+describe("validateInternalApiSecret", () => {
+  const FRESH_SECRET =
+    "c0ffee1234567890abcdef0123456789abcdef0123456789abcdef0123456789";
+
+  it("rejects the placeholder value", () => {
+    expect(() =>
+      validateInternalApiSecret("replace-with-server-only-secret"),
+    ).toThrow("known placeholder");
+  });
+
+  it("rejects the models repo example hex", () => {
+    expect(() =>
+      validateInternalApiSecret(
+        "2f83a27179523d9a19c58dfae4561e9ae4428b266bdb53fe80456646b032b649",
+      ),
+    ).toThrow("known placeholder");
+  });
+
+  it("rejects a short secret", () => {
+    expect(() => validateInternalApiSecret("short-secret")).toThrow(
+      "at least 32 characters",
+    );
+  });
+
+  it("rejects a low-entropy secret", () => {
+    expect(() =>
+      validateInternalApiSecret("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ).toThrow("too little entropy");
+  });
+
+  it("accepts a fresh high-entropy secret", () => {
+    expect(() => validateInternalApiSecret(FRESH_SECRET)).not.toThrow();
+  });
+
+  it("is enforced by loadServerEnv when the secret is configured", () => {
+    expect(() =>
+      loadServerEnv(
+        {},
+        { INTERNAL_API_SECRET: "replace-with-server-only-secret" },
+      ),
+    ).toThrow("known placeholder");
   });
 });

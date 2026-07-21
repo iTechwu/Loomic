@@ -61,6 +61,19 @@ export interface ImageProvider {
   generate(params: ImageGenerateParams): Promise<GeneratedImage>;
 }
 
+export type VideoOperation =
+  | "text_to_video"
+  | "image_to_video"
+  | "first_last_frame_to_video"
+  | "reference_to_video"
+  | "omni_video"
+  | "multi_image_to_video"
+  | "motion_control"
+  | "video_edit"
+  | "video_extend"
+  | "template_video"
+  | "multi_frame_to_video";
+
 export interface VideoGenerateParams {
   prompt: string;
   model: string;
@@ -69,6 +82,11 @@ export interface VideoGenerateParams {
   aspectRatio?: string;
   inputImages?: string[];
   inputVideo?: string;
+  /**
+   * Optional upstream video operation. When omitted, the adapter infers it from
+   * `inputVideo` and the model's `videoToVideo` capability.
+   */
+  videoOperation?: VideoOperation;
   /** Enable audio generation (only supported by some providers). */
   enableAudio?: boolean;
   /** Per-user DoFe gateway credentials (strict no-fallback when using the dofe provider). */

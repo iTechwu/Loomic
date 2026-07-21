@@ -10,6 +10,13 @@ export type DofeRouterModel = {
   ownedBy?: string;
   modelType?: string;
   capabilities?: string[];
+  /**
+   * Models-authoritative preferred protocol, projected from the capability
+   * endpoint when the gateway exposes it. Undefined until the catalog refresh
+   * observes it; `resolveDofeModelProtocol` then falls back to alias prefixes.
+   */
+  preferredProtocol?: DofeModelProtocol;
+  supportedProtocols?: DofeModelProtocol[];
 };
 
 type OpenAIModelListResponse = {
@@ -19,7 +26,23 @@ type OpenAIModelListResponse = {
 type ModelCapabilitiesResponse = {
   model_type?: unknown;
   capabilities?: Array<{ capabilityName?: unknown }>;
+  preferred_protocol?: unknown;
+  supported_protocols?: unknown;
 };
+
+/**
+ * Validate and coerce an unknown value into a DofeModelProtocol. Returns
+ * undefined for anything that is not one of the supported protocol identifiers
+ * so we never pollute the cache with an invalid projection.
+ */
+export function parseDofeModelProtocol(
+  value: unknown,
+): DofeModelProtocol | undefined {
+  if (value === "anthropic" || value === "gemini" || value === "openai") {
+    return value;
+  }
+  return undefined;
+}
 
 type FetchLike = typeof fetch;
 export type DofeModelCatalog = {
@@ -100,6 +123,21 @@ export function createDofeModelCatalog(
           }
           const capability =
             (await capabilityResponse.json()) as ModelCapabilitiesResponse;
+          const preferredProtocol = parseDofeModelProtocol(
+            capability.preferred_protocol,
+          );
+          const supportedProtocols = Array.isArray(
+            capability.supported_protocols,
+          )
+            ? capability.supported_protocols
+                .map(parseDofeModelProtocol)
+                .filter((p): p is DofeModelProtocol => p !== undefined)
+            : undefined;
+          // Cache the authoritative projection so deep-agent's synchronous
+          // protocol resolver can use it without an extra round trip.
+          if (preferredProtocol) {
+            cacheDofeModelProtocol(entry.id, preferredProtocol);
+          }
           return {
             ...entry,
             ...(typeof capability.model_type === "string"
@@ -112,6 +150,8 @@ export function createDofeModelCatalog(
                     : [],
                 )
               : [],
+            ...(preferredProtocol ? { preferredProtocol } : {}),
+            ...(supportedProtocols ? { supportedProtocols } : {}),
           };
         }),
       )
@@ -166,7 +206,31 @@ export function createDofeModelCatalog(
   }
 }
 
+/**
+ * Process-local cache of the Models-authoritative preferred protocol per alias.
+ * Populated by the catalog refresh; read synchronously by deep-agent when it
+ * selects the LangChain client. Falls back to alias-prefix matching on a miss.
+ */
+const preferredProtocolCache = new Map<string, DofeModelProtocol>();
+
+export function cacheDofeModelProtocol(
+  modelId: string,
+  protocol: DofeModelProtocol,
+): void {
+  preferredProtocolCache.set(modelId, protocol);
+}
+
+/** Test/diagnostic helper: clears the protocol projection cache. */
+export function resetDofeModelProtocolCache(): void {
+  preferredProtocolCache.clear();
+}
+
 export function resolveDofeModelProtocol(modelId: string): DofeModelProtocol {
+  const projected = preferredProtocolCache.get(modelId);
+  if (projected) return projected;
+
+  // Backward-compatible fallback: until/unless the gateway projects a protocol,
+  // keep the existing alias-prefix heuristic so routing still works.
   if (modelId.startsWith("gemini-")) return "gemini";
   if (modelId.startsWith("claude-")) return "anthropic";
   return "openai";

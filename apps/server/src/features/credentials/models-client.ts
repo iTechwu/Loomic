@@ -309,6 +309,36 @@ function validateConfig(config: ModelsProvisionConfig): void {
   }
 }
 
+/**
+ * Startup smoke check: confirm the configured INTERNAL_API_SECRET is accepted
+ * by models.dofe.ai. Uses the lightweight credential status lookup (HMAC-signed)
+ * so no provisioned data is mutated.
+ *
+ * - `ok: true`  → secret signed a request models accepted (HTTP 2xx).
+ * - `ok: false, status: 401` → secret is rejected; the deployment must rotate.
+ * - `ok: false, status: <other>` → transient/network failure; warn but continue.
+ *
+ * Callers should fail startup only on an explicit 401 to avoid taking Lovart
+ * down when models is briefly unreachable.
+ */
+export async function checkInternalApiSecretSmoke(
+  config: ModelsProvisionConfig,
+): Promise<{ ok: boolean; status: number }> {
+  try {
+    await getSeedanceCredentialsStatus(config, {
+      userId: "lovart-smoke-check",
+      ssoTeamId: "lovart-smoke-check",
+      correlationId: "lovart-smoke-check",
+    });
+    return { ok: true, status: 200 };
+  } catch (error) {
+    if (error instanceof ModelsProvisionError) {
+      return { ok: false, status: error.status };
+    }
+    return { ok: false, status: 0 };
+  }
+}
+
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;
