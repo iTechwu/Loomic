@@ -1,6 +1,10 @@
-import { createSignedModelsInternalDataClient } from "@dofe/models-sdk/internal-node";
+import { createRequire } from "node:module";
 import type { ModelsInternalSeedanceCredentialsStatus } from "@dofe/models-sdk/internal-types";
-import { ModelsInternalApiError } from "@dofe/models-sdk/response";
+import type { ModelsInternalApiError } from "@dofe/models-sdk/response";
+
+const { createSignedModelsInternalDataClient } = createRequire(import.meta.url)(
+  "@dofe/models-sdk/internal-node",
+) as typeof import("@dofe/models-sdk/internal-node");
 
 /**
  * Client for models.dofe.ai (ixicai.cn) service-to-service credential APIs.
@@ -148,7 +152,7 @@ export async function provisionSeedanceCredentials(
       throw error;
     }
 
-    if (error instanceof ModelsInternalApiError) {
+    if (isModelsInternalApiError(error)) {
       // status === 0 means the SDK's own request timer elapsed (timeout) or the
       // request was aborted. Any other status is an HTTP failure classified by
       // the models envelope. We never persist error.message — it may carry the
@@ -243,7 +247,7 @@ export async function getSeedanceCredentialsStatus(
     return status;
   } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
-    if (error instanceof ModelsInternalApiError && error.status === 0) {
+    if (isModelsInternalApiError(error) && error.status === 0) {
       log.error("[credentials] provision_status_lookup_timeout", {
         correlationId: input.correlationId,
         latencyMs,
@@ -255,7 +259,7 @@ export async function getSeedanceCredentialsStatus(
         "timeout",
       );
     }
-    if (error instanceof ModelsInternalApiError) {
+    if (isModelsInternalApiError(error)) {
       log.error("[credentials] provision_status_lookup_failed", {
         correlationId: input.correlationId,
         latencyMs,
@@ -305,6 +309,36 @@ function validateConfig(config: ModelsProvisionConfig): void {
   }
 }
 
+/**
+ * Startup smoke check: confirm the configured INTERNAL_API_SECRET is accepted
+ * by models.dofe.ai. Uses the lightweight credential status lookup (HMAC-signed)
+ * so no provisioned data is mutated.
+ *
+ * - `ok: true`  → secret signed a request models accepted (HTTP 2xx).
+ * - `ok: false, status: 401` → secret is rejected; the deployment must rotate.
+ * - `ok: false, status: <other>` → transient/network failure; warn but continue.
+ *
+ * Callers should fail startup only on an explicit 401 to avoid taking Lovart
+ * down when models is briefly unreachable.
+ */
+export async function checkInternalApiSecretSmoke(
+  config: ModelsProvisionConfig,
+): Promise<{ ok: boolean; status: number }> {
+  try {
+    await getSeedanceCredentialsStatus(config, {
+      userId: "lovart-smoke-check",
+      ssoTeamId: "lovart-smoke-check",
+      correlationId: "lovart-smoke-check",
+    });
+    return { ok: true, status: 200 };
+  } catch (error) {
+    if (error instanceof ModelsProvisionError) {
+      return { ok: false, status: error.status };
+    }
+    return { ok: false, status: 0 };
+  }
+}
+
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;
@@ -312,6 +346,16 @@ function isTimeoutError(error: unknown): boolean {
   if (cause && (cause.name === "TimeoutError" || cause.name === "AbortError"))
     return true;
   return false;
+}
+
+function isModelsInternalApiError(
+  error: unknown,
+): error is ModelsInternalApiError {
+  return (
+    error instanceof Error &&
+    error.name === "ModelsInternalApiError" &&
+    typeof (error as ModelsInternalApiError).status === "number"
+  );
 }
 
 function silentLogger(): Logger {

@@ -144,8 +144,8 @@ describe("Projects page", () => {
     });
 
     renderPage();
-    expect(await screen.findByText(/failed to load/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(await screen.findByText("加载数据失败，请重试。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
   });
 

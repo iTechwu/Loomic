@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_MODEL } from "@lovart.dofe/shared";
 import { registerExecutor, type ExecutorContext } from "../job-executor.js";
 import { generateVideo } from "../../../generation/video-generation.js";
 import { resolveVideoProviderName } from "../../../generation/providers/registry.js";
@@ -31,7 +32,7 @@ registerExecutor("video_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   const createdBy: string | null = jobRow.created_by ?? null;
   const workspaceId: string = jobRow.workspace_id ?? jobId;
 
-  const model = payload.model ?? "seedance-2.0";
+  const model = payload.model ?? DEFAULT_VIDEO_MODEL;
   const providerName = resolveVideoProviderName(model);
 
   // Resolve the job owner's DoFe credentials (strict no-fallback).

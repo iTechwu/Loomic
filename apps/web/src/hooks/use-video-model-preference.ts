@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { VideoGenerationPreference } from "@lovart.dofe/shared";
+import { DEFAULT_VIDEO_MODEL, type VideoGenerationPreference } from "@lovart.dofe/shared";
 
 const STORAGE_KEY = "lovart.dofe:video-model-preference";
-const DEFAULT_MODEL = "seedance-2.0";
+const DEFAULT_MODEL = DEFAULT_VIDEO_MODEL;
 
 export type VideoModelPreference = VideoGenerationPreference;
 

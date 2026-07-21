@@ -268,7 +268,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Attach"
+                  title="添加附件"
                   className="flex h-10 w-10 items-center justify-center rounded-full border-[0.5px] border-border text-foreground transition-colors hover:bg-muted sm:h-8 sm:w-8"
                 >
                   <svg
@@ -276,7 +276,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
                     viewBox={toolbarButtons[0].viewBox}
                     fill="currentColor"
                     role="img"
-                    aria-label="Attach"
+                    aria-label="添加附件"
                   >
                     <path d={toolbarButtons[0].path} />
                   </svg>
@@ -286,7 +286,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
               <button
                 type="button"
                 disabled
-                title="Attach"
+                title="添加附件"
                 className="flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-full border-[0.5px] border-border text-foreground opacity-30 transition-colors sm:h-8 sm:w-8"
               >
                 <svg
@@ -294,7 +294,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
                   viewBox={toolbarButtons[0].viewBox}
                   fill="currentColor"
                   role="img"
-                  aria-label="Attach"
+                  aria-label="添加附件"
                 >
                   <path d={toolbarButtons[0].path} />
                 </svg>
@@ -303,7 +303,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
           </div>
 
           <div className="flex items-center gap-2">
-            <AgentModelSelector />
+            <AgentModelSelector accessToken={accessToken} />
             <div className="flex items-center gap-0.5">
               {toolbarButtons.slice(1).map((btn) => {
                 if (btn.name === "Agent") {
@@ -375,7 +375,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
                 viewBox={submitIcon.viewBox}
                 fill="currentColor"
                 role="img"
-                aria-label="Submit"
+                aria-label="提交"
               >
                 <path d={submitIcon.path} />
               </svg>

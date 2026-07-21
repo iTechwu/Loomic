@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { ImageGenerationPreference } from "@lovart.dofe/shared";
+import { DEFAULT_IMAGE_MODEL, type ImageGenerationPreference } from "@lovart.dofe/shared";
 
 const STORAGE_KEY = "lovart.dofe:image-model-preference";
-const DEFAULT_MODEL = "flux-kontext-pro";
+const DEFAULT_MODEL = DEFAULT_IMAGE_MODEL;
 
 export type ImageModelPreference = ImageGenerationPreference;
 

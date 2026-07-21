@@ -81,7 +81,7 @@ export function CanvasImageGenPanel({
             void handleGenerate();
           }
         }}
-        placeholder="Describe the image you want to create..."
+        placeholder="描述你想创建的图片..."
         className="w-full h-20 resize-none rounded-lg border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         disabled={loading}
       />

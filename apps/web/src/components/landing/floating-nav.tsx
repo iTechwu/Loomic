@@ -80,7 +80,7 @@ function ThemeToggle() {
       variant="ghost"
       size="icon"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      aria-label="Toggle theme"
+      aria-label="切换主题"
     >
       {resolvedTheme === "dark" ? (
         <Sun className="size-4" />
@@ -156,7 +156,7 @@ export function FloatingNav() {
           {/* Desktop Nav Links with underline animation */}
           <nav
             className="hidden md:flex items-center gap-1"
-            aria-label="Main navigation"
+            aria-label="主导航"
           >
             {NAV_LINKS.map(({ label, href }) => (
               <a
@@ -184,7 +184,7 @@ export function FloatingNav() {
               size="icon"
               className="md:hidden"
               onClick={() => setMobileOpen((v) => !v)}
-              aria-label="Toggle menu"
+              aria-label="切换菜单"
               aria-expanded={mobileOpen}
             >
               {mobileOpen ? (
@@ -209,7 +209,7 @@ export function FloatingNav() {
           >
             <nav
               className="px-4 py-3 flex flex-col gap-1"
-              aria-label="Mobile navigation"
+              aria-label="移动端导航"
             >
               {NAV_LINKS.map(({ label, href }) => (
                 <a

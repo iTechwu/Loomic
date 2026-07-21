@@ -1,4 +1,5 @@
 // @credits-system — Image generation executor: applies watermark for free-tier users
+import { DEFAULT_IMAGE_MODEL } from "@lovart.dofe/shared";
 import { registerExecutor, type ExecutorContext } from "../job-executor.js";
 import { generateImage } from "../../../generation/image-generation.js";
 import { resolveImageProviderName } from "../../../generation/providers/registry.js";
@@ -33,7 +34,7 @@ registerExecutor("image_generation", async (jobId, _rawPayload, ctx: ExecutorCon
   const workspaceId: string = jobRow.workspace_id ?? jobId;
 
   // Resolve provider dynamically from model ID via registry
-  const model = payload.model ?? "flux-kontext-pro";
+  const model = payload.model ?? DEFAULT_IMAGE_MODEL;
   const providerName = resolveImageProviderName(model);
 
   // Log input image format for debugging the data-URI-passthrough pipeline

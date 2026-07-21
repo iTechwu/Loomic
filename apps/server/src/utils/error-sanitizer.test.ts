@@ -33,4 +33,50 @@ describe("sanitizeErrorForClient", () => {
       consoleError.mockRestore();
     }
   });
+
+  it("identifies unavailable models without exposing provider details", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      expect(
+        sanitizeErrorForClient(
+          new Error("MiddlewareError: 404 Model not found: private-model-name"),
+        ),
+      ).toBe("所选模型当前不可用，请切换模型后重试。");
+      expect(consoleError).toHaveBeenCalledWith(
+        "[error-sanitizer] client_error_sanitized",
+        { failureCategory: "model_unavailable" },
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+        "private-model-name",
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("identifies an exhausted model-service balance without exposing provider details", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      expect(
+        sanitizeErrorForClient(
+          new Error("MiddlewareError: 402 Insufficient balance. Please recharge before calling this model."),
+        ),
+      ).toBe("模型服务余额不足，请联系 188888801638 进行人工充值后重试。");
+      expect(consoleError).toHaveBeenCalledWith(
+        "[error-sanitizer] client_error_sanitized",
+        { failureCategory: "insufficient_balance" },
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+        "Please recharge before calling this model",
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });

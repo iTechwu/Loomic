@@ -376,7 +376,7 @@ export function ImageGeneratorPanel({
             className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-muted ${
               refImages.length > 0 ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
-            title="Add reference image"
+            title="添加参考图片"
           >
             <ImageUp className="h-3.5 w-3.5" />
           </button>

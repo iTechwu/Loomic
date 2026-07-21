@@ -42,7 +42,7 @@ export function CanvasAIToolbar({
               ? "bg-accent text-accent-foreground"
               : "text-foreground/60 hover:bg-muted hover:text-foreground"
           }`}
-          title="AI Image"
+          title="AI 图片"
         >
           <svg
             className="h-4 w-4"
@@ -59,7 +59,7 @@ export function CanvasAIToolbar({
         <button
           onClick={handleCreateVideoGenerator}
           className="flex items-center justify-center h-8 w-8 rounded-lg text-sm transition-colors cursor-pointer text-foreground/60 hover:bg-muted hover:text-foreground"
-          title="AI Video"
+          title="AI 视频"
         >
           <svg
             className="h-4 w-4"

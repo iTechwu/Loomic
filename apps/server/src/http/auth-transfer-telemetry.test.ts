@@ -81,6 +81,24 @@ describe("auth transfer telemetry", () => {
     ).rejects.toThrow("Redis readiness probe timed out.");
   });
 
+  it("retries while a Redis connection is still being established", async () => {
+    let attempts = 0;
+    const redis = {
+      ping: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error(
+            "Stream isn't writeable and enableOfflineQueue options is false",
+          );
+        }
+        return "PONG" as const;
+      },
+    };
+
+    await expect(waitForRedisReadiness(redis, 50, 1)).resolves.toBeUndefined();
+    expect(attempts).toBe(2);
+  });
+
   it("accepts only the documented non-identifying transition fields", async () => {
     const app = createTestApp();
     await registerAuthTransferTelemetryRoute(app);

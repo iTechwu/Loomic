@@ -56,6 +56,7 @@ function makeRepository(initial: {
   let saveFailedCalls = 0;
   return {
     findReady: vi.fn(async () => savedReady),
+    findReadyCandidates: vi.fn(async () => (savedReady ? [savedReady] : [])),
     findAny: vi.fn(async () => savedReady ?? current.row),
     takeProvisionLock: vi.fn(async () => current),
     saveReady: vi.fn(async (input) => {
@@ -528,11 +529,45 @@ describe("CredentialsService", () => {
     );
   });
 
+  it("fails closed when a user has ready credentials for more than one team", async () => {
+    const first = readyRow();
+    const second = readyRow({
+      id: "credential-row-team-2",
+      ssoTeamId: "00000000-0000-4000-8000-000000000013",
+    });
+    const repository = makeRepository({
+      lock: { status: "ready", row: first },
+      ready: first,
+    });
+    vi.mocked(repository.findReadyCandidates).mockResolvedValue([
+      first,
+      second,
+    ]);
+    const logs: Array<{ message: string; data: Record<string, unknown> }> = [];
+    const service = makeService(repository, {
+      info: () => {},
+      warn: (message, data = {}) => logs.push({ message, data }),
+      error: () => {},
+    });
+
+    await expect(service.getByUserId(LOCAL_USER_ID)).rejects.toThrow(
+      /Models credentials are not ready/,
+    );
+    expect(logs).toContainEqual({
+      message: "[credentials] resolve_blocked_ambiguous_team",
+      data: {
+        failureCategory: "credential_team_ambiguous",
+        readyCredentialCount: 2,
+      },
+    });
+  });
+
   it("maps an undecryptable ready row to a clean not-provisioned error", async () => {
     // Simulates a key rotation / corrupt row: decrypt throws. The caller must
     // see CredentialsNotProvisionedError, not a raw crypto stack trace.
     const repository: UserCredentialsRepository = {
       findReady: vi.fn(async () => readyRow()),
+      findReadyCandidates: vi.fn(async () => [readyRow()]),
       findAny: vi.fn(async () => readyRow()),
       takeProvisionLock: vi.fn(),
       saveReady: vi.fn(),
@@ -584,6 +619,9 @@ describe("CredentialsService", () => {
     const repository: UserCredentialsRepository = {
       findReady: vi.fn(async () =>
         readyCommitted ? readyRow({ provisionAttemptCount: 0 }) : null,
+      ),
+      findReadyCandidates: vi.fn(async () =>
+        readyCommitted ? [readyRow({ provisionAttemptCount: 0 })] : [],
       ),
       findAny: vi.fn(async () => null),
       takeProvisionLock: vi.fn(

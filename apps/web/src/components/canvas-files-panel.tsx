@@ -82,7 +82,7 @@ const FileRow = memo(function FileRow({
         onClick={handleDownload}
         className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground hover:text-muted-foreground transition-colors"
         title="下载"
-        aria-label={`Download ${file.name}`}
+        aria-label={`下载 ${file.name}`}
       >
         <DownloadIcon className="h-4 w-4" />
       </button>
@@ -105,7 +105,7 @@ export function CanvasFilesPanel({ excalidrawApi, open, onClose }: CanvasFilesPa
       if (el.customData?.source !== "generated" && !el.customData?.title) continue;
       idx++;
       const file = files[el.fileId];
-      const title = el.customData?.title || el.customData?.label || `Image ${idx}`;
+      const title = el.customData?.title || el.customData?.label || `图片 ${idx}`;
       images.push({ id: el.id, name: title, dataURL: file?.dataURL ?? "" });
     }
     setImageFiles(images.reverse());
@@ -155,7 +155,7 @@ export function CanvasFilesPanel({ excalidrawApi, open, onClose }: CanvasFilesPa
           type="button"
           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           onClick={onClose}
-          aria-label="Close files panel"
+          aria-label="关闭文件面板"
         >
           <CloseIcon className="h-3.5 w-3.5" />
         </button>

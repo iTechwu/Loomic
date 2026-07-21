@@ -178,7 +178,7 @@ export function CreateSkillDialog({
             <Label htmlFor="skill-name">名称</Label>
             <Input
               id="skill-name"
-              placeholder="e.g. UI Design Expert"
+              placeholder="例如：界面设计专家"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={200}
@@ -233,7 +233,7 @@ export function CreateSkillDialog({
             <textarea
               id="skill-content"
               rows={8}
-              placeholder="# Skill Name&#10;&#10;## Instructions&#10;..."
+              placeholder="# 技能名称&#10;&#10;## 使用说明&#10;..."
               value={skillContent}
               onChange={(e) => setSkillContent(e.target.value)}
               className="w-full rounded-lg border border-input bg-secondary px-3 py-2 font-mono text-xs leading-relaxed outline-none resize-y focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"

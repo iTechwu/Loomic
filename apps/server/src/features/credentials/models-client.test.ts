@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ModelsProvisionError,
+  checkInternalApiSecretSmoke,
   getSeedanceCredentialsStatus,
   provisionSeedanceCredentials,
 } from "./models-client.js";
@@ -354,6 +355,69 @@ describe("provisionSeedanceCredentials", () => {
           correlationId: CORRELATION_ID,
         }),
       ).rejects.toMatchObject({ code: "timeout", status: 0 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("checkInternalApiSecretSmoke", () => {
+  it("returns ok when models accepts the signed request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          code: 0,
+          msg: "ok",
+          data: {
+            state: "ready",
+            apiKey: { id: "akid", keyPrefix: "sk-test", status: "active" },
+            assetCredential: {
+              id: "acid",
+              accessKeyId: "AKtest",
+              status: "active",
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(checkInternalApiSecretSmoke(makeConfig())).resolves.toEqual({
+        ok: true,
+        status: 200,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("returns status 401 when models rejects the secret", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Unauthorized", { status: 401 })),
+    );
+    try {
+      await expect(checkInternalApiSecretSmoke(makeConfig())).resolves.toEqual({
+        ok: false,
+        status: 401,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("returns status 0 on a transient/network failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    );
+    try {
+      await expect(checkInternalApiSecretSmoke(makeConfig())).resolves.toEqual({
+        ok: false,
+        status: 0,
+      });
     } finally {
       vi.unstubAllGlobals();
     }

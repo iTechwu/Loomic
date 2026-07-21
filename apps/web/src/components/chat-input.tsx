@@ -204,7 +204,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <path d="m21 15-5-5L5 21" />
                   </svg>
-                  {selectionImageCount} {selectionImageCount === 1 ? "image" : "images"}
+                    已选 {selectionImageCount} 张图片
                 </span>
               )}
               {selectionImageCount > 0 && selectionShapeCount > 0 && (
@@ -237,7 +237,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 type="button"
                 onClick={() => onRemoveMention(mention)}
                 className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-foreground transition-colors hover:bg-muted/80"
-                title="Remove mention"
+                title="移除提及"
               >
                 <span className="text-muted-foreground">@</span>
                 <span className="max-w-[180px] truncate">
@@ -263,7 +263,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder='Start with an idea, or type "@" to mention'
+          placeholder='从一个想法开始，或输入“@”提及内容'
           aria-label="输入消息"
           rows={1}
           style={{ scrollbarWidth: "none" }}
@@ -285,7 +285,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="flex h-8 w-8 items-center justify-center rounded-full border-[0.5px] border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  title="Attach images"
+                  title="添加图片"
                 >
                   <svg
                     className="h-[14px] w-[14px]"
@@ -298,14 +298,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               </>
             )}
             {/* Agent model selector */}
-            <AgentModelSelector compact />
+            <AgentModelSelector accessToken={accessToken} compact />
             {/* Model preference button */}
             <div className="relative">
               <button
                 ref={modelBtnRef}
                 type="button"
                 onClick={() => setModelPopoverOpen((prev) => !prev)}
-                title="Image model"
+                title="图片模型"
                 className={`flex h-8 w-8 items-center justify-center rounded-full border-[0.5px] transition-colors ${
                   preference.mode === "manual" || videoPreference.mode === "manual"
                     ? "border-accent bg-accent/20 text-accent-foreground"

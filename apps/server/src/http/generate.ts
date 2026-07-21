@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_VIDEO_MODEL,
   applicationErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
@@ -30,10 +32,13 @@ const generateImageRequestSchema = z.object({
 const generateVideoRequestSchema = z.object({
   prompt: z.string().min(1),
   model: z.string().optional(),
-  duration: z.number().int().min(3).max(16).optional(),
+  // Models capabilityMetadata is authoritative for per-alias duration limits.
+  // Keep only protocol-level shape validation here; the adapter and gateway
+  // enforce an explicit model boundary when one is published.
+  duration: z.number().int().positive().optional(),
   resolution: z.enum(["480p", "720p", "1080p", "4k"]).optional(),
   aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
-  inputImages: z.array(z.string()).max(3).optional(),
+  inputImages: z.array(z.string()).optional(),
   inputVideo: z.string().optional(),
   enableAudio: z.boolean().optional(),
 });
@@ -75,7 +80,7 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "flux-kontext-pro";
+    const model = payload.model ?? DEFAULT_IMAGE_MODEL;
 
     try {
       // Resolve the caller's DoFe credentials (strict no-fallback: throws if the
@@ -195,7 +200,7 @@ export async function registerGenerateRoutes(
 
     // Default to the same ixicai model used by the tool and executor so the
     // direct API, agent tool, and job queue never disagree on fallback model.
-    const model = payload.model ?? "seedance-2.0";
+    const model = payload.model ?? DEFAULT_VIDEO_MODEL;
 
     try {
       const viewer = await options.viewerService.ensureViewer(user);

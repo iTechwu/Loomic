@@ -67,7 +67,7 @@ export function ColorSection({
                 onClick={() => handleSwatchClick(color)}
                 className="w-[69px] h-[69px] rounded-xl border cursor-pointer transition-shadow hover:shadow-md"
                 style={{ backgroundColor: color.text_content ?? "#888888" }}
-                aria-label={`Edit color ${color.display_name}`}
+                aria-label={`编辑颜色 ${color.display_name}`}
               />
               <button
                 type="button"
@@ -77,7 +77,7 @@ export function ColorSection({
                   "flex items-center justify-center",
                   "opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer",
                 )}
-                aria-label={`Delete color ${color.display_name}`}
+                aria-label={`删除颜色 ${color.display_name}`}
               >
                 <X className="h-3 w-3 text-muted-foreground" />
               </button>
@@ -111,7 +111,7 @@ export function ColorSection({
               type="button"
               onClick={handleAddClick}
               className="w-[69px] h-[69px] rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-muted-foreground/50 transition-colors cursor-pointer"
-              aria-label="Add color"
+              aria-label="添加颜色"
             >
               <Plus className="h-5 w-5 text-muted-foreground/60" />
             </button>

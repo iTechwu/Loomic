@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 
+import { DEFAULT_CHAT_MODEL } from "@lovart.dofe/shared";
+
 import { type TosConfig, parseTosConfig } from "../storage/tos-config.js";
 
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
-export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "glm-5.2";
+// Sourced from the shared single source of truth so the gateway default chat
+// alias is identical across server, web, and the boot-time default-model smoke.
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = DEFAULT_CHAT_MODEL;
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
@@ -52,6 +56,13 @@ export type ServerEnv = {
   /** When true, fail startup unless managed TLS Redis is configured. */
   requireRedis?: boolean;
   redisUrl?: string;
+  /**
+   * When true, fail startup if any default model alias
+   * (DEFAULT_CHAT/IMAGE/VIDEO_MODEL) is absent from the ixicai `/v1/models`
+   * catalog. Defaults to a non-fatal warning, mirroring
+   * LOVART_STRICT_INTERNAL_SECRET_SMOKE.
+   */
+  strictDefaultModels?: boolean;
   internalApiSecret?: string;
   ssoApiUrl?: string;
   ssoClientId?: string;
@@ -144,6 +155,9 @@ export function loadServerEnv(
   const internalApiSecret =
     overrides.internalApiSecret ??
     normalizeOptionalString(source.INTERNAL_API_SECRET);
+  if (internalApiSecret) {
+    validateInternalApiSecret(internalApiSecret);
+  }
   const googleApiKey =
     overrides.googleApiKey ?? normalizeOptionalString(source.GOOGLE_API_KEY);
   const googleApplicationCredentials =
@@ -172,6 +186,13 @@ export function loadServerEnv(
     overrides.requireRedis ??
     parseBoolean(source.LOVART_DOFE_REQUIRE_REDIS, false);
   if (requireRedis) validateRequiredRedisUrl(redisUrl);
+  const strictDefaultModels =
+    overrides.strictDefaultModels ??
+    parseBoolean(
+      source.LOVART_STRICT_DEFAULT_MODELS,
+      false,
+      "LOVART_STRICT_DEFAULT_MODELS",
+    );
   const volcesApiKey =
     overrides.volcesApiKey ?? normalizeOptionalString(source.VOLCES_API_KEY);
   const volcesBaseUrl =
@@ -268,6 +289,7 @@ export function loadServerEnv(
     ...(replicateApiToken ? { replicateApiToken } : {}),
     ...(rabbitMqUrl ? { rabbitMqUrl } : {}),
     requireRedis,
+    strictDefaultModels,
     ...(redisUrl ? { redisUrl } : {}),
     ...(volcesApiKey ? { volcesApiKey } : {}),
     ...(volcesBaseUrl ? { volcesBaseUrl } : {}),
@@ -312,12 +334,50 @@ function normalizeOptionalString(value: string | undefined) {
 function parseBoolean(
   value: string | undefined,
   defaultValue: boolean,
+  envName = "LOVART_DOFE_REQUIRE_REDIS",
 ): boolean {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return defaultValue;
   if (normalized === "true" || normalized === "1") return true;
   if (normalized === "false" || normalized === "0") return false;
-  throw new Error("LOVART_DOFE_REQUIRE_REDIS must be true or false.");
+  throw new Error(`${envName} must be true or false.`);
+}
+
+/**
+ * Known placeholder / example values that must never be promoted to a runnable
+ * environment. The Models repo's `apps/api/.env.example` shipped a concrete hex
+ * example; if an operator copies that value into Lovart's INTERNAL_API_SECRET
+ * the HMAC trust root is publicly known.
+ */
+const KNOWN_PLACEHOLDER_INTERNAL_SECRETS = new Set([
+  "replace-with-server-only-secret",
+  // Models repo example value (apps/api/.env.example) — do not allow.
+  "2f83a27179523d9a19c58dfae4561e9ae4428b266bdb53fe80456646b032b649",
+]);
+
+/**
+ * INTERNAL_API_SECRET is the HMAC trust root Lovart uses to sign
+ * `/internal/seedance/credentials` calls to models.dofe.ai. Reject obviously
+ * insecure values at startup so a misconfigured deployment fails fast instead
+ * of silently authenticating with a known/guessable secret.
+ */
+export function validateInternalApiSecret(secret: string): void {
+  const trimmed = secret.trim();
+  if (KNOWN_PLACEHOLDER_INTERNAL_SECRETS.has(trimmed)) {
+    throw new Error(
+      "INTERNAL_API_SECRET is using a known placeholder/example value. Generate a fresh, server-only secret that matches models.dofe.ai's value.",
+    );
+  }
+  if (trimmed.length < 32) {
+    throw new Error(
+      "INTERNAL_API_SECRET must be at least 32 characters. Generate a fresh secret, e.g. `openssl rand -hex 32`.",
+    );
+  }
+  if (new Set(trimmed).size < 10) {
+    throw new Error(
+      "INTERNAL_API_SECRET has too little entropy. Use a high-entropy random value.",
+    );
+  }
 }
 
 function validateRequiredRedisUrl(redisUrl: string | undefined): void {

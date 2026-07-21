@@ -102,7 +102,7 @@ export function FontSection({
                   "flex items-center justify-center",
                   "opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer",
                 )}
-                aria-label={`Delete font ${font.display_name}`}
+                aria-label={`删除字体 ${font.display_name}`}
               >
                 <X className="h-3 w-3 text-muted-foreground" />
               </button>
@@ -123,7 +123,7 @@ export function FontSection({
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
               className="w-[150px] h-[113px] rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-muted-foreground/50 transition-colors cursor-pointer"
-              aria-label="Add font"
+              aria-label="添加字体"
             >
               <Plus className="h-5 w-5 text-muted-foreground/60" />
             </button>

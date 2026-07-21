@@ -55,13 +55,13 @@ export function CreateProjectDialog({
       if (err && typeof err === "object" && "code" in err) {
         const apiErr = err as { code: string };
         if (apiErr.code === "project_slug_taken") {
-          setError("A project with this name already exists. Try a different name.");
+          setError("已存在同名项目，请换一个名称。");
         } else {
-          setError("Failed to create project. Please try again.");
+          setError("创建项目失败，请重试。");
           toastError("项目创建失败");
         }
       } else {
-        setError("Failed to create project. Please try again.");
+        setError("创建项目失败，请重试。");
         toastError("项目创建失败");
       }
     } finally {
@@ -82,24 +82,24 @@ export function CreateProjectDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New Project</DialogTitle>
+          <DialogTitle>新建项目</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="project-name">Name</Label>
+            <Label htmlFor="project-name">名称</Label>
             <Input
               id="project-name"
-              placeholder="My Project"
+              placeholder="我的项目"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="project-description">Description (optional)</Label>
+            <Label htmlFor="project-description">描述（可选）</Label>
             <Input
               id="project-description"
-              placeholder="A brief description..."
+              placeholder="简要描述..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -124,10 +124,10 @@ export function CreateProjectDialog({
               variant="outline"
               onClick={() => handleOpenChange(false)}
             >
-              Cancel
+              取消
             </Button>
             <Button type="submit" disabled={loading || !name.trim()}>
-              {loading ? "Creating..." : "Create"}
+              {loading ? "创建中..." : "创建"}
             </Button>
           </div>
         </form>

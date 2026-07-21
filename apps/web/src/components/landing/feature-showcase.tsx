@@ -29,7 +29,7 @@ function CanvasVisual() {
     <div className="aspect-[4/3] relative overflow-hidden rounded-xl">
       <Image
         src="/images/showcase/showcase-5.jpg"
-        alt="AI canvas multi-person scene composition"
+        alt="AI 画布多人场景合成"
         width={800}
         height={600}
         unoptimized
@@ -46,7 +46,7 @@ function ChatVisual() {
     <div className="aspect-[4/3] relative overflow-hidden rounded-xl">
       <Image
         src="/images/showcase/showcase-10.jpg"
-        alt="AI understanding creative intent for fashion styling"
+        alt="AI 理解时尚造型创意意图"
         width={800}
         height={600}
         unoptimized
@@ -63,7 +63,7 @@ function BrandVisual() {
     <div className="aspect-[4/3] relative overflow-hidden rounded-xl">
       <Image
         src="/images/showcase/showcase-11.jpg"
-        alt="Consistent brand visual aesthetic"
+        alt="一致的品牌视觉美学"
         width={800}
         height={600}
         unoptimized
@@ -80,7 +80,7 @@ function EditVisual() {
     <div className="aspect-[4/3] relative overflow-hidden rounded-xl">
       <Image
         src="/images/showcase/showcase-3.jpg"
-        alt="Pixel-level precision control for design elements"
+        alt="设计元素的像素级精确控制"
         width={800}
         height={600}
         unoptimized
@@ -135,7 +135,7 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     icon: Layout,
-    title: "AI Canvas -- 画布级创作",
+    title: "AI 画布，画布级创作",
     description:
       "在无限画布上与 AI 协作。从一个简单的想法开始，AI 帮你构建完整的设计系统——布局、配色、排版，一切所见即所得。",
     visual: <CanvasVisual />,
@@ -145,7 +145,7 @@ const FEATURES: Feature[] = [
   },
   {
     icon: MessageSquare,
-    title: "智能对话 -- 理解创意意图",
+    title: "智能对话，理解创意意图",
     description:
       "不是冰冷的指令执行。lovart.dofe 理解你的设计需求，主动提出建议，在对话中迭代出最佳方案。",
     visual: <ChatVisual />,
@@ -155,7 +155,7 @@ const FEATURES: Feature[] = [
   },
   {
     icon: Palette,
-    title: "风格一致 -- 品牌设计系统",
+    title: "风格一致，构建品牌设计系统",
     description:
       "上传你的品牌素材，AI 自动理解品牌调性。无论生成多少作品，始终保持风格统一。",
     visual: <BrandVisual />,
@@ -165,7 +165,7 @@ const FEATURES: Feature[] = [
   },
   {
     icon: MousePointer,
-    title: "精准编辑 -- 像素级控制",
+    title: "精准编辑，像素级控制",
     description:
       "AI 生成只是起点。在画布上直接修改每一个元素，精确调整到你满意为止。",
     visual: <EditVisual />,

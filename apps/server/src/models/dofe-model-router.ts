@@ -2,14 +2,33 @@ import type { ServerEnv } from "../config/env.js";
 import { logOperationalWarning } from "../utils/operational-log.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
+const CHAT_MODEL_TYPES = new Set(["llm", "text"]);
 
 export type DofeModelProtocol = "anthropic" | "gemini" | "openai";
+
+/** Public, generation-relevant subset of Models capabilityMetadata. */
+export type DofeGenerationCapabilityMetadata = {
+  resolutions?: string[];
+  ratios?: string[];
+  durationSeconds?: { min?: number; max?: number; step?: number };
+  maxInputAssets?: number;
+  supportsGenerateAudio?: boolean;
+};
 
 export type DofeRouterModel = {
   id: string;
   ownedBy?: string;
   modelType?: string;
   capabilities?: string[];
+  /**
+   * Models-authoritative preferred protocol, projected from the capability
+   * endpoint when the gateway exposes it. Undefined until the catalog refresh
+   * observes it; `resolveDofeModelProtocol` then falls back to alias prefixes.
+   */
+  preferredProtocol?: DofeModelProtocol;
+  supportedProtocols?: DofeModelProtocol[];
+  /** Capability-keyed public parameter boundaries supplied by Models. */
+  capabilityMetadata?: Record<string, DofeGenerationCapabilityMetadata>;
 };
 
 type OpenAIModelListResponse = {
@@ -18,8 +37,85 @@ type OpenAIModelListResponse = {
 
 type ModelCapabilitiesResponse = {
   model_type?: unknown;
-  capabilities?: Array<{ capabilityName?: unknown }>;
+  capabilities?: Array<{
+    capabilityName?: unknown;
+    capabilityMetadata?: unknown;
+  }>;
+  preferred_protocol?: unknown;
+  supported_protocols?: unknown;
 };
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string")
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function parseNumberRange(
+  value: unknown,
+): DofeGenerationCapabilityMetadata["durationSeconds"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const range = value as Record<string, unknown>;
+  const result = Object.fromEntries(
+    ["min", "max", "step"].flatMap((key) => {
+      const candidate = range[key];
+      return typeof candidate === "number" && Number.isFinite(candidate)
+        ? [[key, candidate]]
+        : [];
+    }),
+  ) as NonNullable<DofeGenerationCapabilityMetadata["durationSeconds"]>;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Models already strips provider-private metadata. Validate the remaining
+ * boundary before caching it so malformed catalog data cannot change request
+ * validation or reach the browser.
+ */
+export function parseDofeGenerationCapabilityMetadata(
+  value: unknown,
+): DofeGenerationCapabilityMetadata | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const metadata = value as Record<string, unknown>;
+  const resolutions = parseStringArray(metadata.resolutions);
+  const ratios = parseStringArray(metadata.ratios);
+  const durationSeconds = parseNumberRange(metadata.durationSeconds);
+  const result: DofeGenerationCapabilityMetadata = {
+    ...(resolutions ? { resolutions } : {}),
+    ...(ratios ? { ratios } : {}),
+    ...(durationSeconds ? { durationSeconds } : {}),
+    ...(typeof metadata.maxInputAssets === "number" &&
+    Number.isInteger(metadata.maxInputAssets) &&
+    metadata.maxInputAssets >= 0
+      ? { maxInputAssets: metadata.maxInputAssets }
+      : {}),
+    ...(typeof metadata.supportsGenerateAudio === "boolean"
+      ? { supportsGenerateAudio: metadata.supportsGenerateAudio }
+      : {}),
+  };
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Validate and coerce an unknown value into a DofeModelProtocol. Returns
+ * undefined for anything that is not one of the supported protocol identifiers
+ * so we never pollute the cache with an invalid projection.
+ */
+export function parseDofeModelProtocol(
+  value: unknown,
+): DofeModelProtocol | undefined {
+  if (value === "anthropic" || value === "gemini" || value === "openai") {
+    return value;
+  }
+  return undefined;
+}
 
 type FetchLike = typeof fetch;
 export type DofeModelCatalog = {
@@ -86,36 +182,85 @@ export function createDofeModelCatalog(
         ];
       },
     );
-    const models = (
-      await Promise.all(
-        aliases.map(async (entry): Promise<DofeRouterModel> => {
-          const capabilityResponse = await fetchFn(
-            `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models/${encodeURIComponent(entry.id)}/capabilities`,
-            { headers: { Authorization: `Bearer ${apiKey}` } },
+    // Fetch each alias's capability doc. Use allSettled so one flaky capability
+    // endpoint cannot empty the whole catalog — without a capability doc we
+    // cannot classify model_type, so we drop that alias from the typed lists
+    // but keep every other model. Generation still routes correctly via the
+    // sole-provider fallback in the registry.
+    const settled = await Promise.allSettled(
+      aliases.map(async (entry): Promise<DofeRouterModel> => {
+        const capabilityResponse = await fetchFn(
+          `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models/${encodeURIComponent(entry.id)}/capabilities`,
+          { headers: { Authorization: `Bearer ${apiKey}` } },
+        );
+        if (!capabilityResponse.ok) {
+          throw new Error(
+            `DoFe capability request failed for ${entry.id} with HTTP ${capabilityResponse.status}`,
           );
-          if (!capabilityResponse.ok) {
-            throw new Error(
-              `DoFe capability request failed for ${entry.id} with HTTP ${capabilityResponse.status}`,
-            );
-          }
-          const capability =
-            (await capabilityResponse.json()) as ModelCapabilitiesResponse;
-          return {
-            ...entry,
-            ...(typeof capability.model_type === "string"
-              ? { modelType: capability.model_type }
-              : {}),
-            capabilities: Array.isArray(capability.capabilities)
-              ? capability.capabilities.flatMap((item) =>
-                  typeof item?.capabilityName === "string"
-                    ? [item.capabilityName]
-                    : [],
-                )
-              : [],
-          };
-        }),
-      )
-    ).sort((left, right) => left.id.localeCompare(right.id));
+        }
+        const capability =
+          (await capabilityResponse.json()) as ModelCapabilitiesResponse;
+        const preferredProtocol = parseDofeModelProtocol(
+          capability.preferred_protocol,
+        );
+        const supportedProtocols = Array.isArray(capability.supported_protocols)
+          ? capability.supported_protocols
+              .map(parseDofeModelProtocol)
+              .filter((p): p is DofeModelProtocol => p !== undefined)
+          : undefined;
+        // Cache the authoritative projection so deep-agent's synchronous
+        // protocol resolver can use it without an extra round trip.
+        if (preferredProtocol) {
+          cacheDofeModelProtocol(entry.id, preferredProtocol);
+        }
+        return {
+          ...entry,
+          ...(typeof capability.model_type === "string"
+            ? { modelType: capability.model_type }
+            : {}),
+          capabilities: Array.isArray(capability.capabilities)
+            ? capability.capabilities.flatMap((item) =>
+                typeof item?.capabilityName === "string"
+                  ? [item.capabilityName]
+                  : [],
+              )
+            : [],
+          ...(Array.isArray(capability.capabilities)
+            ? (() => {
+                const entries = capability.capabilities.flatMap((item) => {
+                  if (typeof item?.capabilityName !== "string") return [];
+                  const metadata = parseDofeGenerationCapabilityMetadata(
+                    item.capabilityMetadata,
+                  );
+                  return metadata
+                    ? [[item.capabilityName, metadata] as const]
+                    : [];
+                });
+                return entries.length > 0
+                  ? { capabilityMetadata: Object.fromEntries(entries) }
+                  : {};
+              })()
+            : {}),
+          ...(preferredProtocol ? { preferredProtocol } : {}),
+          ...(supportedProtocols ? { supportedProtocols } : {}),
+        };
+      }),
+    );
+    const dropped: string[] = [];
+    const models = settled
+      .flatMap((result, idx) => {
+        if (result.status === "fulfilled") return [result.value];
+        const failedId = aliases[idx]?.id;
+        if (failedId) dropped.push(failedId);
+        return [];
+      })
+      .sort((left, right) => left.id.localeCompare(right.id));
+    if (dropped.length > 0) {
+      console.warn(
+        `[model-router] capability fetch dropped ${dropped.length}/${aliases.length} aliases from catalog`,
+        { dropped },
+      );
+    }
 
     cache = { models, expiresAt: now() + cacheTtlMs };
     console.info("[model-router] catalog_refreshed", {
@@ -128,8 +273,14 @@ export function createDofeModelCatalog(
   return {
     async listChatModels() {
       const models = await getModels();
+      // `/v1/models` is a unified visibility list. Only Models' explicit LLM
+      // projection is compatible with the agent chat surface; accepting every
+      // non-image/video type would expose embedding, audio, or transcode aliases
+      // to a text-completion client. `text` remains for older gateway payloads.
       return models.filter(
-        (model) => model.modelType !== "image" && model.modelType !== "video",
+        (model) =>
+          model.modelType !== undefined &&
+          CHAT_MODEL_TYPES.has(model.modelType),
       );
     },
     async listImageModels() {
@@ -166,7 +317,31 @@ export function createDofeModelCatalog(
   }
 }
 
+/**
+ * Process-local cache of the Models-authoritative preferred protocol per alias.
+ * Populated by the catalog refresh; read synchronously by deep-agent when it
+ * selects the LangChain client. Falls back to alias-prefix matching on a miss.
+ */
+const preferredProtocolCache = new Map<string, DofeModelProtocol>();
+
+export function cacheDofeModelProtocol(
+  modelId: string,
+  protocol: DofeModelProtocol,
+): void {
+  preferredProtocolCache.set(modelId, protocol);
+}
+
+/** Test/diagnostic helper: clears the protocol projection cache. */
+export function resetDofeModelProtocolCache(): void {
+  preferredProtocolCache.clear();
+}
+
 export function resolveDofeModelProtocol(modelId: string): DofeModelProtocol {
+  const projected = preferredProtocolCache.get(modelId);
+  if (projected) return projected;
+
+  // Backward-compatible fallback: until/unless the gateway projects a protocol,
+  // keep the existing alias-prefix heuristic so routing still works.
   if (modelId.startsWith("gemini-")) return "gemini";
   if (modelId.startsWith("claude-")) return "anthropic";
   return "openai";

@@ -79,6 +79,32 @@ const PROVISIONING_ROW: Row = {
 };
 
 describe("UserCredentialsRepository.takeProvisionLock", () => {
+  it("caps ready candidate lookup at two rows so callers can fail closed on team ambiguity", async () => {
+    const queries: RecordedQuery[] = [];
+    const pool = {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        return {
+          rows: [READY_ROW, { ...READY_ROW, id: "row-2", sso_team_id: "t2" }],
+          rowCount: 2,
+        };
+      },
+      async transaction<T>() {
+        throw new Error("unexpected transaction");
+      },
+      end: async () => {},
+    };
+    const repository = createUserCredentialsRepository(pool as never);
+
+    const rows = await repository.findReadyCandidates("u1");
+
+    expect(rows.map((row) => row.ssoTeamId)).toEqual(["t1", "t2"]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.text).toContain("provision_state = 'ready'");
+    expect(queries[0]?.text).toContain("limit 2");
+    expect(queries[0]?.params).toEqual(["u1"]);
+  });
+
   it("acquires a transaction-scoped advisory lock and returns ready when the row is ready", async () => {
     const { pool, queries } = makeRecordingPool(READY_ROW);
     const repository = createUserCredentialsRepository(pool as never);
@@ -109,8 +135,12 @@ describe("UserCredentialsRepository.takeProvisionLock", () => {
     });
 
     const query = queries.at(-1);
-    expect(query?.text).toContain("case when $4 then 'provisioning' else 'failed' end");
-    expect(query?.text).toContain("coalesce(user_credentials.provisioning_started_at, now())");
+    expect(query?.text).toContain(
+      "case when $4 then 'provisioning' else 'failed' end",
+    );
+    expect(query?.text).toContain(
+      "coalesce(user_credentials.provisioning_started_at, now())",
+    );
     expect(query?.params).toEqual(["u1", "t1", "sanitized", true]);
   });
 

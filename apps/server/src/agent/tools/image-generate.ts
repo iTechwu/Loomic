@@ -1,5 +1,6 @@
 import { tool } from "langchain";
 import { z } from "zod";
+import { DEFAULT_IMAGE_MODEL } from "@lovart.dofe/shared";
 
 import { randomUUID } from "node:crypto";
 
@@ -10,7 +11,7 @@ import {
   type AvailableModel,
 } from "../../generation/providers/registry.js";
 
-const DEFAULT_MODEL = "flux-kontext-pro";
+const DEFAULT_MODEL = DEFAULT_IMAGE_MODEL;
 
 /**
  * Build the zod schema dynamically from the models available in the registry.

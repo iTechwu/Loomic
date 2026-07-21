@@ -73,7 +73,7 @@ export function useImageAttachments(accessToken: string, projectId?: string) {
             file,
             preview: "",
             uploading: false,
-            error: "File exceeds 10MB limit",
+            error: "文件大小超过 10MB 限制",
             mimeType: file.type,
             source: "upload",
           });
@@ -108,7 +108,7 @@ export function useImageAttachments(accessToken: string, projectId?: string) {
             setAttachments((prev) =>
               prev.map((a) =>
                 a.id === id
-                  ? { ...a, uploading: false, error: err instanceof Error ? err.message : "Upload failed" }
+                  ? { ...a, uploading: false, error: err instanceof Error ? err.message : "上传失败" }
                   : a,
               ),
             );
@@ -171,7 +171,7 @@ export function useImageAttachments(accessToken: string, projectId?: string) {
           setAttachments((prev) =>
             prev.map((a) =>
               a.id === id
-                ? { ...a, uploading: false, error: err instanceof Error ? err.message : "Upload failed" }
+                ? { ...a, uploading: false, error: err instanceof Error ? err.message : "上传失败" }
                 : a,
             ),
           );

@@ -51,11 +51,11 @@ export function AgentSection({
 
     try {
       await onSave(selectedModel);
-      setFeedback({ type: "success", message: "Agent settings updated." });
+      setFeedback({ type: "success", message: "智能体设置已更新。" });
     } catch {
       setFeedback({
         type: "error",
-        message: "Failed to update settings. Please try again.",
+        message: "更新设置失败，请重试。",
       });
     } finally {
       setSaving(false);
@@ -64,16 +64,16 @@ export function AgentSection({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-1">Agent</h2>
+      <h2 className="text-lg font-semibold mb-1">智能体</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Configure the default AI model for your workspace.
+        配置工作区默认使用的 AI 模型。
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
         <div className="space-y-2">
-          <Label htmlFor="defaultModel">Default Model</Label>
+          <Label htmlFor="defaultModel">默认模型</Label>
           {modelsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading models...</p>
+            <p className="text-sm text-muted-foreground">正在加载模型...</p>
           ) : (
             <select
               id="defaultModel"
@@ -89,7 +89,7 @@ export function AgentSection({
             </select>
           )}
           <p className="text-xs text-muted-foreground">
-            This model will be used for all new agent runs in your workspace.
+            此模型将用于工作区内后续新建的所有智能体任务。
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export function AgentSection({
         )}
 
         <Button type="submit" disabled={saving || !hasChanges} size="sm">
-          {saving ? "Saving..." : "Save"}
+          {saving ? "保存中..." : "保存"}
         </Button>
       </form>
     </div>

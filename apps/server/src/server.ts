@@ -12,9 +12,41 @@ if (process.env.GLOBAL_AGENT_HTTP_PROXY) {
 import { buildApp } from "./app.js";
 import { loadServerEnv } from "./config/env.js";
 import { migrate } from "./database/migrate.js";
+import { checkInternalApiSecretSmoke } from "./features/credentials/models-client.js";
+import { runDefaultModelsBootSmoke } from "./models/default-model-smoke.js";
 import { withStartupTimeout } from "./startup-timeout.js";
 
 const env = loadServerEnv();
+
+// Fail fast when the INTERNAL_API_SECRET is rejected by models.dofe.ai. A 401
+// means the trust root is wrong (rotated on one side only, or a copied example
+// value). By default this is a loud warning so a transiently-unreachable models
+// never takes Lovart down; set LOVART_STRICT_INTERNAL_SECRET_SMOKE=true in
+// production to make a 401 fatal and block boot.
+const strictSecretSmoke =
+  process.env.LOVART_STRICT_INTERNAL_SECRET_SMOKE === "true";
+if (env.internalApiSecret && env.dofeModelBaseUrl) {
+  const smoke = await checkInternalApiSecretSmoke({
+    baseUrl: env.dofeModelBaseUrl,
+    serviceName: env.lovartModelsServiceName ?? "lovart.dofe.ai",
+    internalApiSecret: env.internalApiSecret,
+  });
+  if (!smoke.ok && smoke.status === 401) {
+    const message =
+      "[server] INTERNAL_API_SECRET rejected by models (HTTP 401). Rotate to a fresh value matching models.dofe.ai.";
+    if (strictSecretSmoke) {
+      console.error(message);
+      process.exit(1);
+    }
+    console.warn(
+      `${message} (non-fatal; set LOVART_STRICT_INTERNAL_SECRET_SMOKE=true to block boot)`,
+    );
+  } else if (!smoke.ok) {
+    console.warn(
+      `[server] INTERNAL_API_SECRET smoke check did not return 200 (status=${smoke.status}); continuing because models may be temporarily unreachable.`,
+    );
+  }
+}
 
 // Apply pending migrations before serving traffic. The API server owns this so
 // concurrent workers (which do not import server.ts) never race on
@@ -37,6 +69,11 @@ if (runMigrationsOnBoot && env.databaseUrl) {
 const app = buildApp({
   env,
 });
+
+// Verify each DEFAULT_*_MODEL alias exists in the ixicai /v1/models catalog
+// before serving traffic. Warns on a miss by default; fatal (process.exit)
+// when LOVART_STRICT_DEFAULT_MODELS=true, so a bad default cannot serve users.
+await runDefaultModelsBootSmoke(env);
 
 const host = process.env.HOST ?? "127.0.0.1";
 

@@ -32,19 +32,42 @@ function ProviderLogo({ provider }: { provider: string }) {
   return null;
 }
 
-export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
+export function AgentModelSelector({
+  accessToken,
+  compact,
+}: {
+  accessToken?: string | undefined;
+  compact?: boolean;
+} = {}) {
   const { model, setModel } = useAgentModel();
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const selectedModelRef = useRef(model);
   const popoverRef = useRef<HTMLDivElement>(null);
+  selectedModelRef.current = model;
 
   // Fetch available models
   useEffect(() => {
-    fetchModels()
-      .then((data) => setModels(data.models))
+    if (!accessToken) {
+      setModels([]);
+      return;
+    }
+    let active = true;
+    fetchModels(accessToken)
+      .then((data) => {
+        if (!active) return;
+        setModels(data.models);
+        const selectedModel = selectedModelRef.current;
+        if (selectedModel && !data.models.some((candidate) => candidate.id === selectedModel)) {
+          setModel(null);
+        }
+      })
       .catch(() => {});
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [accessToken, setModel]);
 
   // Close on outside click
   useEffect(() => {
@@ -75,7 +98,7 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
 
   const isActive = model !== null;
   const selectedModel = models.find((m) => m.id === model);
-  const displayLabel = selectedModel ? selectedModel.name : "Agent";
+  const displayLabel = selectedModel ? selectedModel.name : "智能体";
 
   // Auto-positioning popover (above or below based on available space)
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
@@ -141,7 +164,7 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
             className="w-56 rounded-xl border border-border bg-popover p-2 shadow-lg"
           >
             <div className="mb-2 px-2 text-xs font-medium text-muted-foreground">
-              Agent Model
+              智能体模型
             </div>
             {/* Auto option */}
             <button

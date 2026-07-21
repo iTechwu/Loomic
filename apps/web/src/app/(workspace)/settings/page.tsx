@@ -25,7 +25,7 @@ type SettingsTab = "profile" | "agent";
 
 const tabs: Array<{ id: SettingsTab; label: string }> = [
   { id: "profile", label: "Profile" },
-  { id: "agent", label: "Agent" },
+  { id: "agent", label: "智能体" },
 ];
 
 export default function SettingsPage() {
@@ -108,7 +108,11 @@ export default function SettingsPage() {
     [getToken],
   );
 
-  const stableFetchModels = useCallback(() => fetchModels(), []);
+  const stableFetchModels = useCallback(async () => {
+    const token = getToken();
+    if (!token) throw new ApiAuthError();
+    return fetchModels(token);
+  }, [getToken]);
 
   if (pageLoading) {
     return <SettingsSkeleton />;

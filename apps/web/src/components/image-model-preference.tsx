@@ -118,7 +118,7 @@ export function ImageModelPreferencePopover({
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {tab === "image" ? "Image" : "Video"}
+                {tab === "image" ? "图片" : "视频"}
               </button>
             ))}
           </div>
@@ -128,7 +128,7 @@ export function ImageModelPreferencePopover({
         <div className="flex flex-col gap-2 px-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-foreground">
-              {activeTab === "image" ? "Image Model" : "Video Model"}
+              {activeTab === "image" ? "图片模型" : "视频模型"}
             </span>
             <button
               type="button"
@@ -146,13 +146,13 @@ export function ImageModelPreferencePopover({
                   currentPreference.mode === "auto" ? "bg-accent" : "bg-muted-foreground"
                 }`}
               />
-              {currentPreference.mode === "auto" ? "Auto" : "Manual"}
+              {currentPreference.mode === "auto" ? "自动" : "手动"}
             </button>
           </div>
           <span className="text-[11px] text-muted-foreground">
             {currentPreference.mode === "auto"
-              ? `Agent automatically selects the best model for each ${activeTab} task`
-              : `Agent chooses from your selected models for each ${activeTab} task`}
+              ? `智能体将为每个${activeTab === "image" ? "图片" : "视频"}任务自动选择最佳模型`
+              : `智能体将从你已选的模型中为每个${activeTab === "image" ? "图片" : "视频"}任务选择模型`}
           </span>
         </div>
 

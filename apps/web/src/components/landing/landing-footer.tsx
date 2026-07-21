@@ -189,7 +189,7 @@ export function LandingFooter() {
         {/* Bottom bar */}
         <div className="mt-12 pt-6 border-t border-border flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            &copy; {currentYear} lovart.dofe. All rights reserved.
+            &copy; {currentYear} lovart.dofe。保留所有权利。
           </p>
           <span className="text-sm text-muted-foreground">简体中文</span>
         </div>

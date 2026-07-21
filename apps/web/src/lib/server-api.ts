@@ -262,11 +262,13 @@ export async function updateWorkspaceSettings(
   return (await response.json()) as WorkspaceSettingsResponse;
 }
 
-export async function fetchModels(): Promise<ModelListResponse> {
-  const response = await fetch(`${getServerBaseUrl()}/api/models`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch models: ${response.status}`);
-  }
+export async function fetchModels(
+  accessToken: string,
+): Promise<ModelListResponse> {
+  const response = await fetch(`${getServerBaseUrl()}/api/models`, {
+    headers: authHeaders(accessToken),
+  });
+  if (!response.ok) return handleErrorResponse(response);
   return (await response.json()) as ModelListResponse;
 }
 
@@ -452,6 +454,16 @@ export type VideoModelInfo = {
   creditCost?: number;
   accessible?: boolean;
   minTier?: string;
+  capabilityMetadata?: Record<
+    string,
+    {
+      resolutions?: string[];
+      ratios?: string[];
+      durationSeconds?: { min?: number; max?: number; step?: number };
+      maxInputAssets?: number;
+      supportsGenerateAudio?: boolean;
+    }
+  >;
 };
 
 export async function fetchVideoModels(

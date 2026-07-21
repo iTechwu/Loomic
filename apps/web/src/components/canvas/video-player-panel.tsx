@@ -71,7 +71,7 @@ export function VideoPlayerPanel({
           <svg className="h-4 w-4 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          <span className="truncate">{title || "Video"}</span>
+          <span className="truncate">{title || "视频"}</span>
           {durationSeconds != null && (
             <span className="text-xs text-muted-foreground">{durationSeconds}s</span>
           )}
@@ -106,7 +106,7 @@ export function VideoPlayerPanel({
       <div className="flex items-center justify-end px-3 py-2 border-t border-border/50">
         <a
           href={videoUrl}
-          download={`${title || "video"}.mp4`}
+          download={`${title || "视频"}.mp4`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/80 transition-colors"
