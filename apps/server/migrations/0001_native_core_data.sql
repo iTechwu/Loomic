@@ -69,7 +69,7 @@ create table if not exists asset_objects (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   project_id uuid,
-  bucket text not null check (bucket in ('project-assets', 'user-avatars', 'dofe-system')),
+  bucket text not null check (bucket in ('project-assets', 'user-avatars')),
   object_path text not null check (char_length(btrim(object_path)) > 0),
   mime_type text,
   byte_size bigint check (byte_size is null or byte_size >= 0),
