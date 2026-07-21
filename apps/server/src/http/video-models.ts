@@ -21,6 +21,7 @@ export async function registerVideoModelRoutes(
       description: m.description,
       iconUrl: m.iconUrl,
       provider: m.provider,
+      capabilityMetadata: m.capabilityMetadata,
     }));
 
     return reply.code(200).send({ models: annotated });

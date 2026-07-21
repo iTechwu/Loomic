@@ -172,6 +172,48 @@ describe("DofeVideoProvider", () => {
       },
     ]);
     expect(body.params.videoOperation).toBeUndefined();
+    expect(body.params.resolution).toBeUndefined();
+  });
+
+  it("rejects only parameter values outside an explicit Models boundary", async () => {
+    const { fetchMock, getRequestInit } = captureBodyFetchMock();
+    const { provider, modelInfo } = makeVideoProvider({ fetchMock });
+    provider.setModels([
+      {
+        ...modelInfo,
+        capabilityMetadata: {
+          text_to_video: {
+            resolutions: ["1080p"],
+            durationSeconds: { min: 4, max: 8 },
+            maxInputAssets: 1,
+          },
+        },
+      },
+    ]);
+
+    await expect(
+      provider.generate({
+        auth: { designApiKey: "test-key" },
+        model: "happyhorse-1.0-video-edit",
+        prompt: "A test video",
+        resolution: "720p",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(getRequestInit()).toBeUndefined();
+
+    await provider.generate({
+      auth: { designApiKey: "test-key" },
+      model: "happyhorse-1.0-video-edit",
+      prompt: "A test video",
+      resolution: "1080p",
+      duration: 4,
+    });
+    const requestInit = getRequestInit();
+    if (!requestInit) throw new Error("expected a generation request");
+    expect(JSON.parse(requestInit.body as string).params).toMatchObject({
+      resolution: "1080p",
+      duration: 4,
+    });
   });
 
   it("maps inputVideo to video_url with source_video role for video_edit", async () => {

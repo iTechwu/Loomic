@@ -107,6 +107,15 @@ export interface VideoProvider {
   generate(params: VideoGenerateParams): Promise<GeneratedVideo>;
 }
 
+/** Public model capability bounds used to constrain a generation request. */
+export interface VideoCapabilityMetadata {
+  resolutions?: string[];
+  ratios?: string[];
+  durationSeconds?: { min?: number; max?: number; step?: number };
+  maxInputAssets?: number;
+  supportsGenerateAudio?: boolean;
+}
+
 /** Extended model info with video-specific capabilities metadata. */
 export interface VideoModelInfo extends ModelInfo {
   capabilities: {
@@ -115,6 +124,8 @@ export interface VideoModelInfo extends ModelInfo {
     videoToVideo: boolean;
     audio: boolean;
   };
+  /** Capability-keyed public parameter boundaries from the Models catalog. */
+  capabilityMetadata?: Record<string, VideoCapabilityMetadata>;
   /** Omitted when the authorized models catalog does not project limit metadata. */
   limits?: {
     maxDuration: number;

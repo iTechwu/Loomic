@@ -25,6 +25,10 @@ export function toCatalogVideoModelInfo(
   model: DofeRouterModel,
 ): VideoModelInfo {
   const capabilities = new Set(model.capabilities ?? []);
+  const capabilityMetadata = model.capabilityMetadata;
+  const audioSupported = Object.values(capabilityMetadata ?? {}).some(
+    (metadata) => metadata.supportsGenerateAudio === true,
+  );
   return {
     id: model.id,
     displayName: model.id,
@@ -33,10 +37,9 @@ export function toCatalogVideoModelInfo(
       textToVideo: capabilities.has("text_to_video"),
       imageToVideo: capabilities.has("image_to_video"),
       videoToVideo: capabilities.has("video_to_video"),
-      // The public catalog response does not project provider audio metadata.
-      // Keep the control disabled until models exposes an explicit capability.
-      audio: false,
+      audio: audioSupported,
     },
+    ...(capabilityMetadata ? { capabilityMetadata } : {}),
   };
 }
 

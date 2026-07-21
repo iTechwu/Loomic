@@ -32,7 +32,13 @@ function ProviderLogo({ provider }: { provider: string }) {
   return null;
 }
 
-export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
+export function AgentModelSelector({
+  accessToken,
+  compact,
+}: {
+  accessToken?: string | undefined;
+  compact?: boolean;
+} = {}) {
   const { model, setModel } = useAgentModel();
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -43,8 +49,12 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
 
   // Fetch available models
   useEffect(() => {
+    if (!accessToken) {
+      setModels([]);
+      return;
+    }
     let active = true;
-    fetchModels()
+    fetchModels(accessToken)
       .then((data) => {
         if (!active) return;
         setModels(data.models);
@@ -57,7 +67,7 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
     return () => {
       active = false;
     };
-  }, [setModel]);
+  }, [accessToken, setModel]);
 
   // Close on outside click
   useEffect(() => {

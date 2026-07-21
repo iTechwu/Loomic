@@ -263,7 +263,18 @@ export function createCredentialsService(
     },
 
     async getByUserId(userId) {
-      const row = await repository.findReady(userId);
+      // The asynchronous model-call paths persist only the local user id, not
+      // the active SSO team. A multi-team result therefore has no trustworthy
+      // selection rule. Fail closed rather than charging or exposing a token
+      // from whichever row happens to have the latest provisioned_at value.
+      const readyRows = await repository.findReadyCandidates(userId);
+      const row = readyRows.length === 1 ? readyRows[0] : null;
+      if (readyRows.length > 1) {
+        logger.warn("[credentials] resolve_blocked_ambiguous_team", {
+          failureCategory: "credential_team_ambiguous",
+          readyCredentialCount: readyRows.length,
+        });
+      }
       if (!row || !row.apikeyCiphertext || !row.secretAccessKeyCiphertext) {
         throw new CredentialsNotProvisionedError(userId);
       }

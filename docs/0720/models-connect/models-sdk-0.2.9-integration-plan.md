@@ -269,6 +269,27 @@ models 的 provision endpoint 是按 owner 的服务端幂等 ensure，会在恢
 - [x] 完整门禁通过：`verify:migrations`（13）、workspace 15、server 25 files / 88 tests、web 23 files / 73 tests、shared 24 tests、`lint:baseline`（778 <= 832）和 `build`。
 - [x] 最终复审：所有 `fetchImageModels` / `fetchVideoModels` 调用均传入既有 SSO session token；浏览器目录未包含 models SDK、内部 secret 或 tenant credential；无当前未勾选实施项。
 
+### Cycle 35 — team-scoped 凭据读取歧义收敛（2026-07-21）
+
+- **发现**：models 凭据按 `(ssoUserId, ssoTeamId)` 发放且本地允许同一 Lovart user 有多条 team-scoped ready 行；但 HTTP generation、agent runtime 和异步 job 只持有本地 `userId`。原 `findReady(userId)` 以 `provisioned_at desc limit 1` 静默选择最近记录，可能在多团队情况下使用错误 team 的 tenant key。
+- [x] `UserCredentialsRepository` 新增 `findReadyCandidates(userId)`，只读取最多两条 ready 行，足以区分“唯一可用”与“多团队歧义”，不会扩大密钥读取或暴露任何密文。
+- [x] `CredentialsService.getByUserId` 仅在恰好一条 ready row 时解密；零条或多条均保持 `CredentialsNotProvisionedError` / HTTP 424。多条时记录脱敏 `credential_team_ambiguous` 和数量，不记录 user/team、密文或 key。
+- [x] 新增 service 回归覆盖：两条不同 team 的 ready row 不会选择任一凭据；repository 回归验证 SQL 含 ready 状态过滤与 `limit 2`。`credentials-service` + `credentials-repository` 20 tests、server typecheck、Biome 与 `git diff --check` 通过。
+- [x] 下一轮审查目标：catalog route 的 SSO 鉴权已完成，继续确认其全局 gateway catalog 投影不会在语义上被标记为 per-user/tenant 授权目录。
+
+### Cycle 36 — chat catalog 鉴权闭环（2026-07-21）
+
+- **发现**：Cycle 30–34 仅收紧了 image/video catalog；同样返回 gateway chat alias 的 `/api/models` 和 `fetchModels()` 仍是匿名路径，与 workspace 的 SSO 边界不一致。
+- [x] `registerModelRoutes` 现接收并调用 `RequestAuthenticator`，缺失或无效 bearer 统一返回 `401 unauthorized`，在鉴权前不读取 gateway catalog。
+- [x] web `fetchModels` 改为必需 bearer 并复用 `handleErrorResponse`；settings、home prompt、chat input 的 agent selector 显式传递既有 session token，无 token 时不发目录请求。
+- [x] route 回归覆盖三类 catalog endpoint 的匿名拒绝及认证响应无 bearer 泄漏；web API 测试覆盖 chat catalog bearer 和 401 映射。发现并更正 `chat-sidebar.test.tsx` 的旧英文 placeholder 断言，使其对应当前中文输入文案。server/web typecheck、定向 10 tests、route Biome 和 `git diff --check` 通过。
+
+### Cycle 37 — chat 类型投影 fail-closed（2026-07-21）
+
+- **发现**：models `/v1/models` 是按 API key 可见性裁剪后的统一 alias 列表，`/capabilities` 公开 `model_type`；上游可见类型包含 `llm`、`image`、`video`、`text_embedding`、`audio`、`speech2text` 和 `transcode`。原 `listChatModels` 仅排除 image/video，会将非对话 alias 提供给 LangChain chat client。
+- [x] `listChatModels` 改为 explicit allow-list：只接纳上游 `llm`，并兼容旧 gateway 的 `text` 投影；缺失或未知 `model_type` 同样不进入 agent selector。
+- [x] 新增混合 catalog 回归：`llm`/`text` 被保留，`text_embedding`/`audio`/`transcode` 均被排除。router + default-model smoke 14 tests、server typecheck、Biome 与 `git diff --check` 通过。
+
 ### Cycle 15 — 深审修复：SSO 主体变更重签纳入事务锁（2026-07-20）
 
 - **发现**：Cycle 13 将“ready 行的 `ssoUserId` 不匹配”视为一次性迁移路径，并让 service 在拿到 `ready` 后直接 fall through 发放。两个并发登录可同时读取 `ready`，分别绕过 `provisioning` 状态并发出两个非幂等 POST，与 P1 的同 user/team 单次发放不变量冲突。

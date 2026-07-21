@@ -1,10 +1,7 @@
 "use client";
 
-import {
-  DEFAULT_IMAGE_MODEL,
-  type ImageGenerationPreference,
-} from "@lovart.dofe/shared";
 import { useCallback, useSyncExternalStore } from "react";
+import { DEFAULT_IMAGE_MODEL, type ImageGenerationPreference } from "@lovart.dofe/shared";
 
 const STORAGE_KEY = "lovart.dofe:image-model-preference";
 const DEFAULT_MODEL = DEFAULT_IMAGE_MODEL;
@@ -32,11 +29,7 @@ function getSnapshot(): ImageModelPreference {
     if (raw !== cachedRaw) {
       cachedRaw = raw;
       cachedPreference = raw
-        ? normalizePreference(
-            JSON.parse(raw) as Partial<ImageModelPreference> & {
-              model?: string;
-            },
-          )
+        ? normalizePreference(JSON.parse(raw) as Partial<ImageModelPreference> & { model?: string })
         : defaultPreference;
     }
     return cachedPreference;
@@ -61,8 +54,7 @@ function normalizePreference(
 
   const models = Array.isArray(preference.models)
     ? preference.models.filter(
-        (model): model is string =>
-          typeof model === "string" && model.length > 0,
+        (model): model is string => typeof model === "string" && model.length > 0,
       )
     : typeof preference.model === "string" && preference.model.length > 0
       ? [preference.model]
@@ -75,11 +67,7 @@ function normalizePreference(
 }
 
 export function useImageModelPreference() {
-  const preference = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    getServerSnapshot,
-  );
+  const preference = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const setPreference = useCallback((next: ImageModelPreference) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

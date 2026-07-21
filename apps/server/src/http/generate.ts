@@ -32,10 +32,13 @@ const generateImageRequestSchema = z.object({
 const generateVideoRequestSchema = z.object({
   prompt: z.string().min(1),
   model: z.string().optional(),
-  duration: z.number().int().min(3).max(16).optional(),
+  // Models capabilityMetadata is authoritative for per-alias duration limits.
+  // Keep only protocol-level shape validation here; the adapter and gateway
+  // enforce an explicit model boundary when one is published.
+  duration: z.number().int().positive().optional(),
   resolution: z.enum(["480p", "720p", "1080p", "4k"]).optional(),
   aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional(),
-  inputImages: z.array(z.string()).max(3).optional(),
+  inputImages: z.array(z.string()).optional(),
   inputVideo: z.string().optional(),
   enableAudio: z.boolean().optional(),
 });

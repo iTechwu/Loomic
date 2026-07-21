@@ -129,7 +129,7 @@ describe("ChatSidebar", () => {
     );
 
     const input = await screen.findByPlaceholderText(
-      /start with an idea/i,
+      /从一个想法开始/,
     );
     await userEvent.type(input, "hello loom{Enter}");
 

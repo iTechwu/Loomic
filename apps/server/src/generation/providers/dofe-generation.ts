@@ -118,6 +118,78 @@ type ResolvedVideoOperation = {
   videoRole?: "source_video" | "motion_reference";
 };
 
+function getVideoCapabilityMetadata(
+  params: VideoGenerateParams,
+  modelInfo: VideoModelInfo | undefined,
+) {
+  const capabilityName = params.inputVideo
+    ? "video_to_video"
+    : params.inputImages?.length
+      ? "image_to_video"
+      : "text_to_video";
+  return modelInfo?.capabilityMetadata?.[capabilityName];
+}
+
+function validateVideoParams(
+  params: VideoGenerateParams,
+  modelInfo: VideoModelInfo | undefined,
+): void {
+  const metadata = getVideoCapabilityMetadata(params, modelInfo);
+  if (!metadata) return;
+
+  if (
+    params.resolution &&
+    metadata.resolutions &&
+    !metadata.resolutions.includes(params.resolution)
+  ) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} does not support resolution ${params.resolution}.`,
+    );
+  }
+  if (
+    params.aspectRatio &&
+    metadata.ratios &&
+    !metadata.ratios.includes(params.aspectRatio)
+  ) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} does not support aspect ratio ${params.aspectRatio}.`,
+    );
+  }
+  const duration = metadata.durationSeconds;
+  if (
+    params.duration !== undefined &&
+    ((duration?.min !== undefined && params.duration < duration.min) ||
+      (duration?.max !== undefined && params.duration > duration.max))
+  ) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} does not support duration ${params.duration}s.`,
+    );
+  }
+  if (
+    metadata.maxInputAssets !== undefined &&
+    (params.inputImages?.length ?? 0) > metadata.maxInputAssets
+  ) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} supports at most ${metadata.maxInputAssets} input assets.`,
+    );
+  }
+  if (params.enableAudio === true && metadata.supportsGenerateAudio === false) {
+    throw new GenerationError(
+      "dofe",
+      "invalid_input",
+      `Model ${params.model} does not support audio generation.`,
+    );
+  }
+}
+
 function resolveVideoOperation(
   params: VideoGenerateParams,
   modelInfo: VideoModelInfo | undefined,
@@ -409,13 +481,13 @@ export class DofeVideoProvider implements VideoProvider {
 
   async generate(params: VideoGenerateParams): Promise<GeneratedVideo> {
     const apiKey = requireAuth(params.auth);
-    const resolution = params.resolution ?? "720p";
     const { width, height } = aspectRatioToDimensions(
       params.aspectRatio ?? "16:9",
     );
 
     const modelInfo = this.models.find((m) => m.id === params.model);
     const { operation, videoRole } = resolveVideoOperation(params, modelInfo);
+    validateVideoParams(params, modelInfo);
 
     const task = await createTask(this.baseUrl, apiKey, {
       model: params.model,
@@ -427,8 +499,8 @@ export class DofeVideoProvider implements VideoProvider {
         videoRole,
       ),
       params: {
-        ratio: params.aspectRatio,
-        resolution,
+        ...(params.aspectRatio ? { ratio: params.aspectRatio } : {}),
+        ...(params.resolution ? { resolution: params.resolution } : {}),
         ...(params.duration ? { duration: params.duration } : {}),
         ...(typeof params.enableAudio === "boolean"
           ? { generateAudio: params.enableAudio }

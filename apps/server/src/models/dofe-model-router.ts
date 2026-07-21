@@ -2,8 +2,18 @@ import type { ServerEnv } from "../config/env.js";
 import { logOperationalWarning } from "../utils/operational-log.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
+const CHAT_MODEL_TYPES = new Set(["llm", "text"]);
 
 export type DofeModelProtocol = "anthropic" | "gemini" | "openai";
+
+/** Public, generation-relevant subset of Models capabilityMetadata. */
+export type DofeGenerationCapabilityMetadata = {
+  resolutions?: string[];
+  ratios?: string[];
+  durationSeconds?: { min?: number; max?: number; step?: number };
+  maxInputAssets?: number;
+  supportsGenerateAudio?: boolean;
+};
 
 export type DofeRouterModel = {
   id: string;
@@ -17,6 +27,8 @@ export type DofeRouterModel = {
    */
   preferredProtocol?: DofeModelProtocol;
   supportedProtocols?: DofeModelProtocol[];
+  /** Capability-keyed public parameter boundaries supplied by Models. */
+  capabilityMetadata?: Record<string, DofeGenerationCapabilityMetadata>;
 };
 
 type OpenAIModelListResponse = {
@@ -25,10 +37,74 @@ type OpenAIModelListResponse = {
 
 type ModelCapabilitiesResponse = {
   model_type?: unknown;
-  capabilities?: Array<{ capabilityName?: unknown }>;
+  capabilities?: Array<{
+    capabilityName?: unknown;
+    capabilityMetadata?: unknown;
+  }>;
   preferred_protocol?: unknown;
   supported_protocols?: unknown;
 };
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string")
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function parseNumberRange(
+  value: unknown,
+): DofeGenerationCapabilityMetadata["durationSeconds"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const range = value as Record<string, unknown>;
+  const result = Object.fromEntries(
+    ["min", "max", "step"].flatMap((key) => {
+      const candidate = range[key];
+      return typeof candidate === "number" && Number.isFinite(candidate)
+        ? [[key, candidate]]
+        : [];
+    }),
+  ) as DofeGenerationCapabilityMetadata["durationSeconds"];
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Models already strips provider-private metadata. Validate the remaining
+ * boundary before caching it so malformed catalog data cannot change request
+ * validation or reach the browser.
+ */
+export function parseDofeGenerationCapabilityMetadata(
+  value: unknown,
+): DofeGenerationCapabilityMetadata | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const metadata = value as Record<string, unknown>;
+  const result: DofeGenerationCapabilityMetadata = {
+    ...(parseStringArray(metadata.resolutions)
+      ? { resolutions: parseStringArray(metadata.resolutions) }
+      : {}),
+    ...(parseStringArray(metadata.ratios)
+      ? { ratios: parseStringArray(metadata.ratios) }
+      : {}),
+    ...(parseNumberRange(metadata.durationSeconds)
+      ? { durationSeconds: parseNumberRange(metadata.durationSeconds) }
+      : {}),
+    ...(typeof metadata.maxInputAssets === "number" &&
+    Number.isInteger(metadata.maxInputAssets) &&
+    metadata.maxInputAssets >= 0
+      ? { maxInputAssets: metadata.maxInputAssets }
+      : {}),
+    ...(typeof metadata.supportsGenerateAudio === "boolean"
+      ? { supportsGenerateAudio: metadata.supportsGenerateAudio }
+      : {}),
+  };
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
 /**
  * Validate and coerce an unknown value into a DofeModelProtocol. Returns
@@ -130,9 +206,7 @@ export function createDofeModelCatalog(
         const preferredProtocol = parseDofeModelProtocol(
           capability.preferred_protocol,
         );
-        const supportedProtocols = Array.isArray(
-          capability.supported_protocols,
-        )
+        const supportedProtocols = Array.isArray(capability.supported_protocols)
           ? capability.supported_protocols
               .map(parseDofeModelProtocol)
               .filter((p): p is DofeModelProtocol => p !== undefined)
@@ -154,6 +228,22 @@ export function createDofeModelCatalog(
                   : [],
               )
             : [],
+          ...(Array.isArray(capability.capabilities)
+            ? (() => {
+                const entries = capability.capabilities.flatMap((item) => {
+                  if (typeof item?.capabilityName !== "string") return [];
+                  const metadata = parseDofeGenerationCapabilityMetadata(
+                    item.capabilityMetadata,
+                  );
+                  return metadata
+                    ? [[item.capabilityName, metadata] as const]
+                    : [];
+                });
+                return entries.length > 0
+                  ? { capabilityMetadata: Object.fromEntries(entries) }
+                  : {};
+              })()
+            : {}),
           ...(preferredProtocol ? { preferredProtocol } : {}),
           ...(supportedProtocols ? { supportedProtocols } : {}),
         };
@@ -186,8 +276,14 @@ export function createDofeModelCatalog(
   return {
     async listChatModels() {
       const models = await getModels();
+      // `/v1/models` is a unified visibility list. Only Models' explicit LLM
+      // projection is compatible with the agent chat surface; accepting every
+      // non-image/video type would expose embedding, audio, or transcode aliases
+      // to a text-completion client. `text` remains for older gateway payloads.
       return models.filter(
-        (model) => model.modelType !== "image" && model.modelType !== "video",
+        (model) =>
+          model.modelType !== undefined &&
+          CHAT_MODEL_TYPES.has(model.modelType),
       );
     },
     async listImageModels() {

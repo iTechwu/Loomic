@@ -3,11 +3,19 @@ import { describe, expect, it } from "vitest";
 import { toCatalogVideoModelInfo } from "./register-all.js";
 
 describe("toCatalogVideoModelInfo", () => {
-  it("projects only published video capabilities without inventing limits", () => {
+  it("projects only published video capabilities and their public boundaries", () => {
     const model = toCatalogVideoModelInfo({
       id: "seedance-2.0",
       modelType: "video",
       capabilities: ["text_to_video", "image_to_video"],
+      capabilityMetadata: {
+        text_to_video: {
+          resolutions: ["720p", "1080p"],
+          durationSeconds: { min: 4, max: 8 },
+          maxInputAssets: 2,
+          supportsGenerateAudio: true,
+        },
+      },
     });
 
     expect(model).toMatchObject({
@@ -16,9 +24,18 @@ describe("toCatalogVideoModelInfo", () => {
         textToVideo: true,
         imageToVideo: true,
         videoToVideo: false,
-        audio: false,
+        audio: true,
       },
     });
+    expect(model.capabilityMetadata).toEqual({
+      text_to_video: {
+        resolutions: ["720p", "1080p"],
+        durationSeconds: { min: 4, max: 8 },
+        maxInputAssets: 2,
+        supportsGenerateAudio: true,
+      },
+    });
+    expect(model.capabilities.audio).toBe(true);
     expect(model.limits).toBeUndefined();
   });
 

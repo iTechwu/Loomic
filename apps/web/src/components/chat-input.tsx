@@ -298,7 +298,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               </>
             )}
             {/* Agent model selector */}
-            <AgentModelSelector compact />
+            <AgentModelSelector accessToken={accessToken} compact />
             {/* Model preference button */}
             <div className="relative">
               <button

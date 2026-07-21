@@ -108,7 +108,11 @@ export default function SettingsPage() {
     [getToken],
   );
 
-  const stableFetchModels = useCallback(() => fetchModels(), []);
+  const stableFetchModels = useCallback(async () => {
+    const token = getToken();
+    if (!token) throw new ApiAuthError();
+    return fetchModels(token);
+  }, [getToken]);
 
   if (pageLoading) {
     return <SettingsSkeleton />;

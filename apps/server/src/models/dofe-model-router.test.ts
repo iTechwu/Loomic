@@ -4,12 +4,36 @@ import {
   createDofeModelCatalog,
   dofeModelProtocolBaseUrl,
   isChatModelAlias,
+  parseDofeGenerationCapabilityMetadata,
   resetDofeModelProtocolCache,
   resolveDofeModelProtocol,
   toDofeRouterModelId,
 } from "./dofe-model-router.js";
 
 describe("DoFe model router", () => {
+  it("keeps only public, well-formed generation capability metadata", () => {
+    expect(
+      parseDofeGenerationCapabilityMetadata({
+        resolutions: ["720p", "1080p"],
+        durationSeconds: { min: 4, max: 8, step: 2 },
+        maxInputAssets: 2,
+        supportsGenerateAudio: true,
+        providerProfile: { private: true },
+      }),
+    ).toEqual({
+      resolutions: ["720p", "1080p"],
+      durationSeconds: { min: 4, max: 8, step: 2 },
+      maxInputAssets: 2,
+      supportsGenerateAudio: true,
+    });
+    expect(
+      parseDofeGenerationCapabilityMetadata({
+        resolutions: ["720p", 1080],
+        maxInputAssets: -1,
+      }),
+    ).toBeUndefined();
+  });
+
   it("routes each model family through its native gateway protocol", () => {
     expect(resolveDofeModelProtocol("gemini-3.1-flash")).toBe("gemini");
     expect(resolveDofeModelProtocol("claude-sonnet-4.6")).toBe("anthropic");
@@ -95,6 +119,90 @@ describe("DoFe model router", () => {
     expect(fetch).toHaveBeenCalledWith("https://ixicai.cn/api/v1/models", {
       headers: { Authorization: "Bearer router-key" },
     });
+  });
+
+  it("projects only explicit LLM types into the chat catalog", async () => {
+    const modelTypes: Record<string, string> = {
+      "chat-current": "llm",
+      "chat-legacy": "text",
+      "embed-visible": "text_embedding",
+      "audio-visible": "audio",
+      "transcode-visible": "transcode",
+    };
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(
+          JSON.stringify({
+            data: Object.keys(modelTypes).map((id) => ({ id })),
+          }),
+        );
+      }
+      const alias = Object.keys(modelTypes).find((id) =>
+        url.includes(encodeURIComponent(id)),
+      );
+      return new Response(
+        JSON.stringify({
+          model_type: alias ? modelTypes[alias] : undefined,
+          capabilities: [],
+        }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    await expect(catalog?.listChatModels()).resolves.toMatchObject([
+      { id: "chat-current", modelType: "llm" },
+      { id: "chat-legacy", modelType: "text" },
+    ]);
+  });
+
+  it("projects capability parameter boundaries with their capability name", async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "video-model" }] }));
+      }
+      return new Response(
+        JSON.stringify({
+          model_type: "video",
+          capabilities: [
+            {
+              capabilityName: "text_to_video",
+              capabilityMetadata: {
+                resolutions: ["720p"],
+                durationSeconds: { min: 4, max: 8 },
+                providerProfile: { endpoint: "private" },
+              },
+            },
+          ],
+        }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    await expect(catalog?.listVideoModels()).resolves.toMatchObject([
+      {
+        id: "video-model",
+        capabilityMetadata: {
+          text_to_video: {
+            resolutions: ["720p"],
+            durationSeconds: { min: 4, max: 8 },
+          },
+        },
+      },
+    ]);
   });
 
   it("prefers the models-projected protocol over alias-prefix matching", async () => {

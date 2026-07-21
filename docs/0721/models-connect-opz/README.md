@@ -20,8 +20,48 @@
 丢失，以及一项会使模型选择失去确定性的 P1 风险。发布到任何可被外部访问的
 环境前，必须关闭 P0 和 P1-1。
 
+## 更正（2026-07-21 线上联调）
+
+> 上文“Lovart 的 URL 归一化、OpenAI 目录请求、内部 HMAC 凭据发放、基础图片
+> 任务创建，以及 Models 的 `/v1/*` 和 `/v1/generation/*` 路由在代码层相互
+> 匹配”一句**不准确**——生成路径并未对齐，已由线上 probe 推翻，特此更正。
+
+代码层比对遗漏了路径前缀差异：Lovart 的 DoFe 生成 adapter（`TASK_PATH`）历史
+值为 `/generation/tasks`，而 Models 的 ts-rest 生成合同 `pathPrefix` 为
+`/v1/generation`（应用无全局前缀），ixicai 把所有公开面挂在 `/api` 下，故真实
+入口是 `https://ixicai.cn/api/v1/generation/tasks`。原值少 `/v1`，对
+`POST /api/generation/tasks` 线上返回 404 `Cannot POST /generation/tasks`——
+即**每一笔图片/视频生成请求都到不了 Models**。该断链被一个更早发生的 Lovart
+侧 registry 错误（`No provider registered for image model`，在发出 HTTP 前就
+抛出）掩盖，故代码层比对与既有 mock-fetch 单测都未能发现；审查期间为避免产生
+费用刻意未做真实 POST，也错过了它。
+
+线上 probe（2026-07-21，根 `.env.local` 的 `DOFE_MODEL_API_KEY`，均为不产生
+生成消费的探测）：
+
+| 请求 | 结果 |
+| --- | --- |
+| `POST /api/generation/tasks`（旧值） | 404 `Cannot POST /generation/tasks` |
+| `POST /api/v1/generation/tasks`（正确） | 400 `Ts Rest Request Validation Error`（路由存在，仅校验拦了探测体） |
+| `GET  /api/v1/generation/tasks` | 200，返回真实任务列表 |
+| `POST /api/v1/generation/tasks` + 伪造 alias | 404 `Model alias not found`（鉴权 + 请求体 schema 全通过，证明 path 正确） |
+
+已修复并验证：`apps/server/src/generation/providers/dofe-generation.ts` 的
+`TASK_PATH = "/v1/generation/tasks"`（并订正注释）；顺带解除掩盖该 404 的
+registry 竞态——`resolve*ProviderName` 在仅注册一个 provider 时回退到该 provider
+（不再因目录未填充抛 `model_not_found`），目录 `refresh()` 改用
+`Promise.allSettled`（单个 capability 失败不再清空整张目录）。单测 URL 同步改为
+`/api/v1/generation/tasks`，新增 registry 兜底与目录部分失败用例（+8），server
+全量 126 通过，`lint:baseline` 通过。
+
+教训：代码层“路径对齐”结论不能替代一次真实 probe；生成类入口应以伪造
+model/非法体做一次直达 `alias_not_found` 的探测，来同时确认路径、鉴权、请求体
+schema 三者成立。
+
 | 优先级 | 发现 | 影响 | 状态 |
 | --- | --- | --- | --- |
+| P0 | 生成 adapter 路径少 `/v1`：`POST /api/generation/tasks` 线上 404 | 所有图片/视频生成请求到不了 Models；被下方 registry 竞态错误掩盖 | 已修复（`TASK_PATH = "/v1/generation/tasks"`，见上方“更正”段）；线上 probe + 单测已验证 |
+| P0 | 图片/视频生成 registry 在目录未填充时抛 `model_not_found`（boot 竞态 / 单个 capability 失败即清空目录） | 生成请求在发出 HTTP 前就失败，并掩盖了上面的 404 | 已修复（`resolve*ProviderName` 单 provider 兜底 + `refresh()` 改 `Promise.allSettled`） |
 | P0 | 视频 `inputVideo` 在 DoFe adapter 中被丢弃 | V2V、视频编辑、延长、动作控制模型接到错误请求 | Lovart 侧已修复（adapter 映射 `video_url` + role + `videoOperation`，见 [01-call-chain-evidence.md](./01-call-chain-evidence.md)）；待 Models 侧契约校验联调 |
 | P0 | 当前 Models 内部 HMAC secret 与被提交的示例值相同 | 若相同配置进入可访问环境，内部凭据发放与代理边界可被伪造 | Lovart 侧已加固：`validateInternalApiSecret` 拒绝占位符/示例 hex/弱值，启动 smoke check（默认 warn，`LOVART_STRICT_INTERNAL_SECRET_SMOKE=true` 时 401 阻断启动）。根因仍需 Models 仓库独立轮换 |
 | P1 | 文本协议由 alias 前缀推断，不由 Models 可用性/协议投影决定 | 新 alias、别名变更或仅支持另一协议的模型可能访问错误入口 | Lovart 侧已支持消费 Models 投影（`preferred_protocol` 缓存优先，前缀作 fallback）；待 Models 在 `/v1/models/:alias/capabilities` 暴露投影字段后自动生效 |

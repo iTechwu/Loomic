@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import {
   createRun,
+  fetchModels,
   fetchViewer,
   fetchProjects,
   createProject,
@@ -33,6 +34,31 @@ describe("authenticated server API", () => {
       }),
     );
     expect(result.profile.id).toBe("u1");
+  });
+
+  it("fetchModels sends bearer token and maps 401 to ApiAuthError", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ models: [] }),
+    });
+
+    await expect(fetchModels("token_abc")).resolves.toEqual({ models: [] });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3001/api/models",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer token_abc" },
+      }),
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: { code: "unauthorized", message: "Bad token." },
+      }),
+    });
+    await expect(fetchModels("expired")).rejects.toThrow("unauthorized");
   });
 
   it("createRun sends bearer auth when access token is provided", async () => {

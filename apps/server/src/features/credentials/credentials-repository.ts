@@ -41,6 +41,13 @@ export type UserCredentialsRepository = {
     userId: string,
     ssoTeamId?: string,
   ): Promise<UserCredentialRow | null>;
+  /**
+   * Ready records for a local user, capped at two because callers only need to
+   * distinguish the usable single-team case from an unsafe ambiguity. Runtime
+   * model calls do not carry an active SSO team, so they must never silently
+   * select the most recently provisioned row when several teams exist.
+   */
+  findReadyCandidates(userId: string): Promise<UserCredentialRow[]>;
   /** Latest row of any state — used to recover ssoTeamId for retry when the
    * caller (e.g. ensureViewer) doesn't carry it. */
   findAny(userId: string): Promise<UserCredentialRow | null>;
@@ -113,6 +120,17 @@ export function createUserCredentialsRepository(
       );
       const row = result.rows[0];
       return row ? toCamelCase(row) : null;
+    },
+
+    async findReadyCandidates(userId) {
+      const result = await pool.query<DbRow>(
+        `select ${SELECT_COLS} from user_credentials
+         where user_id = $1 and provision_state = 'ready'
+         order by provisioned_at desc
+         limit 2`,
+        [userId],
+      );
+      return result.rows.map(toCamelCase);
     },
 
     async findAny(userId) {

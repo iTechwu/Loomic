@@ -303,7 +303,7 @@ export const HomePrompt = forwardRef<HomePromptHandle, HomePromptProps>(
           </div>
 
           <div className="flex items-center gap-2">
-            <AgentModelSelector />
+            <AgentModelSelector accessToken={accessToken} />
             <div className="flex items-center gap-0.5">
               {toolbarButtons.slice(1).map((btn) => {
                 if (btn.name === "Agent") {

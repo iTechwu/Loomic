@@ -1,5 +1,16 @@
 # 调用链证据与问题清单
 
+> **更正（2026-07-21 线上联调）：** 下文“调用矩阵”中“图片任务/视频任务…
+> 基础 image_async 请求体和结果 envelope 对齐 / 基础 T2V/I2V 可提交”等结论
+> **只覆盖了请求体与 envelope，未覆盖路径前缀**，已被推翻。Lovart 生成
+> adapter 的 `TASK_PATH` 历史值为 `/generation/tasks`（缺 `/v1`），而 Models
+> ts-rest 合同 `pathPrefix` 为 `/v1/generation`，线上 `POST /api/generation/tasks`
+> 实际返回 404——每笔生成都到不了 Models。该断链被一个 Lovart 侧 registry
+> 竞态错误（目录未填充即抛 `model_not_found`，见新增 P0 行）掩盖。两者均已
+> 修复并经线上 probe + 单测验证，详见 [README.md 的“更正”段](./README.md#更正2026-07-21-线上联调)。
+> 审查期间为避免产生费用未做真实 POST，是漏检主因；生成类入口应补一次直达
+> `alias_not_found` 的探测。
+
 ## 审查方法与边界
 
 审查以两个仓库当前工作区为准。`../models.dofe.ai` 在审查期间已有与本任务

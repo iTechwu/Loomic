@@ -1,16 +1,22 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 
-import { modelListResponseSchema } from "@lovart.dofe/shared";
+import {
+  modelListResponseSchema,
+  unauthenticatedErrorResponseSchema,
+} from "@lovart.dofe/shared";
+import type { RequestAuthenticator } from "../auth/sso-authenticator.js";
 import type { ServerEnv } from "../config/env.js";
 import { createDofeModelCatalog } from "../models/dofe-model-router.js";
 
 export async function registerModelRoutes(
   app: FastifyInstance,
-  env: ServerEnv,
+  options: { auth: RequestAuthenticator; env: ServerEnv },
 ) {
-  const dofeCatalog = createDofeModelCatalog(env);
+  const dofeCatalog = createDofeModelCatalog(options.env);
 
-  app.get("/api/models", async (_request, reply) => {
+  app.get("/api/models", async (request, reply) => {
+    if (!(await options.auth.authenticate(request)))
+      return sendUnauthorized(reply);
     if (!dofeCatalog) {
       // The ixicai gateway is the sole model-id authority; Lovart does not keep
       // a fallback catalog. An empty list + warn surfaces the misconfiguration
@@ -40,4 +46,15 @@ export async function registerModelRoutes(
       });
     }
   });
+}
+
+function sendUnauthorized(reply: FastifyReply) {
+  return reply.code(401).send(
+    unauthenticatedErrorResponseSchema.parse({
+      error: {
+        code: "unauthorized",
+        message: "Missing or invalid bearer token.",
+      },
+    }),
+  );
 }
