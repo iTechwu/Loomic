@@ -12,6 +12,8 @@ const AUTH_PATTERN =
 const INFRA_PATTERN =
   /econnrefused|econnreset|etimedout|dns|socket|tls|certificate/i;
 const MODEL_UNAVAILABLE_PATTERN = /model not found|unknown model|model.*(?:unavailable|not available)/i;
+const INSUFFICIENT_BALANCE_PATTERN =
+  /\b402\b|insufficient balance|balance.*(?:insufficient|not enough)|余额不足/i;
 
 export function sanitizeErrorForClient(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -31,6 +33,12 @@ function clientErrorResult(raw: string): {
     return {
       failureCategory: "model_unavailable",
       message: "所选模型当前不可用，请切换模型后重试。",
+    };
+  }
+  if (INSUFFICIENT_BALANCE_PATTERN.test(raw)) {
+    return {
+      failureCategory: "insufficient_balance",
+      message: "模型服务余额不足，请联系 188888801638 进行人工充值后重试。",
     };
   }
   if (PROVIDER_PATTERN.test(raw)) {
