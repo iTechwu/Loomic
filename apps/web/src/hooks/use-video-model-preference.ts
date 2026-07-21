@@ -1,10 +1,13 @@
 "use client";
 
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoGenerationPreference,
+} from "@lovart.dofe/shared";
 import { useCallback, useSyncExternalStore } from "react";
-import type { VideoGenerationPreference } from "@lovart.dofe/shared";
 
 const STORAGE_KEY = "lovart.dofe:video-model-preference";
-const DEFAULT_MODEL = "seedance-2.0";
+const DEFAULT_MODEL = DEFAULT_VIDEO_MODEL;
 
 export type VideoModelPreference = VideoGenerationPreference;
 
@@ -27,7 +30,11 @@ function getSnapshot(): VideoModelPreference {
     if (raw !== cachedRaw) {
       cachedRaw = raw;
       cachedPreference = raw
-        ? normalizePreference(JSON.parse(raw) as Partial<VideoModelPreference> & { model?: string })
+        ? normalizePreference(
+            JSON.parse(raw) as Partial<VideoModelPreference> & {
+              model?: string;
+            },
+          )
         : defaultPreference;
     }
     return cachedPreference;
@@ -52,7 +59,8 @@ function normalizePreference(
 
   const models = Array.isArray(preference.models)
     ? preference.models.filter(
-        (model): model is string => typeof model === "string" && model.length > 0,
+        (model): model is string =>
+          typeof model === "string" && model.length > 0,
       )
     : typeof preference.model === "string" && preference.model.length > 0
       ? [preference.model]
@@ -65,7 +73,11 @@ function normalizePreference(
 }
 
 export function useVideoModelPreference() {
-  const preference = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const preference = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
 
   const setPreference = useCallback((next: VideoModelPreference) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

@@ -109,53 +109,71 @@ export function createDofeModelCatalog(
         ];
       },
     );
-    const models = (
-      await Promise.all(
-        aliases.map(async (entry): Promise<DofeRouterModel> => {
-          const capabilityResponse = await fetchFn(
-            `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models/${encodeURIComponent(entry.id)}/capabilities`,
-            { headers: { Authorization: `Bearer ${apiKey}` } },
+    // Fetch each alias's capability doc. Use allSettled so one flaky capability
+    // endpoint cannot empty the whole catalog — without a capability doc we
+    // cannot classify model_type, so we drop that alias from the typed lists
+    // but keep every other model. Generation still routes correctly via the
+    // sole-provider fallback in the registry.
+    const settled = await Promise.allSettled(
+      aliases.map(async (entry): Promise<DofeRouterModel> => {
+        const capabilityResponse = await fetchFn(
+          `${dofeModelProtocolBaseUrl(baseUrl, "openai")}/models/${encodeURIComponent(entry.id)}/capabilities`,
+          { headers: { Authorization: `Bearer ${apiKey}` } },
+        );
+        if (!capabilityResponse.ok) {
+          throw new Error(
+            `DoFe capability request failed for ${entry.id} with HTTP ${capabilityResponse.status}`,
           );
-          if (!capabilityResponse.ok) {
-            throw new Error(
-              `DoFe capability request failed for ${entry.id} with HTTP ${capabilityResponse.status}`,
-            );
-          }
-          const capability =
-            (await capabilityResponse.json()) as ModelCapabilitiesResponse;
-          const preferredProtocol = parseDofeModelProtocol(
-            capability.preferred_protocol,
-          );
-          const supportedProtocols = Array.isArray(
-            capability.supported_protocols,
-          )
-            ? capability.supported_protocols
-                .map(parseDofeModelProtocol)
-                .filter((p): p is DofeModelProtocol => p !== undefined)
-            : undefined;
-          // Cache the authoritative projection so deep-agent's synchronous
-          // protocol resolver can use it without an extra round trip.
-          if (preferredProtocol) {
-            cacheDofeModelProtocol(entry.id, preferredProtocol);
-          }
-          return {
-            ...entry,
-            ...(typeof capability.model_type === "string"
-              ? { modelType: capability.model_type }
-              : {}),
-            capabilities: Array.isArray(capability.capabilities)
-              ? capability.capabilities.flatMap((item) =>
-                  typeof item?.capabilityName === "string"
-                    ? [item.capabilityName]
-                    : [],
-                )
-              : [],
-            ...(preferredProtocol ? { preferredProtocol } : {}),
-            ...(supportedProtocols ? { supportedProtocols } : {}),
-          };
-        }),
-      )
-    ).sort((left, right) => left.id.localeCompare(right.id));
+        }
+        const capability =
+          (await capabilityResponse.json()) as ModelCapabilitiesResponse;
+        const preferredProtocol = parseDofeModelProtocol(
+          capability.preferred_protocol,
+        );
+        const supportedProtocols = Array.isArray(
+          capability.supported_protocols,
+        )
+          ? capability.supported_protocols
+              .map(parseDofeModelProtocol)
+              .filter((p): p is DofeModelProtocol => p !== undefined)
+          : undefined;
+        // Cache the authoritative projection so deep-agent's synchronous
+        // protocol resolver can use it without an extra round trip.
+        if (preferredProtocol) {
+          cacheDofeModelProtocol(entry.id, preferredProtocol);
+        }
+        return {
+          ...entry,
+          ...(typeof capability.model_type === "string"
+            ? { modelType: capability.model_type }
+            : {}),
+          capabilities: Array.isArray(capability.capabilities)
+            ? capability.capabilities.flatMap((item) =>
+                typeof item?.capabilityName === "string"
+                  ? [item.capabilityName]
+                  : [],
+              )
+            : [],
+          ...(preferredProtocol ? { preferredProtocol } : {}),
+          ...(supportedProtocols ? { supportedProtocols } : {}),
+        };
+      }),
+    );
+    const dropped: string[] = [];
+    const models = settled
+      .flatMap((result, idx) => {
+        if (result.status === "fulfilled") return [result.value];
+        const failedId = aliases[idx]?.id;
+        if (failedId) dropped.push(failedId);
+        return [];
+      })
+      .sort((left, right) => left.id.localeCompare(right.id));
+    if (dropped.length > 0) {
+      console.warn(
+        `[model-router] capability fetch dropped ${dropped.length}/${aliases.length} aliases from catalog`,
+        { dropped },
+      );
+    }
 
     cache = { models, expiresAt: now() + cacheTtlMs };
     console.info("[model-router] catalog_refreshed", {

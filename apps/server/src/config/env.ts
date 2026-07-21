@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 
+import { DEFAULT_CHAT_MODEL } from "@lovart.dofe/shared";
+
 import { type TosConfig, parseTosConfig } from "../storage/tos-config.js";
 
 export const DEFAULT_AGENT_BACKEND_MODE = "state";
 export const DEFAULT_AGENT_MODEL = "gpt-4.1";
 export const DEFAULT_GOOGLE_AGENT_MODEL = "gemini-2.5-flash";
-export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = "glm-5.2";
+// Sourced from the shared single source of truth so the gateway default chat
+// alias is identical across server, web, and the boot-time default-model smoke.
+export const DEFAULT_DOFE_MODEL_ROUTER_AGENT_MODEL = DEFAULT_CHAT_MODEL;
 export const DEFAULT_SERVER_PORT = 3105;
 export const DEFAULT_WEB_ORIGIN = "http://localhost:3005";
 
@@ -52,6 +56,13 @@ export type ServerEnv = {
   /** When true, fail startup unless managed TLS Redis is configured. */
   requireRedis?: boolean;
   redisUrl?: string;
+  /**
+   * When true, fail startup if any default model alias
+   * (DEFAULT_CHAT/IMAGE/VIDEO_MODEL) is absent from the ixicai `/v1/models`
+   * catalog. Defaults to a non-fatal warning, mirroring
+   * LOVART_STRICT_INTERNAL_SECRET_SMOKE.
+   */
+  strictDefaultModels?: boolean;
   internalApiSecret?: string;
   ssoApiUrl?: string;
   ssoClientId?: string;
@@ -175,6 +186,13 @@ export function loadServerEnv(
     overrides.requireRedis ??
     parseBoolean(source.LOVART_DOFE_REQUIRE_REDIS, false);
   if (requireRedis) validateRequiredRedisUrl(redisUrl);
+  const strictDefaultModels =
+    overrides.strictDefaultModels ??
+    parseBoolean(
+      source.LOVART_STRICT_DEFAULT_MODELS,
+      false,
+      "LOVART_STRICT_DEFAULT_MODELS",
+    );
   const volcesApiKey =
     overrides.volcesApiKey ?? normalizeOptionalString(source.VOLCES_API_KEY);
   const volcesBaseUrl =
@@ -271,6 +289,7 @@ export function loadServerEnv(
     ...(replicateApiToken ? { replicateApiToken } : {}),
     ...(rabbitMqUrl ? { rabbitMqUrl } : {}),
     requireRedis,
+    strictDefaultModels,
     ...(redisUrl ? { redisUrl } : {}),
     ...(volcesApiKey ? { volcesApiKey } : {}),
     ...(volcesBaseUrl ? { volcesBaseUrl } : {}),
@@ -315,12 +334,13 @@ function normalizeOptionalString(value: string | undefined) {
 function parseBoolean(
   value: string | undefined,
   defaultValue: boolean,
+  envName = "LOVART_DOFE_REQUIRE_REDIS",
 ): boolean {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return defaultValue;
   if (normalized === "true" || normalized === "1") return true;
   if (normalized === "false" || normalized === "0") return false;
-  throw new Error("LOVART_DOFE_REQUIRE_REDIS must be true or false.");
+  throw new Error(`${envName} must be true or false.`);
 }
 
 /**

@@ -166,4 +166,44 @@ describe("DoFe model router", () => {
     expect(resolveDofeModelProtocol("glm-5.2")).toBe("openai");
     resetDofeModelProtocolCache();
   });
+
+  it("keeps the rest of the catalog when one capability fetch fails", async () => {
+    // A single flaky capability endpoint must not empty the whole catalog.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: "glm-5.2", owned_by: "zhipu" },
+              { id: "gpt-5.4", owned_by: "dofe-ai" },
+              { id: "broken-alias", owned_by: "x" },
+            ],
+          }),
+        );
+      }
+      if (url.includes("broken-alias")) {
+        return new Response("", { status: 500 });
+      }
+      return new Response(
+        JSON.stringify({ model_type: "text", capabilities: [] }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    const models = await catalog?.listChatModels();
+
+    // The two healthy aliases are still classified; the broken one is dropped.
+    expect(models?.map((m) => m.id)).toEqual(["glm-5.2", "gpt-5.4"]);
+    expect(warnSpy).toHaveBeenCalled();
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("dropped 1/3");
+    warnSpy.mockRestore();
+  });
 });

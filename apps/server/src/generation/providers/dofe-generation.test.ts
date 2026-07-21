@@ -34,7 +34,7 @@ describe("DofeImageProvider", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://ixicai.cn/api/generation/tasks",
+      "https://ixicai.cn/api/v1/generation/tasks",
       expect.objectContaining({ method: "POST" }),
     );
     if (!requestInit) throw new Error("expected a generation request");
@@ -158,7 +158,7 @@ describe("DofeVideoProvider", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://ixicai.cn/api/generation/tasks",
+      "https://ixicai.cn/api/v1/generation/tasks",
       expect.objectContaining({ method: "POST" }),
     );
     const requestInit = getRequestInit();

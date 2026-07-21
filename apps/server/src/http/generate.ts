@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_VIDEO_MODEL,
   applicationErrorResponseSchema,
   unauthenticatedErrorResponseSchema,
 } from "@lovart.dofe/shared";
@@ -75,7 +77,7 @@ export async function registerGenerateRoutes(
       );
     }
 
-    const model = payload.model ?? "flux-kontext-pro";
+    const model = payload.model ?? DEFAULT_IMAGE_MODEL;
 
     try {
       // Resolve the caller's DoFe credentials (strict no-fallback: throws if the
@@ -195,7 +197,7 @@ export async function registerGenerateRoutes(
 
     // Default to the same ixicai model used by the tool and executor so the
     // direct API, agent tool, and job queue never disagree on fallback model.
-    const model = payload.model ?? "seedance-2.0";
+    const model = payload.model ?? DEFAULT_VIDEO_MODEL;
 
     try {
       const viewer = await options.viewerService.ensureViewer(user);

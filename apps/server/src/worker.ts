@@ -24,6 +24,7 @@ import {
 } from "./features/jobs/job-executor.js";
 import { createJobService } from "./features/jobs/job-service.js";
 import { registerAllProviders } from "./generation/providers/register-all.js";
+import { runDefaultModelsBootSmoke } from "./models/default-model-smoke.js";
 import { createRabbitMqClient } from "./queue/rabbitmq-client.js";
 import { createConfiguredTosObjectStorage } from "./storage/tos-object-storage.js";
 import {
@@ -78,6 +79,10 @@ async function main() {
   }
 
   registerAllProviders(env);
+
+  // Same default-model contract as the API server: warn on a miss by default,
+  // fatal when LOVART_STRICT_DEFAULT_MODELS=true.
+  await runDefaultModelsBootSmoke(env);
 
   const pool = createDatabasePool(env.databaseUrl);
   // Per-user models credential resolver — workers resolve the job owner's key

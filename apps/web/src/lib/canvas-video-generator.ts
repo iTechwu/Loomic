@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_MODEL } from "@lovart.dofe/shared";
 import { getViewportCenter } from "./canvas-elements";
 
 // Aspect ratio to pixel dimensions mapping (video ratios only)
@@ -6,7 +7,11 @@ const RATIO_DIMENSIONS: Record<string, { w: number; h: number }> = {
   "9:16": { w: 576, h: 1024 },
 };
 
-export type VideoGeneratorStatus = "idle" | "generating" | "completed" | "error";
+export type VideoGeneratorStatus =
+  | "idle"
+  | "generating"
+  | "completed"
+  | "error";
 
 export type VideoGeneratorData = {
   type: "video-generator";
@@ -22,8 +27,7 @@ export type VideoGeneratorData = {
 
 function generateId(): string {
   return (
-    Math.random().toString(36).slice(2) +
-    Math.random().toString(36).slice(2)
+    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
   ).slice(0, 20);
 }
 
@@ -70,7 +74,7 @@ export function createVideoGeneratorElement(
     // Canvas video generator must use an ixicai model id (not a Replicate-style
     // namespace). See docs/tech/generation-models-reference.md and project
     // memory: all model ids are ixicai ids, no fallback.
-    model: options?.model ?? "seedance-2.0",
+    model: options?.model ?? DEFAULT_VIDEO_MODEL,
     aspectRatio,
     duration: options?.duration ?? 5,
     resolution: options?.resolution ?? "720p",
@@ -118,7 +122,9 @@ export function createVideoGeneratorElement(
 /**
  * Check if an Excalidraw element is a video-generator placeholder.
  */
-export function isVideoGeneratorElement(element: any): element is { customData: VideoGeneratorData } & Record<string, unknown> {
+export function isVideoGeneratorElement(
+  element: any,
+): element is { customData: VideoGeneratorData } & Record<string, unknown> {
   return element?.customData?.type === "video-generator";
 }
 

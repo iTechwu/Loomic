@@ -1,4 +1,5 @@
 // Cross-app HTTP and event contract barrel.
+export * from "./default-models.js";
 export * from "./contracts.js";
 export * from "./credits.js";
 export * from "./errors.js";

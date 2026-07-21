@@ -13,6 +13,7 @@ import { buildApp } from "./app.js";
 import { loadServerEnv } from "./config/env.js";
 import { migrate } from "./database/migrate.js";
 import { checkInternalApiSecretSmoke } from "./features/credentials/models-client.js";
+import { runDefaultModelsBootSmoke } from "./models/default-model-smoke.js";
 import { withStartupTimeout } from "./startup-timeout.js";
 
 const env = loadServerEnv();
@@ -68,6 +69,11 @@ if (runMigrationsOnBoot && env.databaseUrl) {
 const app = buildApp({
   env,
 });
+
+// Verify each DEFAULT_*_MODEL alias exists in the ixicai /v1/models catalog
+// before serving traffic. Warns on a miss by default; fatal (process.exit)
+// when LOVART_STRICT_DEFAULT_MODELS=true, so a bad default cannot serve users.
+await runDefaultModelsBootSmoke(env);
 
 const host = process.env.HOST ?? "127.0.0.1";
 
