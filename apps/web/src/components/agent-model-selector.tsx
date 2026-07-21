@@ -88,7 +88,7 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
 
   const isActive = model !== null;
   const selectedModel = models.find((m) => m.id === model);
-  const displayLabel = selectedModel ? selectedModel.name : "Agent";
+  const displayLabel = selectedModel ? selectedModel.name : "智能体";
 
   // Auto-positioning popover (above or below based on available space)
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
@@ -154,7 +154,7 @@ export function AgentModelSelector({ compact }: { compact?: boolean } = {}) {
             className="w-56 rounded-xl border border-border bg-popover p-2 shadow-lg"
           >
             <div className="mb-2 px-2 text-xs font-medium text-muted-foreground">
-              Agent Model
+              智能体模型
             </div>
             {/* Auto option */}
             <button

@@ -99,6 +99,12 @@ function ExamplePreviewCard({
               src={image}
               alt={`${title} preview ${index + 1}`}
               loading="lazy"
+              onError={() => {
+                console.warn("[home-example-browser] failed to load local seed preview", {
+                  title,
+                  image,
+                });
+              }}
               className={cn(
                 "absolute aspect-[7/8] rounded-[4px] border-[0.5px] border-border object-cover transition-all duration-500 ease-out group-hover:shadow-lg",
                 positionClasses[index] ?? positionClasses[0],

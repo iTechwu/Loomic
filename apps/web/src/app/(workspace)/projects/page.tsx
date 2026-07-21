@@ -51,7 +51,7 @@ export default function ProjectsPage() {
         replaceWithSsoLogin(getBrowserReturnTo());
         return;
       }
-      setLoadError("Failed to load data. Please try again.");
+      setLoadError("加载数据失败，请重试。");
     } finally {
       setPageLoading(false);
     }
@@ -77,7 +77,7 @@ export default function ProjectsPage() {
         <div className="text-center space-y-4">
           <p className="text-sm text-destructive">{loadError}</p>
           <Button variant="outline" onClick={loadData}>
-            Retry
+              重试
           </Button>
         </div>
       </div>

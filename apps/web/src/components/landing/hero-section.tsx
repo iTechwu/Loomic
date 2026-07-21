@@ -22,7 +22,7 @@ function HeroBadge() {
       className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-4 py-1.5 text-sm backdrop-blur"
     >
       <Sparkles className="size-3.5 text-accent" />
-      <span className="text-muted-foreground">AI-Powered Creative Design</span>
+      <span className="text-muted-foreground">AI 驱动的创意设计</span>
     </motion.div>
   );
 }
@@ -108,7 +108,7 @@ function HeroMockup() {
             <span className="size-3 rounded-full bg-green-400/80" />
           </div>
           <span className="text-xs text-muted-foreground font-medium">
-            lovart.dofe Canvas
+            lovart.dofe 创作画布
           </span>
           <div className="w-14" />
         </div>
@@ -118,7 +118,7 @@ function HeroMockup() {
           <MockupCursor />
           <Image
             src="/images/showcase/showcase-12.jpg"
-            alt="lovart.dofe Canvas AI creative workspace"
+            alt="lovart.dofe AI 创意工作台"
             width={1200}
             height={675}
             priority
@@ -171,7 +171,7 @@ function AnimatedSubtitle({ show }: { show: boolean }) {
       animate={show ? "visible" : "hidden"}
       className="mt-4 text-sm md:text-base text-muted-foreground font-light tracking-[0.2em] uppercase"
     >
-      Where Ideas Become Reality
+      让每一个想法成为现实
     </motion.p>
   );
 }

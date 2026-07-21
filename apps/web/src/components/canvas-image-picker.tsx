@@ -64,9 +64,9 @@ function itemKeywords(item: MessageMentionPickerItem): string[] {
 
 function groupTitle(kind: MessageMentionPickerItem["kind"]): string {
   if (kind === "canvas-image") return "This Project";
-  if (kind === "brand-kit-asset") return "Brand Kit";
-  if (kind === "skill") return "Skills";
-  return "Model";
+  if (kind === "brand-kit-asset") return "品牌套件";
+  if (kind === "skill") return "技能";
+  return "模型";
 }
 
 export function MessageMentionPicker({

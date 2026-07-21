@@ -12,7 +12,7 @@ describe("HomeExampleBrowser", () => {
     cleanup();
   });
 
-  it("expands design examples after clicking the Design chip", async () => {
+  it("点击设计分类后展开设计示例", async () => {
     render(
       <HomeExampleBrowser
         categories={homeExampleSeedCategories}
@@ -21,16 +21,16 @@ describe("HomeExampleBrowser", () => {
     );
 
     expect(
-      screen.queryByText("Design a Bauhaus-inspired poster."),
+      screen.queryByText("设计包豪斯风格海报"),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Design" }));
+    await userEvent.click(screen.getByRole("button", { name: "设计" }));
 
     expect(
-      await screen.findByText("Design a Bauhaus-inspired poster."),
+      await screen.findByText("设计包豪斯风格海报"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Brainstorm beautiful interiors."),
+      screen.getByText("构思精美室内空间"),
     ).toBeInTheDocument();
   });
 
@@ -44,16 +44,16 @@ describe("HomeExampleBrowser", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Design" }));
+    await userEvent.click(screen.getByRole("button", { name: "设计" }));
 
     expect(onExampleSelect).toHaveBeenCalledWith(
       expect.objectContaining({
         categoryKey: "design",
-        categoryLabel: "Design",
-        title: "Design a Bauhaus-inspired poster.",
+        categoryLabel: "设计",
+        title: "设计包豪斯风格海报",
         prompt:
           "Make a poster for a music festival in the Bauhaus style. Use a limited color palette of pink, red, and cream. Abstract geometric shapes representing sound waves. Minimalist vertical text.",
-        previewImages: expect.arrayContaining([expect.stringContaining("assets.dofe.ai")]),
+        previewImages: expect.arrayContaining([expect.stringMatching(/^\/images\/showcase\/showcase-\d+\.jpg$/)]),
       }),
     );
   });
@@ -68,21 +68,21 @@ describe("HomeExampleBrowser", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Design" }));
+    await userEvent.click(screen.getByRole("button", { name: "设计" }));
     await userEvent.click(
       await screen.findByRole("button", {
-        name: /Design a ceramic dinnerware set\./i,
+        name: "设计一套餐具陶瓷",
       }),
     );
 
     expect(onExampleSelect).toHaveBeenLastCalledWith(
       expect.objectContaining({
         categoryKey: "design",
-        categoryLabel: "Design",
-        title: "Design a ceramic dinnerware set.",
+        categoryLabel: "设计",
+        title: "设计一套餐具陶瓷",
         prompt:
           "Generate a set of 5 images, each a ceramic tableware piece: 1 small bowl, 1 large bowl, 1 small plate, 1 large plate, 1 mug. They belong to the same set, harmoniously blends Scandinavian minimalism and Japanese wabi-sabi aesthetics - soft neutral tones, organic textures, imperfect hand-thrown forms, subtle glaze variations, natural lighting. Each piece is photographed against a seamless white background; even studio production photography lighting.",
-        previewImages: expect.arrayContaining([expect.stringContaining("assets.dofe.ai")]),
+        previewImages: expect.arrayContaining([expect.stringMatching(/^\/images\/showcase\/showcase-\d+\.jpg$/)]),
         inputMentions: [],
       }),
     );

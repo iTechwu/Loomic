@@ -25,7 +25,7 @@ type SettingsTab = "profile" | "agent";
 
 const tabs: Array<{ id: SettingsTab; label: string }> = [
   { id: "profile", label: "Profile" },
-  { id: "agent", label: "Agent" },
+  { id: "agent", label: "智能体" },
 ];
 
 export default function SettingsPage() {

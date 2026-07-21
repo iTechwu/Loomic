@@ -43,12 +43,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="zh-CN" className="scroll-smooth" suppressHydrationWarning>
+    <html
+      lang="zh-CN"
+      className="scroll-smooth overflow-x-hidden"
+      suppressHydrationWarning
+    >
       <body
         className={cn(
           geistSans.variable,
           geistMono.variable,
-          "min-h-screen bg-background font-sans antialiased",
+          "min-h-screen overflow-x-hidden bg-background font-sans antialiased",
         )}
       >
         <Providers>{children}</Providers>

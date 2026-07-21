@@ -105,7 +105,7 @@ const TYPE_ICONS: Record<string, string> = { text:"T", image:"🖼", rectangle:"
 const elTypeIcon = (t: string) => TYPE_ICONS[t] ?? "◆";
 function elLabel(el: ExcalidrawEl): string {
   if (el.type === "text") return (el.text as string)?.slice(0, 20) || "Text";
-  if (el.type === "image") return "Image";
+  if (el.type === "image") return "图片";
   return el.type.charAt(0).toUpperCase() + el.type.slice(1);
 }
 
@@ -253,7 +253,7 @@ export function CanvasBottomBar({ excalidrawApi, layersOpen, onToggleLayers, fil
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-foreground">画布背景色</span>
             <button type="button" className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setBgPickerOpen(false)} aria-label="Close color picker">
+              onClick={() => setBgPickerOpen(false)} aria-label="关闭颜色选择器">
               <CloseIcon className="h-3.5 w-3.5" />
             </button>
           </div>
