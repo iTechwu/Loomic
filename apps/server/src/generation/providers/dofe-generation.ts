@@ -246,24 +246,57 @@ async function createTask(
     params?: Record<string, unknown>;
   },
 ): Promise<TaskResponse> {
+  const url = buildTaskUrl(baseUrl);
+  console.info("[dofe-generation] createTask start", {
+    model: body.model,
+    endpointKind: body.endpointKind,
+    url,
+  });
+  const startedAt = Date.now();
+
   let response: Response;
   try {
-    response = await fetch(`${baseUrl.replace(/\/$/, "")}${TASK_PATH}`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
+    response = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...body,
+          metadata: { source: "lovart.dofe.ai" },
+        }),
+        signal: AbortSignal.timeout(30_000),
       },
-      body: JSON.stringify({ ...body, metadata: { source: "lovart.dofe.ai" } }),
-      signal: AbortSignal.timeout(30_000),
+      { label: "createTask", attempts: 3, backoffMs: 1_000 },
+    );
+  } catch (error) {
+    const cause =
+      error instanceof Error
+        ? (error as Error & { cause?: Error }).cause?.message
+        : undefined;
+    console.error("[dofe-generation] createTask request did not complete", {
+      model: body.model,
+      url,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+      ...(cause ? { cause } : {}),
     });
-  } catch {
     throw new GenerationError(
       "dofe",
       "transport_error",
       "DoFe createTask request did not complete.",
     );
   }
+
+  console.info("[dofe-generation] createTask response", {
+    model: body.model,
+    status: response.status,
+    elapsedMs: Date.now() - startedAt,
+  });
+
   if (response.status === 401 || response.status === 403) {
     throw new GenerationError(
       "dofe",
@@ -286,16 +319,28 @@ async function getTask(
   apiKey: string,
   taskId: string,
 ): Promise<TaskResponse> {
+  const url = buildTaskUrl(baseUrl, `/${encodeURIComponent(taskId)}`);
   let response: Response;
   try {
-    response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}${TASK_PATH}/${encodeURIComponent(taskId)}`,
+    response = await fetchWithRetry(
+      url,
       {
         headers: { authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(20_000),
       },
+      { label: "getTask", attempts: 3, backoffMs: 1_000 },
     );
-  } catch {
+  } catch (error) {
+    const cause =
+      error instanceof Error
+        ? (error as Error & { cause?: Error }).cause?.message
+        : undefined;
+    console.error("[dofe-generation] getTask request did not complete", {
+      taskId,
+      url,
+      error: error instanceof Error ? error.message : String(error),
+      ...(cause ? { cause } : {}),
+    });
     throw new GenerationError(
       "dofe",
       "transport_error",
@@ -371,7 +416,24 @@ async function pollUntilTerminal(
       );
     }
     await delay(intervalMs);
-    task = await getTask(baseUrl, apiKey, task.taskId);
+    try {
+      task = await getTask(baseUrl, apiKey, task.taskId);
+      console.info("[dofe-generation] poll status", {
+        taskId: task.taskId,
+        status: task.status,
+        elapsedMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      console.warn("[dofe-generation] poll getTask failed", {
+        taskId: task.taskId,
+        status: task.status,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Re-throw on terminal-ish failures; allow the outer loop to retry
+      // transient network errors up to the overall timeout.
+      throw error;
+    }
   }
 
   if (task.status !== "succeeded") {
@@ -397,7 +459,28 @@ function firstAssetUrl(task: TaskResponse): { url: string; asset: TaskAsset } {
       "DoFe task succeeded but produced no output asset.",
     );
   }
-  return { url: asset.url, asset };
+  // Reject malformed URLs before downstream consumers try to fetch them. The
+  // gateway should always return absolute https URLs, but defensive parsing
+  // turns confusing DNS errors (e.g. getaddrinfo ENOTFOUND dofe-system.https)
+  // into an explicit contract error.
+  let validated: URL;
+  try {
+    validated = new URL(asset.url);
+  } catch {
+    throw new GenerationError(
+      "dofe",
+      "api_contract_error",
+      `DoFe task returned an invalid output asset URL: ${asset.url.slice(0, 200)}`,
+    );
+  }
+  if (validated.protocol !== "https:" && validated.protocol !== "http:") {
+    throw new GenerationError(
+      "dofe",
+      "api_contract_error",
+      `DoFe task returned an unsupported asset URL protocol: ${validated.protocol}`,
+    );
+  }
+  return { url: validated.toString(), asset };
 }
 
 function delay(ms: number): Promise<void> {
@@ -406,6 +489,77 @@ function delay(ms: number): Promise<void> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Network-level failures (DNS, TCP, TLS, reset, timeout) are distinct from HTTP
+ * error responses. Retry them a small number of times because ixicai.cn can be
+ * flaky on the first handshake, especially from overseas/local dev networks.
+ */
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("abort") ||
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("enotfound") ||
+    message.includes("econnrefused") ||
+    message.includes("socket") ||
+    message.includes("connect") ||
+    message.includes("und_err")
+  );
+}
+
+async function fetchWithRetry(
+  input: string,
+  init: RequestInit | undefined,
+  options: { label: string; attempts: number; backoffMs: number },
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= options.attempts; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      const cause =
+        error instanceof Error
+          ? (error as Error & { cause?: Error }).cause?.message
+          : undefined;
+      console.warn(
+        `[dofe-generation] ${options.label} network attempt ${attempt}/${options.attempts} failed`,
+        {
+          url: typeof input === "string" ? input : "[Request]",
+          error: error instanceof Error ? error.message : String(error),
+          ...(cause ? { cause } : {}),
+        },
+      );
+      if (attempt < options.attempts && isRetryableNetworkError(error)) {
+        await delay(options.backoffMs * attempt);
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Build the generation endpoint URL and guard against the common misconfiguration
+ * where the base URL drifts away from `/api` or the path loses `/v1`.
+ */
+function buildTaskUrl(baseUrl: string, suffix = ""): string {
+  const normalized = baseUrl.replace(/\/$/, "");
+  const full = `${normalized}${TASK_PATH}${suffix}`;
+  if (!full.includes("/api/v1/generation/tasks")) {
+    throw new GenerationError(
+      "dofe",
+      "config_error",
+      `DoFe generation URL does not point to /api/v1/generation/tasks: ${full}`,
+    );
+  }
+  return full;
 }
 
 function isTaskAsset(value: unknown): value is TaskAsset {
@@ -440,6 +594,13 @@ export class DofeImageProvider implements ImageProvider {
       params.aspectRatio ?? "1:1",
     );
 
+    console.info("[dofe-generation] generate image start", {
+      model: params.model,
+      aspectRatio: params.aspectRatio ?? "1:1",
+      resolution: `${width}x${height}`,
+    });
+    const startedAt = Date.now();
+
     const task = await createTask(this.baseUrl, apiKey, {
       model: params.model,
       endpointKind: "image_async",
@@ -457,6 +618,16 @@ export class DofeImageProvider implements ImageProvider {
       IMAGE_POLL_TIMEOUT_MS,
     );
     const { url, asset } = firstAssetUrl(terminal);
+    console.info("[dofe-generation] generate image done", {
+      model: params.model,
+      elapsedMs: Date.now() - startedAt,
+      taskId: terminal.taskId,
+      status: terminal.status,
+      assetUrlPrefix: url.slice(0, 80),
+      mimeType: asset.mimeType ?? "image/png",
+      width,
+      height,
+    });
     return {
       url,
       mimeType: asset.mimeType ?? "image/png",
@@ -484,6 +655,12 @@ export class DofeVideoProvider implements VideoProvider {
     const { width, height } = aspectRatioToDimensions(
       params.aspectRatio ?? "16:9",
     );
+
+    console.info("[dofe-generation] generate video start", {
+      model: params.model,
+      aspectRatio: params.aspectRatio ?? "16:9",
+    });
+    const startedAt = Date.now();
 
     const modelInfo = this.models.find((m) => m.id === params.model);
     const { operation, videoRole } = resolveVideoOperation(params, modelInfo);
@@ -517,6 +694,13 @@ export class DofeVideoProvider implements VideoProvider {
       VIDEO_POLL_TIMEOUT_MS,
     );
     const { url, asset } = firstAssetUrl(terminal);
+    console.info("[dofe-generation] generate video done", {
+      model: params.model,
+      elapsedMs: Date.now() - startedAt,
+      taskId: terminal.taskId,
+      status: terminal.status,
+      assetUrlPrefix: url.slice(0, 80),
+    });
     return {
       url,
       mimeType: asset.mimeType ?? "video/mp4",
