@@ -1,24 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import Script from "next/script";
 
-import { cn } from "@/lib/utils";
 import { Providers } from "../components/providers";
 
 import "./globals.css";
-
-const geistSans = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://lovart.dofe.ai"),
@@ -48,13 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className="scroll-smooth overflow-x-hidden"
       suppressHydrationWarning
     >
-      <body
-        className={cn(
-          geistSans.variable,
-          geistMono.variable,
-          "min-h-screen overflow-x-hidden bg-background font-sans antialiased",
-        )}
-      >
+      <body className="min-h-screen overflow-x-hidden bg-background font-sans antialiased">
         <Providers>{children}</Providers>
         <Script
           src="https://app.lemonsqueezy.com/js/lemon.js"
