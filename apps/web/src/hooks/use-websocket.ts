@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { streamEventSchema } from "@lovart.dofe/shared";
 import type {
   RunCreateRequest,
   StreamEvent,
@@ -88,7 +89,28 @@ export function useWebSocket(getToken: () => string | null): WebSocketHandle {
       }
 
       if (msg.type === "event") {
-        const streamEvent = msg.event as StreamEvent;
+        // 边界校验：后端事件必须满足 streamEventSchema（例如 run.failed.error.message
+        // 至少 1 字符）。历史上出现过 error 为 {} 的损坏 run.failed，这里在 WS 入口
+        // 统一拦截并记录 schema issues，精确定位上游问题；解析失败时仍透传原始事件，
+        // 由 applyStreamEvent 内部的 per-case 防御兜底，避免丢弃 terminal 事件导致流卡住。
+        const parsed = streamEventSchema.safeParse(msg.event);
+        let streamEvent: StreamEvent;
+        if (parsed.success) {
+          streamEvent = parsed.data;
+        } else {
+          let rawForLog: unknown = msg.event;
+          try {
+            rawForLog = JSON.parse(JSON.stringify(msg.event ?? null));
+          } catch {
+            // 循环引用等无法序列化，保留原始引用
+          }
+          console.warn("[ws] received non-schema stream event:", {
+            type: (msg.event as { type?: string } | null)?.type,
+            issues: parsed.error.issues,
+            raw: rawForLog,
+          });
+          streamEvent = msg.event as StreamEvent;
+        }
         // Defensive: skip malformed events without proper structure
         if (!streamEvent || typeof streamEvent !== "object") {
           console.warn("[ws] received malformed stream event:", msg);

@@ -30,11 +30,14 @@ export function useChatStream(updateSessionMessages: MessageUpdater) {
   const applyStreamEvent = useCallback(
     (event: StreamEvent, assistantId: string, sessionId: string) => {
       if (!assistantId || !sessionId) {
-        console.warn("[chat-stream] applyStreamEvent called with missing ids:", {
-          assistantId,
-          sessionId,
-          eventType: event.type,
-        });
+        console.warn(
+          "[chat-stream] applyStreamEvent called with missing ids:",
+          {
+            assistantId,
+            sessionId,
+            eventType: event.type,
+          },
+        );
         return;
       }
 
@@ -98,7 +101,10 @@ export function useChatStream(updateSessionMessages: MessageUpdater) {
                 (b) => b.type === "tool" && b.toolCallId === event.toolCallId,
               );
               if (alreadyExists) {
-                console.warn("[chat-stream] duplicate tool.started for:", event.toolCallId);
+                console.warn(
+                  "[chat-stream] duplicate tool.started for:",
+                  event.toolCallId,
+                );
                 return m;
               }
               const newBlock: ToolBlock = {
@@ -144,16 +150,48 @@ export function useChatStream(updateSessionMessages: MessageUpdater) {
           );
           break;
 
-        case "run.failed":
-          console.error("[chat-stream] run.failed:", event.error);
-          const failureMessage = event.error.message.trim() || "抱歉，处理过程中遇到问题，请重试。";
+        case "run.failed": {
+          // 防御：event.error 契约应为 { code, message }（见 shared/events.ts 的
+          // lovartDofeErrorSchema），但线上出现过 error 为空对象 {} 的损坏事件
+          // （疑似上游把 Error 实例塞入 error 字段，JSON.stringify 后 message 等
+          // 非可枚举属性丢失）。错误处理路径必须对任意结构健壮——否则 error 残缺时
+          // event.error.message.trim() 会反过来抛 TypeError，掩盖真正的失败原因。
+          const errorObj = (event.error ?? {}) as {
+            code?: unknown;
+            message?: unknown;
+          };
+          const messageSource =
+            typeof errorObj.message === "string"
+              ? errorObj.message
+              : typeof errorObj.code === "string"
+                ? errorObj.code
+                : "";
+          const failureMessage =
+            messageSource.trim() || "抱歉，处理过程中遇到问题，请重试。";
+          // 安全序列化 error 结构，便于线上排查损坏事件来源
+          // （JSON.stringify 会丢弃 Error 实例的非可枚举属性，正好暴露这类问题）。
+          let serializedError: unknown = event.error;
+          try {
+            serializedError = JSON.parse(JSON.stringify(event.error ?? null));
+          } catch {
+            // 循环引用等无法序列化，保留原始引用
+          }
+          console.error("[chat-stream] run.failed:", {
+            code: errorObj.code,
+            message: errorObj.message,
+            serialized: serializedError,
+          });
           update((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId) return m;
               // Mark all running tool blocks as completed so spinners stop
               const blocks = m.contentBlocks.map((block) =>
                 block.type === "tool" && block.status === "running"
-                  ? { ...block, status: "completed" as const, outputSummary: "\u5904\u7406\u5931\u8d25" }
+                  ? {
+                      ...block,
+                      status: "completed" as const,
+                      outputSummary: "\u5904\u7406\u5931\u8d25",
+                    }
                   : block,
               );
               const hasText = blocks.some((b) => b.type === "text");
@@ -172,6 +210,7 @@ export function useChatStream(updateSessionMessages: MessageUpdater) {
             }),
           );
           break;
+        }
 
         case "run.canceled":
           // Clean up running tool blocks when a run is aborted.

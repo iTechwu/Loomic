@@ -1,6 +1,39 @@
 import { randomUUID } from "node:crypto";
-import type { WebSocket } from "ws";
 import type { StreamEvent } from "@lovart.dofe/shared";
+import type { WebSocket } from "ws";
+
+/**
+ * JSON.stringify replacer：在序列化边界把 Error 类实例转成 plain object。
+ *
+ * 背景：Error 的 message/stack/name 都是非可枚举属性，`JSON.stringify(err)`
+ * 会静默返回 "{}"。若某条 StreamEvent 的字段（典型如 run.failed.error）被误塞
+ * 了 Error 实例，前端就会收到空的 error 对象并触发崩溃。这里作为最后一道兜底，
+ * 保证任何误入事件的 Error 实例都能保留可读的 name/message，以及挂在实例上的
+ * 额外可枚举字段（如 UploadServiceError.code、statusCode）。
+ */
+function normalizeStreamEventValue(_key: string, value: unknown): unknown {
+  if (value instanceof Error) {
+    const normalized: Record<string, unknown> = {
+      name: value.name,
+      message: value.message,
+    };
+    // 保留 Error 子类挂载的可枚举业务字段（如 UploadServiceError.code）
+    for (const [k, v] of Object.entries(value)) {
+      normalized[k] = v;
+    }
+    if (value.cause !== undefined) {
+      normalized.cause =
+        value.cause instanceof Error ? value.cause.message : value.cause;
+    }
+    return normalized;
+  }
+  return value;
+}
+
+/** 将 StreamEvent 包成 { type: "event", event } 帧并安全序列化。 */
+function stringifyStreamEvent(event: StreamEvent): string {
+  return JSON.stringify({ type: "event", event }, normalizeStreamEventValue);
+}
 
 type PendingRPC = {
   resolve: (value: any) => void;
@@ -140,7 +173,7 @@ export class ConnectionManager {
   pushToCanvas(canvasId: string, event: StreamEvent): void {
     const ids = this.canvasIndex.get(canvasId);
     if (!ids) return;
-    const payload = JSON.stringify({ type: "event", event });
+    const payload = stringifyStreamEvent(event);
     for (const cid of ids) {
       const entry = this.connections.get(cid);
       if (entry && entry.ws.readyState === 1) {
@@ -153,7 +186,7 @@ export class ConnectionManager {
   pushToUser(userId: string, event: StreamEvent): void {
     const ids = this.userIndex.get(userId);
     if (!ids) return;
-    const payload = JSON.stringify({ type: "event", event });
+    const payload = stringifyStreamEvent(event);
     for (const cid of ids) {
       const entry = this.connections.get(cid);
       if (entry && entry.ws.readyState === 1) {
@@ -297,7 +330,10 @@ export class ConnectionManager {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  private removeFromIndexes(connectionId: string, entry: ConnectionEntry): void {
+  private removeFromIndexes(
+    connectionId: string,
+    entry: ConnectionEntry,
+  ): void {
     // Remove from user index
     const userSet = this.userIndex.get(entry.userId);
     if (userSet) {

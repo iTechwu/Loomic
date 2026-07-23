@@ -17,6 +17,7 @@ import type { ViewerService } from "../features/bootstrap/ensure-user-foundation
 import type { ChatService } from "../features/chat/chat-service.js";
 import type { ThreadService } from "../features/chat/thread-service.js";
 import type { SettingsService } from "../features/settings/settings-service.js";
+import { sanitizeErrorForClient } from "../utils/error-sanitizer.js";
 import {
   parseWebSocketAuthRequest,
   selectWebSocketAuthProtocol,
@@ -446,7 +447,10 @@ async function handleRunCommand(
       runId,
       error: {
         code: "run_failed" as const,
-        message: error instanceof Error ? error.message : "Stream failed",
+        // 与 runtime.ts / stream-adapter.ts 的其余 7 处 run.failed 保持一致：
+        // 统一走 sanitizeErrorForClient，保证 message 永远非空（满足 schema 的
+        // min(1) 约束），并避免把 provider/db 等敏感错误细节透出给前端。
+        message: sanitizeErrorForClient(error),
       },
       timestamp: new Date().toISOString(),
     };
