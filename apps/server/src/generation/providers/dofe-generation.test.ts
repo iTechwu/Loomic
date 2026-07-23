@@ -48,17 +48,21 @@ describe("DofeImageProvider", () => {
   });
 
   it("submits image tasks through the compose-internal Models data plane", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          taskId: "task_internal",
-          status: "succeeded",
-          outputAssets: [
-            { assetId: "asset_internal", url: "https://example.com/image.png" },
-          ],
-        }),
-        { status: 201 },
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            taskId: "task_internal",
+            status: "succeeded",
+            outputAssets: [
+              {
+                assetId: "asset_internal",
+                url: "https://example.com/image.png",
+              },
+            ],
+          }),
+          { status: 201 },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
 

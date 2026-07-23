@@ -575,7 +575,11 @@ async function fetchWithRetry(
 function buildTaskUrl(baseUrl: string, suffix = ""): string {
   const normalized = baseUrl.replace(/\/$/, "");
   const full = `${normalized}${TASK_PATH}${suffix}`;
-  if (!/\/api\/v1\/generation\/tasks(?:\/|$)|\/v1\/generation\/tasks(?:\/|$)/.test(full)) {
+  if (
+    !/\/api\/v1\/generation\/tasks(?:\/|$)|\/v1\/generation\/tasks(?:\/|$)/.test(
+      full,
+    )
+  ) {
     throw new GenerationError(
       "dofe",
       "config_error",
