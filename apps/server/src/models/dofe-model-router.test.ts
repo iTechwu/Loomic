@@ -121,6 +121,33 @@ describe("DoFe model router", () => {
     });
   });
 
+  it("keeps image models visible when their optional capability document is empty", async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "qwen-image-max" }] }));
+      }
+      return new Response(
+        JSON.stringify({ model_type: "image", capabilities: [] }),
+      );
+    });
+    const catalog = createDofeModelCatalog(
+      {
+        dofeModelApiKey: "router-key",
+        dofeModelBaseUrl: "https://ixicai.cn/api",
+      },
+      { fetch },
+    );
+
+    await expect(catalog?.listImageModels()).resolves.toEqual([
+      {
+        id: "qwen-image-max",
+        modelType: "image",
+        capabilities: [],
+      },
+    ]);
+  });
+
   it("projects only explicit LLM types into the chat catalog", async () => {
     const modelTypes: Record<string, string> = {
       "chat-current": "llm",

@@ -284,11 +284,11 @@ export function createDofeModelCatalog(
       );
     },
     async listImageModels() {
-      return (await getModels()).filter(
-        (model) =>
-          model.modelType === "image" &&
-          model.capabilities?.includes("text_to_image"),
-      );
+      // `model_type` is the gateway's authoritative category. Do not hide an
+      // image model merely because its optional capability document is delayed
+      // or incomplete; the generation endpoint remains authoritative for the
+      // operation-level validation, just as it is for video models.
+      return (await getModels()).filter((model) => model.modelType === "image");
     },
     async listVideoModels() {
       return (await getModels()).filter((model) => model.modelType === "video");

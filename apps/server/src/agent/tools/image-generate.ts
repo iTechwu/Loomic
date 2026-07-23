@@ -162,19 +162,31 @@ export async function runImageGenerate(
     console.log(`[generate_image] ${label} +${Date.now() - t0}ms`, extra ? JSON.stringify(extra) : "");
   };
 
-  // Resolve assetId references in inputImages to base64 data URIs
-  if (input.inputImages?.length && attachmentMap) {
+  // A generation turn with uploaded references must not depend on the LLM
+  // repeating every asset ID exactly. Explicit tool references take priority;
+  // otherwise preserve every run attachment as a generation input.
+  const inputReferences =
+    input.inputImages?.length
+      ? input.inputImages
+      : Object.keys(attachmentMap ?? {});
+  if (!input.inputImages?.length && inputReferences.length > 0) {
+    lap("using_run_attachments_as_references", {
+      attachmentCount: inputReferences.length,
+    });
+  }
+
+  // Resolve assetId references in inputImages to base64 data URIs.
+  if (inputReferences.length) {
     input = {
       ...input,
-      inputImages: input.inputImages.map((ref) =>
-        attachmentMap[ref] ?? ref,
+      inputImages: inputReferences.map((ref) =>
+        attachmentMap?.[ref] ?? ref,
       ),
     };
   }
 
-  // Filter out invalid image references — only keep valid URLs.
-  // Agent may pass canvas element IDs or unresolved assetIds that aren't
-  // in the attachmentMap. These would cause Replicate 422 errors.
+  // Filter out invalid image references. Unresolved asset IDs are rejected by
+  // providers, but the fallback above guarantees uploaded references survive.
   if (input.inputImages?.length) {
     const validImages = input.inputImages.filter((img) =>
       img.startsWith("http://") || img.startsWith("https://") || img.startsWith("data:"),

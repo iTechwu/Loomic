@@ -1067,6 +1067,12 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
 
             // Build assetId → data URI map for tool-level resolution
             attachmentDataMap = buildAttachmentDataMap(downloaded);
+            for (const attachment of run.attachments!) {
+              // A signed URL is still a valid provider input when downloading it
+              // for LLM vision failed. Retain it so generate_image never drops
+              // this reference merely because the vision fetch was unavailable.
+              attachmentDataMap[attachment.assetId] ??= attachment.url;
+            }
 
             userMessage = new HumanMessage({
               content: [

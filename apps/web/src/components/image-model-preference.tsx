@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Lock, Zap } from "lucide-react";
+import { Lock, RefreshCw, Zap } from "lucide-react";
 
 import type { ImageModelInfo } from "../lib/server-api";
 import type { VideoModelInfo } from "../lib/server-api";
@@ -23,26 +23,63 @@ export function ImageModelPreferencePopover({
 }) {
   const { preference, setMode, toggleModel } = useImageModelPreference();
   const [models, setModels] = useState<ImageModelInfo[]>([]);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"image" | "video">("image");
   const videoPreference = useVideoModelPreference();
   const [videoModels, setVideoModels] = useState<VideoModelInfo[]>([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
+  const loadModels = useCallback(() => {
     if (!accessToken) {
       setModels([]);
       setVideoModels([]);
+      setImageError("登录状态已失效，请刷新页面后重试。");
+      setVideoError("登录状态已失效，请刷新页面后重试。");
       return;
     }
-    fetchImageModels(accessToken)
+
+    setImageLoading(true);
+    setVideoLoading(true);
+    setImageError(null);
+    setVideoError(null);
+
+    void fetchImageModels(accessToken)
       .then((data) => setModels(data.models))
-      .catch(() => {});
-    fetchVideoModels(accessToken)
+      .catch((error: unknown) => {
+        console.warn("[model-preference] image catalog load failed", error);
+        setImageError("图片模型暂时无法加载。");
+      })
+      .finally(() => setImageLoading(false));
+    void fetchVideoModels(accessToken)
       .then((data) => setVideoModels(data.models))
-      .catch(() => {});
-  }, [accessToken, open]);
+      .catch((error: unknown) => {
+        console.warn("[model-preference] video catalog load failed", error);
+        setVideoError("视频模型暂时无法加载。");
+      })
+      .finally(() => setVideoLoading(false));
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (open) loadModels();
+  }, [loadModels, open]);
+
+  useEffect(() => {
+    const needsCatalogRetry =
+      open &&
+      !imageLoading &&
+      !videoLoading &&
+      (models.length === 0 || videoModels.length === 0);
+    if (!needsCatalogRetry) return;
+
+    // The server warms its gateway-backed catalog asynchronously. Recheck while
+    // the picker is open so an early empty response becomes a usable list.
+    const retryTimer = window.setTimeout(loadModels, 5_000);
+    return () => window.clearTimeout(retryTimer);
+  }, [imageLoading, loadModels, models.length, open, videoLoading, videoModels.length]);
 
   // Calculate position — auto-detect direction based on available space
   useLayoutEffect(() => {
@@ -90,6 +127,8 @@ export function ImageModelPreferencePopover({
   const currentModels = activeTab === "image" ? models : videoModels;
   const currentSetMode = activeTab === "image" ? setMode : videoPreference.setMode;
   const currentToggleModel = activeTab === "image" ? toggleModel : videoPreference.toggleModel;
+  const currentLoading = activeTab === "image" ? imageLoading : videoLoading;
+  const currentError = activeTab === "image" ? imageError : videoError;
 
   if (!open || !pos) return null;
 
@@ -158,7 +197,30 @@ export function ImageModelPreferencePopover({
 
         {/* Model list */}
         <div className="scrollbar-hidden max-h-[300px] space-y-0.5 overflow-y-auto px-1">
-          {currentModels.map((m) => {
+          {currentLoading && (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              正在加载模型...
+            </p>
+          )}
+          {!currentLoading && currentError && (
+            <div className="flex flex-col items-center gap-2 px-2 py-4 text-center">
+              <p className="text-xs text-muted-foreground">{currentError}</p>
+              <button
+                type="button"
+                onClick={loadModels}
+                className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:text-accent-foreground"
+              >
+                <RefreshCw className="h-3 w-3" />
+                重试
+              </button>
+            </div>
+          )}
+          {!currentLoading && !currentError && currentModels.length === 0 && (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              暂无可用模型，目录将在后台自动重试。
+            </p>
+          )}
+          {!currentLoading && !currentError && currentModels.map((m) => {
             const selected = currentPreference.models.includes(m.id);
             return (
               <button

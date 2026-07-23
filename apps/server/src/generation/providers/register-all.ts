@@ -21,6 +21,8 @@ import type { VideoModelInfo } from "../types.js";
 import { DofeImageProvider, DofeVideoProvider } from "./dofe-generation.js";
 import { registerImageProvider, registerVideoProvider } from "./registry.js";
 
+const CATALOG_SYNC_RETRY_MS = 30_000;
+
 export function toCatalogVideoModelInfo(
   model: DofeRouterModel,
 ): VideoModelInfo {
@@ -54,33 +56,39 @@ export function registerAllProviders(env: ServerEnv): void {
     registerVideoProvider(videoProvider);
 
     const catalog = createDofeModelCatalog(env);
-    void catalog
-      ?.listImageModels()
-      .then((models) => {
+    if (!catalog) return;
+
+    const syncCatalog = async () => {
+      try {
+        const [imageModels, videoModels] = await Promise.all([
+          catalog.listImageModels(),
+          catalog.listVideoModels(),
+        ]);
         imageProvider.setModels(
-          models.map((model) => ({
+          imageModels.map((model) => ({
             id: model.id,
             displayName: model.id,
             description: "Image generation via ixicai.cn",
           })),
         );
-      })
-      .catch(() => {
+        videoProvider.setModels(videoModels.map(toCatalogVideoModelInfo));
+        console.info("[model-router] generation_catalog_synced", {
+          imageModelCount: imageModels.length,
+          videoModelCount: videoModels.length,
+        });
+      } catch {
         logOperationalFailure(
-          "[model-router] image catalog sync failed",
-          "model_catalog_image_sync",
+          "[model-router] generation catalog sync failed; retry scheduled",
+          "model_catalog_generation_sync",
         );
-      });
-    void catalog
-      ?.listVideoModels()
-      .then((models) => {
-        videoProvider.setModels(models.map(toCatalogVideoModelInfo));
-      })
-      .catch(() => {
-        logOperationalFailure(
-          "[model-router] video catalog sync failed",
-          "model_catalog_video_sync",
-        );
-      });
+      } finally {
+        // The provider registry is synchronous, while the Models catalog is
+        // network-backed. Keep it fresh and recover from a transient startup
+        // failure so the model picker cannot remain empty for process lifetime.
+        setTimeout(() => void syncCatalog(), CATALOG_SYNC_RETRY_MS).unref();
+      }
+    };
+
+    void syncCatalog();
   }
 }
