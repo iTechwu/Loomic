@@ -46,6 +46,7 @@ describe("DoFe model routing", () => {
     expect(shouldUseDofeFallback({ status: 402 })).toBe(true);
     expect(shouldUseDofeFallback({ response: { status: 503 } })).toBe(true);
     expect(shouldUseDofeFallback({ status: 400 })).toBe(false);
+    expect(shouldUseDofeFallback({ status: 400 }, true)).toBe(true);
     expect(
       shouldUseDofeFallback(
         Object.assign(new Error("Model do not support image input."), {

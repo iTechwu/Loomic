@@ -61,7 +61,29 @@ function getHttpStatus(error: unknown): number | undefined {
   return undefined;
 }
 
-export function shouldUseDofeFallback(error: unknown): boolean {
+function hasImageInput(messages: unknown): boolean {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((message) => {
+    const content =
+      message && typeof message === "object" && "content" in message
+        ? (message as { content?: unknown }).content
+        : undefined;
+    return (
+      Array.isArray(content) &&
+      content.some(
+        (part) =>
+          part &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "image_url",
+      )
+    );
+  });
+}
+
+export function shouldUseDofeFallback(
+  error: unknown,
+  hasImageInput = false,
+): boolean {
   const status = getHttpStatus(error);
   if (status !== undefined && FALLBACK_HTTP_STATUSES.has(status)) return true;
 
@@ -70,8 +92,9 @@ export function shouldUseDofeFallback(error: unknown): boolean {
   // is a safe model fallback rather than a malformed-request retry.
   return (
     status === 400 &&
-    error instanceof Error &&
-    /model do not support image input/i.test(error.message)
+    (hasImageInput ||
+      (error instanceof Error &&
+        /model do not support image input/i.test(error.message)))
   );
 }
 
@@ -92,7 +115,7 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
     try {
       return await super._generate(...args);
     } catch (error) {
-      if (!shouldUseDofeFallback(error)) throw error;
+      if (!shouldUseDofeFallback(error, hasImageInput(args[0]))) throw error;
       console.warn("[model-router] primary_model_unavailable_using_fallback", {
         primary: this.model,
         fallback: this.fallback.model,
@@ -112,7 +135,9 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
         yield chunk;
       }
     } catch (error) {
-      if (started || !shouldUseDofeFallback(error)) throw error;
+      if (started || !shouldUseDofeFallback(error, hasImageInput(args[0]))) {
+        throw error;
+      }
       console.warn("[model-router] primary_model_unavailable_using_fallback", {
         primary: this.model,
         fallback: this.fallback.model,
