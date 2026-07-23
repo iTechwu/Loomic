@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { CopyContentButton } from "./copy-content-button";
 import { ChatImage } from "./image-lightbox";
 import { isImageUrl } from "./utils";
 
@@ -73,16 +74,24 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   const safeText = text || "";
 
   return (
-    <div className="markdown-content text-sm leading-[1.6] text-foreground">
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        components={markdownComponents}
-      >
-        {safeText}
-      </ReactMarkdown>
-      {showCursor && (
-        <span className="inline-block w-[2px] h-[14px] ml-0.5 -mb-[2px] bg-foreground animate-pulse rounded-full" />
-      )}
+    <div className="flex items-start gap-1">
+      <div className="min-w-0 flex-1 markdown-content text-sm leading-[1.6] text-foreground">
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          components={markdownComponents}
+        >
+          {safeText}
+        </ReactMarkdown>
+        {showCursor && (
+          <span className="inline-block w-[2px] h-[14px] ml-0.5 -mb-[2px] bg-foreground animate-pulse rounded-full" />
+        )}
+      </div>
+      <CopyContentButton
+        content={safeText}
+        label="助手回复"
+        disabled={showCursor ?? false}
+        className="mt-0.5"
+      />
     </div>
   );
 });

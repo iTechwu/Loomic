@@ -3,7 +3,12 @@
 import { motion } from "framer-motion";
 import React, { useMemo } from "react";
 
-import type { ContentBlock, ToolArtifact, ToolBlock } from "@lovart.dofe/shared";
+import type {
+  ContentBlock,
+  ToolArtifact,
+  ToolBlock,
+} from "@lovart.dofe/shared";
+import { CopyContentButton } from "./chat/copy-content-button";
 import { ImagePill } from "./chat/image-lightbox";
 import { MarkdownRenderer } from "./chat/markdown-renderer";
 import { MentionPill } from "./chat/mention-pill";
@@ -38,11 +43,7 @@ type ChatMessageProps = {
  * each independently memoized for fine-grained update control.
  */
 export const ChatMessage = React.memo(
-  function ChatMessage({
-    role,
-    contentBlocks,
-    isStreaming,
-  }: ChatMessageProps) {
+  function ChatMessage({ role, contentBlocks, isStreaming }: ChatMessageProps) {
     const isUser = role === "user";
 
     if (isUser) {
@@ -107,41 +108,47 @@ const UserMessage = React.memo(function UserMessage({
       className="flex w-full flex-col items-end gap-2 pl-10"
     >
       {text && (
-        <div className="inline-block rounded-xl bg-muted px-3 py-2.5 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
-          <span className="cursor-text select-text [word-break:break-word]">
-            {text}
-          </span>
-          {mentionBlocks.length > 0 && (
-            <span className="inline">
-              {mentionBlocks.map((block, idx) => (
-                <MentionPill
-                  key={idx}
-                  label={(block as { label: string }).label}
-                  kind={
-                    (
-                      block as {
-                        mentionType: "image-model" | "brand-kit-asset";
-                      }
-                    ).mentionType
-                  }
-                />
-              ))}
+        <div className="flex max-w-full items-start gap-1">
+          <div className="min-w-0 rounded-xl bg-muted px-3 py-2.5 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
+            <span className="cursor-text select-text [word-break:break-word]">
+              {text}
             </span>
-          )}
-          {imageBlocks.length > 0 && (
-            <span className="inline">
-              {imageBlocks.map((block, idx) => (
-                <ImagePill
-                  key={idx}
-                  src={(block as { url: string }).url}
-                  name={
-                    (block as { name?: string }).name ??
-                    `image-${idx + 1}`
-                  }
-                />
-              ))}
-            </span>
-          )}
+            {mentionBlocks.length > 0 && (
+              <span className="inline">
+                {mentionBlocks.map((block, idx) => (
+                  <MentionPill
+                    key={idx}
+                    label={(block as { label: string }).label}
+                    kind={
+                      (
+                        block as {
+                          mentionType: "image-model" | "brand-kit-asset";
+                        }
+                      ).mentionType
+                    }
+                  />
+                ))}
+              </span>
+            )}
+            {imageBlocks.length > 0 && (
+              <span className="inline">
+                {imageBlocks.map((block, idx) => (
+                  <ImagePill
+                    key={idx}
+                    src={(block as { url: string }).url}
+                    name={
+                      (block as { name?: string }).name ?? `image-${idx + 1}`
+                    }
+                  />
+                ))}
+              </span>
+            )}
+          </div>
+          <CopyContentButton
+            content={text}
+            label="用户消息"
+            className="mt-0.5"
+          />
         </div>
       )}
       {!text && (imageBlocks.length > 0 || mentionBlocks.length > 0) && (
@@ -163,9 +170,7 @@ const UserMessage = React.memo(function UserMessage({
             <ImagePill
               key={idx}
               src={(block as { url: string }).url}
-              name={
-                (block as { name?: string }).name ?? `image-${idx + 1}`
-              }
+              name={(block as { name?: string }).name ?? `image-${idx + 1}`}
             />
           ))}
         </div>
@@ -237,9 +242,7 @@ const AssistantMessage = React.memo(function AssistantMessage({
             <ThinkingBlockView
               key={`thinking-${idx}`}
               thinking={block.thinking}
-              isStreaming={
-                isStreaming && idx === contentBlocks.length - 1
-              }
+              isStreaming={isStreaming && idx === contentBlocks.length - 1}
             />
           );
         }
@@ -256,9 +259,7 @@ const AssistantMessage = React.memo(function AssistantMessage({
         }
 
         if (block.type === "tool") {
-          return (
-            <ToolBlockView key={block.toolCallId} block={block} />
-          );
+          return <ToolBlockView key={block.toolCallId} block={block} />;
         }
 
         // ImageBlock -- skip in assistant messages (user-side only)
