@@ -569,16 +569,17 @@ async function fetchWithRetry(
 
 /**
  * Build the generation endpoint URL and guard against the common misconfiguration
- * where the base URL drifts away from `/api` or the path loses `/v1`.
+ * where the path loses `/v1`. The public gateway uses `/api/v1`, while the
+ * compose-internal Models service exposes the same data plane at `/v1`.
  */
 function buildTaskUrl(baseUrl: string, suffix = ""): string {
   const normalized = baseUrl.replace(/\/$/, "");
   const full = `${normalized}${TASK_PATH}${suffix}`;
-  if (!full.includes("/api/v1/generation/tasks")) {
+  if (!/\/api\/v1\/generation\/tasks(?:\/|$)|\/v1\/generation\/tasks(?:\/|$)/.test(full)) {
     throw new GenerationError(
       "dofe",
       "config_error",
-      `DoFe generation URL does not point to /api/v1/generation/tasks: ${full}`,
+      `DoFe generation URL does not point to a valid /v1/generation/tasks data plane: ${full}`,
     );
   }
   return full;

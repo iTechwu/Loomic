@@ -47,6 +47,34 @@ describe("DofeImageProvider", () => {
     ]);
   });
 
+  it("submits image tasks through the compose-internal Models data plane", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          taskId: "task_internal",
+          status: "succeeded",
+          outputAssets: [
+            { assetId: "asset_internal", url: "https://example.com/image.png" },
+          ],
+        }),
+        { status: 201 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new DofeImageProvider("http://dofe-models-api:3101");
+    await provider.generate({
+      auth: { designApiKey: "test-key" },
+      model: "seedream-5.0",
+      prompt: "A test image",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://dofe-models-api:3101/v1/generation/tasks",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("does not expose a gateway error body to callers", async () => {
     vi.stubGlobal(
       "fetch",

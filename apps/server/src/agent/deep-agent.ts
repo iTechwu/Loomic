@@ -63,7 +63,16 @@ function getHttpStatus(error: unknown): number | undefined {
 
 export function shouldUseDofeFallback(error: unknown): boolean {
   const status = getHttpStatus(error);
-  return status !== undefined && FALLBACK_HTTP_STATUSES.has(status);
+  if (status !== undefined && FALLBACK_HTTP_STATUSES.has(status)) return true;
+
+  // GLM-5.2 is text-only in the configured Models catalog. DeepSeek-v4-pro
+  // accepts the same OpenAI image content, so this exact compatibility error
+  // is a safe model fallback rather than a malformed-request retry.
+  return (
+    status === 400 &&
+    error instanceof Error &&
+    /model do not support image input/i.test(error.message)
+  );
 }
 
 /**

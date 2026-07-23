@@ -1027,12 +1027,12 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
                   // as raw text, blowing past the token limit.
                   return {
                     type: "image_url" as const,
-                    image_url: `data:${mime};base64,${b64}`,
+                    image_url: { url: `data:${mime};base64,${b64}` },
                   };
                 } catch {
                   return {
                     type: "image_url" as const,
-                    image_url: a.url,
+                    image_url: { url: a.url },
                   };
                 }
               }),
