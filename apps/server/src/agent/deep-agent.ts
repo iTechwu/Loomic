@@ -38,6 +38,117 @@ import type { NativeDataRepository } from "../database/native-data-repository.js
 import type { TosObjectStorage } from "../storage/tos-object-storage.js";
 import type { BrandKitService } from "../features/brand-kit/brand-kit-service.js";
 
+const DOFE_PRIMARY_CHAT_MODEL = "glm-5.2";
+const DOFE_FALLBACK_CHAT_MODEL = "deepseek-v4-pro";
+const FALLBACK_HTTP_STATUSES = new Set([
+  402, 403, 404, 408, 409, 429, 500, 502, 503, 504,
+]);
+
+type ChatOpenAIOptions = NonNullable<
+  ConstructorParameters<typeof ChatOpenAI>[0]
+>;
+
+function getHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const candidate = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+  };
+  if (typeof candidate.status === "number") return candidate.status;
+  if (typeof candidate.response?.status === "number") {
+    return candidate.response.status;
+  }
+  return undefined;
+}
+
+export function shouldUseDofeFallback(error: unknown): boolean {
+  const status = getHttpStatus(error);
+  return status !== undefined && FALLBACK_HTTP_STATUSES.has(status);
+}
+
+/**
+ * Keep the ChatOpenAI surface (especially bindTools) intact while retrying a
+ * pre-stream availability failure against the tenant's designated fallback.
+ * Once output starts, restarting could duplicate an agent action.
+ */
+class DofeFallbackChatOpenAI extends ChatOpenAI {
+  constructor(
+    fields: ChatOpenAIOptions,
+    private readonly fallback: ChatOpenAI,
+  ) {
+    super(fields);
+  }
+
+  override async _generate(...args: Parameters<ChatOpenAI["_generate"]>) {
+    try {
+      return await super._generate(...args);
+    } catch (error) {
+      if (!shouldUseDofeFallback(error)) throw error;
+      console.warn("[model-router] primary_model_unavailable_using_fallback", {
+        primary: this.model,
+        fallback: this.fallback.model,
+        status: getHttpStatus(error),
+      });
+      return this.fallback._generate(...args);
+    }
+  }
+
+  override async *_streamResponseChunks(
+    ...args: Parameters<ChatOpenAI["_streamResponseChunks"]>
+  ) {
+    let started = false;
+    try {
+      for await (const chunk of super._streamResponseChunks(...args)) {
+        started = true;
+        yield chunk;
+      }
+    } catch (error) {
+      if (started || !shouldUseDofeFallback(error)) throw error;
+      console.warn("[model-router] primary_model_unavailable_using_fallback", {
+        primary: this.model,
+        fallback: this.fallback.model,
+        status: getHttpStatus(error),
+      });
+      yield* this.fallback._streamResponseChunks(...args);
+    }
+  }
+}
+
+function createDofeOpenAIChatModel(
+  model: string,
+  apiKey: string,
+  baseURL: string,
+): ChatOpenAI {
+  return new ChatOpenAI({
+    model,
+    apiKey,
+    configuration: { baseURL },
+    streaming: true,
+    // Upstream protocols do not all provide OpenAI usage chunks.
+    streamUsage: false,
+  });
+}
+
+function createDofeOpenAIChatModelWithFallback(
+  model: string,
+  apiKey: string,
+  baseURL: string,
+): ChatOpenAI {
+  const primary = {
+    model,
+    apiKey,
+    configuration: { baseURL },
+    streaming: true,
+    streamUsage: false,
+  } satisfies ChatOpenAIOptions;
+  if (model !== DOFE_PRIMARY_CHAT_MODEL) return new ChatOpenAI(primary);
+
+  return new DofeFallbackChatOpenAI(
+    primary,
+    createDofeOpenAIChatModel(DOFE_FALLBACK_CHAT_MODEL, apiKey, baseURL),
+  );
+}
+
 export type LovartDofeAgent = Pick<
   ReturnType<typeof createDeepAgent>,
   "stream" | "streamEvents"
@@ -222,14 +333,11 @@ export function createStreamingChatModel(
           streamUsage: false,
         });
       case "openai":
-        return new ChatOpenAI({
-          model: modelName,
-          apiKey: routerKey,
-          configuration: { baseURL: baseUrl },
-          streaming: true,
-          // Upstream protocols do not all provide OpenAI usage chunks.
-          streamUsage: false,
-        });
+        return createDofeOpenAIChatModelWithFallback(
+          modelName,
+          routerKey,
+          baseUrl,
+        );
     }
   }
 

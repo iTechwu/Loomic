@@ -17,6 +17,12 @@ describe("DoFe model router environment", () => {
     );
   });
 
+  it("keeps the compose Models data-plane root when explicitly configured", () => {
+    expect(normalizeDofeModelBaseUrl("http://dofe-models-api:3101", true)).toBe(
+      "http://dofe-models-api:3101",
+    );
+  });
+
   it("requires a complete router credential pair", () => {
     expect(() =>
       loadServerEnv({}, { DOFE_MODEL_BASE_URL: "https://ixicai.cn" }),

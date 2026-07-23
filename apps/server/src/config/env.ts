@@ -113,7 +113,14 @@ export function loadServerEnv(
     overrides.openAIApiKey ?? normalizeOptionalString(source.OPENAI_API_KEY);
   const dofeModelBaseUrl =
     overrides.dofeModelBaseUrl ??
-    normalizeDofeModelBaseUrl(source.DOFE_MODEL_BASE_URL);
+    normalizeDofeModelBaseUrl(
+      source.DOFE_MODEL_BASE_URL,
+      parseBoolean(
+        source.DOFE_MODEL_INTERNAL_DATA_PLANE,
+        false,
+        "DOFE_MODEL_INTERNAL_DATA_PLANE",
+      ),
+    );
   const dofeModelApiKey =
     overrides.dofeModelApiKey ??
     normalizeOptionalString(source.DOFE_MODEL_API_KEY);
@@ -405,7 +412,10 @@ function validateRequiredRedisUrl(redisUrl: string | undefined): void {
  * models data-plane beneath /api. Accepting either form prevents requests from
  * being sent to the login application when an operator configures the root URL.
  */
-export function normalizeDofeModelBaseUrl(value: string | undefined) {
+export function normalizeDofeModelBaseUrl(
+  value: string | undefined,
+  internalDataPlane = false,
+) {
   const normalizedValue = normalizeOptionalString(value);
   if (!normalizedValue) return undefined;
 
@@ -419,7 +429,10 @@ export function normalizeDofeModelBaseUrl(value: string | undefined) {
     throw new Error("DOFE_MODEL_BASE_URL must use http or https.");
   }
 
-  if (url.pathname === "" || url.pathname === "/") {
+  // The public Models application serves its data plane under `/api`, while
+  // the compose service exposes the same routes at its root. Keep the latter
+  // explicit so an internal URL never silently becomes an invalid `/api/v1`.
+  if (!internalDataPlane && (url.pathname === "" || url.pathname === "/")) {
     url.pathname = "/api";
   }
   return url.toString().replace(/\/$/, "");

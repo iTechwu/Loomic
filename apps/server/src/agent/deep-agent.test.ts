@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createDefaultModelSpecifier,
   createStreamingChatModel,
+  shouldUseDofeFallback,
 } from "./deep-agent.js";
 
 describe("DoFe model routing", () => {
@@ -29,5 +30,21 @@ describe("DoFe model routing", () => {
     expect(model.client._requestOptions.customHeaders).toEqual({
       Authorization: "Bearer dofe-router-key",
     });
+  });
+
+  it("keeps a bindable chat model when glm-5.2 has a gateway fallback", () => {
+    const model = createStreamingChatModel("dofe:glm-5.2", {
+      dofeModelApiKey: "dofe-router-key",
+      dofeModelBaseUrl: "http://dofe-models-api:3101",
+    }) as unknown as { model: string; bindTools: unknown };
+
+    expect(model.model).toBe("glm-5.2");
+    expect(typeof model.bindTools).toBe("function");
+  });
+
+  it("uses the fallback only for a retryable Models availability error", () => {
+    expect(shouldUseDofeFallback({ status: 402 })).toBe(true);
+    expect(shouldUseDofeFallback({ response: { status: 503 } })).toBe(true);
+    expect(shouldUseDofeFallback({ status: 400 })).toBe(false);
   });
 });
