@@ -39,7 +39,7 @@ import type { TosObjectStorage } from "../storage/tos-object-storage.js";
 import type { BrandKitService } from "../features/brand-kit/brand-kit-service.js";
 
 const DOFE_PRIMARY_CHAT_MODEL = "glm-5.2";
-const DOFE_FALLBACK_CHAT_MODEL = "deepseek-v4-pro";
+const DOFE_FALLBACK_CHAT_MODEL = "kimi-k3";
 const FALLBACK_HTTP_STATUSES = new Set([
   402, 403, 404, 408, 409, 429, 500, 502, 503, 504,
 ]);
@@ -87,9 +87,12 @@ export function shouldUseDofeFallback(
   const status = getHttpStatus(error);
   if (status !== undefined && FALLBACK_HTTP_STATUSES.has(status)) return true;
 
-  // GLM-5.2 is text-only in the configured Models catalog. DeepSeek-v4-pro
-  // accepts the same OpenAI image content, so this exact compatibility error
-  // is a safe model fallback rather than a malformed-request retry.
+  // GLM-5.2 is text-only; the fallback (kimi-k3) handles image input.
+  // NOTE: the gateway /capabilities `supports_vision` flag is unreliable — it
+  // returns false for kimi-k3, glm-5.2, even gemini-2.5-flash. kimi-k3's vision
+  // support is confirmed empirically, so we hardcode it rather than trust that
+  // field. This branch is the reactive safety net for a 400 image error that
+  // slipped past the proactive check in DofeFallbackChatOpenAI below.
   return (
     status === 400 &&
     (hasImageInput ||
@@ -112,6 +115,16 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
   }
 
   override async _generate(...args: Parameters<ChatOpenAI["_generate"]>) {
+    // Proactive routing: glm-5.2 is text-only, so if this request carries an
+    // image, skip the primary entirely and go straight to the vision-capable
+    // fallback (kimi-k3). Avoids a wasted 400 round-trip on every image turn.
+    if (hasImageInput(args[0])) {
+      console.warn("[model-router] image_input_routed_to_vision_model", {
+        primary: this.model,
+        vision: this.fallback.model,
+      });
+      return this.fallback._generate(...args);
+    }
     try {
       return await super._generate(...args);
     } catch (error) {
@@ -128,6 +141,16 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
   override async *_streamResponseChunks(
     ...args: Parameters<ChatOpenAI["_streamResponseChunks"]>
   ) {
+    // Proactive routing: see _generate — route image turns straight to the
+    // vision fallback without first failing against the primary.
+    if (hasImageInput(args[0])) {
+      console.warn("[model-router] image_input_routed_to_vision_model", {
+        primary: this.model,
+        vision: this.fallback.model,
+      });
+      yield* this.fallback._streamResponseChunks(...args);
+      return;
+    }
     let started = false;
     try {
       for await (const chunk of super._streamResponseChunks(...args)) {
