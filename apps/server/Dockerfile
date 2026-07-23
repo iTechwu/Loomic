@@ -65,9 +65,10 @@ EXPOSE 3105
 # Python runtime for sandbox code execution (canvas-design skill).
 # Alpine replaces the former Debian apt-based installation.
 ARG ALPINE_REPOSITORY_MIRROR=https://mirrors.aliyun.com/alpine
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_REPOSITORY_MIRROR}|g" /etc/apk/repositories \
     && apk add --no-cache python3 py3-pip \
-    && python3 -m pip install --no-cache-dir --break-system-packages pillow reportlab
+    && python3 -m pip install --no-cache-dir --break-system-packages --index-url ${PIP_INDEX_URL} pillow reportlab
 
 # Copy skills (fonts + SKILL.md) to /opt/lovart-dofe/skills/
 COPY skills/ /opt/lovart-dofe/skills/
