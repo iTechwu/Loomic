@@ -15,7 +15,11 @@ import { ChatSidebar } from "../../components/chat-sidebar";
 import { CanvasEmptyHint } from "../../components/canvas-empty-hint";
 import { CanvasLogoMenu } from "../../components/canvas-logo-menu";
 import { EditableProjectName } from "../../components/editable-project-name";
-import { insertImageOnCanvas, insertVideoOnCanvas } from "../../lib/canvas-elements";
+import {
+  insertImageOnCanvas,
+  insertVideoOnCanvas,
+  resolveCanvasFiles,
+} from "../../lib/canvas-elements";
 import { fetchCanvas, fetchProject, ApiAuthError } from "../../lib/server-api";
 import { BrandKitSelector } from "../../components/brand-kit-selector";
 import { CanvasBottomBar } from "../../components/canvas-bottom-bar";
@@ -107,11 +111,13 @@ function CanvasPageContent() {
       const { canvas } = await fetchCanvas(token, canvasData.id);
       const elements = canvas.content.elements ?? [];
       const files = (canvas.content as Record<string, unknown>).files as
-        Record<string, { id: string; dataURL: string; mimeType: string; created: number }> | undefined;
+        Record<string, Record<string, unknown>> | undefined;
 
-      // Sync files (base64 dataURLs from backend-inserted images) into Excalidraw
+      // Canvas reads expose TOS-backed images as storage URLs. Resolve them before
+      // adding files because Excalidraw only renders binary data URLs.
       if (files && Object.keys(files).length > 0) {
-        api.addFiles(Object.values(files));
+        const resolvedFiles = await resolveCanvasFiles(files);
+        api.addFiles(resolvedFiles);
       }
 
       api.updateScene({ elements, captureUpdate: "IMMEDIATELY" });

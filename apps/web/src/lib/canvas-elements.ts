@@ -5,6 +5,15 @@ import { getServerBaseUrl } from "./env";
 /** Video file extensions recognized for inline playback on canvas. */
 const VIDEO_EXTENSIONS = [".mp4", ".webm", ".ogg", ".mov"];
 
+type CanvasFileRecord = Record<string, Record<string, unknown>>;
+
+export type ResolvedCanvasFile = {
+  id: string;
+  dataURL: string;
+  mimeType: string;
+  created: number;
+};
+
 /**
  * Check if a URL points to a video file based on extension or customData hint.
  * Used by canvas-editor (renderEmbeddable) and canvas-tool-menu (selection detection).
@@ -131,6 +140,55 @@ export async function fetchAsDataURL(url: string): Promise<string> {
       reject(new Error("Failed to convert image to data URL"));
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Resolves persisted canvas files into Excalidraw's required binary-file shape.
+ * Canvas reads return signed `storageUrl` values for TOS-backed files, while
+ * Excalidraw can render only data URLs supplied through `addFiles`.
+ */
+export async function resolveCanvasFiles(
+  files: CanvasFileRecord,
+  loadDataURL: (url: string) => Promise<string> = fetchAsDataURL,
+): Promise<ResolvedCanvasFile[]> {
+  const resolved = await Promise.all(
+    Object.entries(files).map(async ([fileId, file]) => {
+      const id = typeof file.id === "string" ? file.id : fileId;
+      const mimeType =
+        typeof file.mimeType === "string" ? file.mimeType : "image/png";
+      const created =
+        typeof file.created === "number" ? file.created : Date.now();
+      const dataURL = typeof file.dataURL === "string" ? file.dataURL : "";
+
+      if (dataURL.startsWith("data:")) {
+        return { id, dataURL, mimeType, created };
+      }
+
+      const storageUrl =
+        typeof file.storageUrl === "string" ? file.storageUrl : "";
+      if (!storageUrl) return null;
+
+      try {
+        return {
+          id,
+          dataURL: await loadDataURL(storageUrl),
+          mimeType,
+          created,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[canvas-files] failed to resolve persisted file", {
+          fileId: id,
+          message,
+        });
+        return null;
+      }
+    }),
+  );
+
+  return resolved.filter(
+    (file): file is ResolvedCanvasFile => file !== null,
+  );
 }
 
 /**

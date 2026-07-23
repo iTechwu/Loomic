@@ -10,7 +10,7 @@ import type { WebSocketHandle } from "../hooks/use-websocket";
 import { getServerBaseUrl } from "../lib/env";
 import { saveCanvas, uploadThumbnail } from "../lib/server-api";
 import { VideoCanvasElement } from "./canvas/video-canvas-element";
-import { fetchAsDataURL, isVideoUrl } from "../lib/canvas-elements";
+import { isVideoUrl, resolveCanvasFiles } from "../lib/canvas-elements";
 import { CanvasToolMenu } from "./canvas-tool-menu";
 import { normalizeCanvasElements } from "../lib/canvas-normalize";
 import { ErrorBoundary } from "./error-boundary";
@@ -130,28 +130,13 @@ export function CanvasEditor({
     let cancelled = false;
 
     async function resolveFiles() {
-      const resolved: Record<string, any> = {};
-      await Promise.all(
-        pendingUrls.map(async ({ fileId, url, meta }) => {
-          try {
-            // Private TOS buckets return presigned URLs that are not served with
-            // permissive CORS headers. Route through the server-side image proxy
-            // so the browser can read the bytes without a CORS preflight failure.
-            const dataURL = await fetchAsDataURL(url);
-            resolved[fileId] = {
-              id: meta.id ?? fileId,
-              mimeType: meta.mimeType ?? "image/png",
-              created: meta.created ?? Date.now(),
-              dataURL,
-            };
-          } catch (err) {
-            console.warn(`[canvas-editor] Failed to resolve file ${fileId}:`, err);
-          }
-        }),
+      const filesToResolve = Object.fromEntries(
+        pendingUrls.map(({ fileId, meta }) => [fileId, meta]),
       );
-      if (!cancelled && Object.keys(resolved).length > 0) {
-        excalidrawApi.addFiles(Object.values(resolved));
-        console.log(`[canvas-editor] Resolved ${Object.keys(resolved).length} storage files`);
+      const resolved = await resolveCanvasFiles(filesToResolve);
+      if (!cancelled && resolved.length > 0) {
+        excalidrawApi.addFiles(resolved);
+        console.log(`[canvas-editor] Resolved ${resolved.length} storage files`);
       }
     }
 
