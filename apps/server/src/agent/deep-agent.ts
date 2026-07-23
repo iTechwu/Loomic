@@ -1,11 +1,11 @@
+import { ChatAnthropic } from "@langchain/anthropic";
+import type { BaseLanguageModel } from "@langchain/core/language_models/base";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatVertexAI } from "@langchain/google-vertexai";
 import type {
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
-import type { BaseLanguageModel } from "@langchain/core/language_models/base";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatVertexAI } from "@langchain/google-vertexai";
-import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { createDeepAgent } from "deepagents";
 
@@ -14,32 +14,49 @@ import {
   DEFAULT_GOOGLE_AGENT_MODEL,
   type ServerEnv,
 } from "../config/env.js";
+import type { NativeDataRepository } from "../database/native-data-repository.js";
+import type { BrandKitService } from "../features/brand-kit/brand-kit-service.js";
 import {
   dofeModelProtocolBaseUrl,
   hasDofeModelRouter,
   resolveDofeModelProtocol,
   toDofeRouterModelId,
 } from "../models/dofe-model-router.js";
+import type { TosObjectStorage } from "../storage/tos-object-storage.js";
 import type { ConnectionManager } from "../ws/connection-manager.js";
 import {
-  createAgentBackend,
   type AgentBackendResult,
+  createAgentBackend,
 } from "./backends/index.js";
 import { LOVART_DOFE_SYSTEM_PROMPT } from "./prompts/lovart-dofe-main.js";
 import { createVideoSubAgent } from "./sub-agents.js";
-import { createMainAgentTools } from "./tools/index.js";
 import type {
   PersistImageFn,
   SubmitImageJobFn,
 } from "./tools/image-generate.js";
+import { createMainAgentTools } from "./tools/index.js";
 import type { SubmitVideoJobFn } from "./tools/video-generate.js";
 import type { WorkspaceSkillEntry } from "./workspace-skills.js";
-import type { NativeDataRepository } from "../database/native-data-repository.js";
-import type { TosObjectStorage } from "../storage/tos-object-storage.js";
-import type { BrandKitService } from "../features/brand-kit/brand-kit-service.js";
 
 const DOFE_PRIMARY_CHAT_MODEL = "glm-5.2";
-const DOFE_FALLBACK_CHAT_MODEL = "kimi-k3";
+/**
+ * Ordered vision-capable fallback chain consulted whenever the primary
+ * (glm-5.2, text-only) cannot serve a turn — either because the request carries
+ * an image (proactive: skips a wasted 400 round-trip) or because the primary
+ * hit a qualifying availability error (reactive safety net). Entries are tried
+ * in order; we advance to the next only while no output has been emitted yet,
+ * so a streaming response is never restarted mid-flight (which would duplicate
+ * an agent action).
+ *
+ * Every entry is empirically confirmed vision- AND function-calling-capable on
+ * the ixicai gateway (verified 2026-07). The gateway `supports_vision` flag is
+ * deliberately ignored — it returns false for every model, including these.
+ * NB: deepseek-v4-pro is excluded on purpose — it silently strips image parts
+ * and answers as if blind (no error surfaced), strictly worse than glm-5.2's
+ * explicit 400. Before adding an entry, verify vision empirically (the flag
+ * lies); see the probe notes in the module history.
+ */
+const DOFE_VISION_FALLBACK_MODELS = ["kimi-k3", "qwen3.6-plus"] as const;
 const FALLBACK_HTTP_STATUSES = new Set([
   402, 403, 404, 408, 409, 429, 500, 502, 503, 504,
 ]);
@@ -80,6 +97,11 @@ function hasImageInput(messages: unknown): boolean {
   });
 }
 
+/**
+ * Decide whether a primary-model error should trigger the vision fallback. Pure
+ * utility (exercised in isolation by tests); not on the production agent
+ * invocation path — see the DofeFallbackChatOpenAI note below.
+ */
 export function shouldUseDofeFallback(
   error: unknown,
   hasImageInput = false,
@@ -87,12 +109,13 @@ export function shouldUseDofeFallback(
   const status = getHttpStatus(error);
   if (status !== undefined && FALLBACK_HTTP_STATUSES.has(status)) return true;
 
-  // GLM-5.2 is text-only; the fallback (kimi-k3) handles image input.
-  // NOTE: the gateway /capabilities `supports_vision` flag is unreliable — it
-  // returns false for kimi-k3, glm-5.2, even gemini-2.5-flash. kimi-k3's vision
-  // support is confirmed empirically, so we hardcode it rather than trust that
-  // field. This branch is the reactive safety net for a 400 image error that
-  // slipped past the proactive check in DofeFallbackChatOpenAI below.
+  // GLM-5.2 is text-only; the ordered vision chain (kimi-k3 → qwen3.6-plus, see
+  // DOFE_VISION_FALLBACK_MODELS) handles image input. NOTE: the gateway
+  // /capabilities `supports_vision` flag is unreliable — it returns false for
+  // every model, including the vision-capable ones, so capability is confirmed
+  // empirically rather than read from that field. This branch is the reactive
+  // safety net for a 400 image error that slipped past the proactive check in
+  // DofeFallbackChatOpenAI below.
   return (
     status === 400 &&
     (hasImageInput ||
@@ -102,39 +125,52 @@ export function shouldUseDofeFallback(
 }
 
 /**
- * Keep the ChatOpenAI surface (especially bindTools) intact while retrying a
- * pre-stream availability failure against the tenant's designated fallback.
- * Once output starts, restarting could duplicate an agent action.
+ * Keep the ChatOpenAI surface (especially bindTools) intact while routing a turn
+ * the primary cannot serve — image input or a qualifying availability failure —
+ * through an ordered vision-capable fallback chain. Output is never restarted
+ * once started: we advance to the next chain entry only while no chunk has been
+ * emitted yet, so an agent action can't be duplicated.
+ *
+ * NOTE (2026-07): BYPASSED in production. The langchain agent runtime invokes
+ * the model via bindTools(...).invoke(...), which reaches the OpenAI network
+ * call WITHOUT calling a ChatOpenAI subclass's overridden
+ * _generate/_streamResponseChunks (verified empirically). So this class does NOT
+ * route images in the live agent path — production routing is per-run in
+ * runtime.ts via selectChatModelSpecifierForRun. Kept only as a direct-call
+ * safety net; do not rely on it for the agent path.
  */
 class DofeFallbackChatOpenAI extends ChatOpenAI {
   constructor(
     fields: ChatOpenAIOptions,
-    private readonly fallback: ChatOpenAI,
+    private readonly fallbacks: ChatOpenAI[],
   ) {
     super(fields);
   }
 
   override async _generate(...args: Parameters<ChatOpenAI["_generate"]>) {
     // Proactive routing: glm-5.2 is text-only, so if this request carries an
-    // image, skip the primary entirely and go straight to the vision-capable
-    // fallback (kimi-k3). Avoids a wasted 400 round-trip on every image turn.
+    // image, skip the primary entirely and walk the vision chain. Avoids a
+    // wasted 400 round-trip on every image turn.
     if (hasImageInput(args[0])) {
-      console.warn("[model-router] image_input_routed_to_vision_model", {
+      console.warn("[model-router] image_input_routed_to_vision_chain", {
         primary: this.model,
-        vision: this.fallback.model,
+        visionChain: this.fallbacks.map((fallback) => fallback.model),
       });
-      return this.fallback._generate(...args);
+      return this.generateThroughVisionChain(args);
     }
     try {
       return await super._generate(...args);
     } catch (error) {
       if (!shouldUseDofeFallback(error, hasImageInput(args[0]))) throw error;
-      console.warn("[model-router] primary_model_unavailable_using_fallback", {
-        primary: this.model,
-        fallback: this.fallback.model,
-        status: getHttpStatus(error),
-      });
-      return this.fallback._generate(...args);
+      console.warn(
+        "[model-router] primary_model_unavailable_using_vision_chain",
+        {
+          primary: this.model,
+          visionChain: this.fallbacks.map((fallback) => fallback.model),
+          status: getHttpStatus(error),
+        },
+      );
+      return this.generateThroughVisionChain(args);
     }
   }
 
@@ -142,13 +178,13 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
     ...args: Parameters<ChatOpenAI["_streamResponseChunks"]>
   ) {
     // Proactive routing: see _generate — route image turns straight to the
-    // vision fallback without first failing against the primary.
+    // vision chain without first failing against the primary.
     if (hasImageInput(args[0])) {
-      console.warn("[model-router] image_input_routed_to_vision_model", {
+      console.warn("[model-router] image_input_routed_to_vision_chain", {
         primary: this.model,
-        vision: this.fallback.model,
+        visionChain: this.fallbacks.map((fallback) => fallback.model),
       });
-      yield* this.fallback._streamResponseChunks(...args);
+      yield* this.streamThroughVisionChain(args);
       return;
     }
     let started = false;
@@ -161,13 +197,72 @@ class DofeFallbackChatOpenAI extends ChatOpenAI {
       if (started || !shouldUseDofeFallback(error, hasImageInput(args[0]))) {
         throw error;
       }
-      console.warn("[model-router] primary_model_unavailable_using_fallback", {
-        primary: this.model,
-        fallback: this.fallback.model,
-        status: getHttpStatus(error),
-      });
-      yield* this.fallback._streamResponseChunks(...args);
+      console.warn(
+        "[model-router] primary_model_unavailable_using_vision_chain",
+        {
+          primary: this.model,
+          visionChain: this.fallbacks.map((fallback) => fallback.model),
+          status: getHttpStatus(error),
+        },
+      );
+      yield* this.streamThroughVisionChain(args);
     }
+  }
+
+  /**
+   * Walk the vision chain for a non-streaming generate, returning the first
+   * successful result. _generate either fully resolves or rejects before any
+   * output reaches the caller, so every failure here is safe to retry on the
+   * next entry.
+   */
+  private async generateThroughVisionChain(
+    args: Parameters<ChatOpenAI["_generate"]>,
+  ): ReturnType<ChatOpenAI["_generate"]> {
+    let lastError: unknown = new Error("vision fallback chain is empty");
+    for (const [index, fallback] of this.fallbacks.entries()) {
+      try {
+        return await fallback._generate(...args);
+      } catch (error) {
+        lastError = error;
+        console.warn("[model-router] vision_chain_model_failed", {
+          failed: fallback.model,
+          status: getHttpStatus(error),
+          willRetry: index < this.fallbacks.length - 1,
+        });
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Stream the vision chain, delegating to the first entry that completes. We
+   * advance to the next entry only while the current one has emitted no chunk
+   * yet — once bytes have flowed, restarting would duplicate an agent action, so
+   * a mid-stream failure is rethrown as-is.
+   */
+  private async *streamThroughVisionChain(
+    args: Parameters<ChatOpenAI["_streamResponseChunks"]>,
+  ) {
+    let lastError: unknown = new Error("vision fallback chain is empty");
+    for (const [index, fallback] of this.fallbacks.entries()) {
+      let emitted = false;
+      try {
+        for await (const chunk of fallback._streamResponseChunks(...args)) {
+          emitted = true;
+          yield chunk;
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (emitted) throw error;
+        console.warn("[model-router] vision_chain_model_failed", {
+          failed: fallback.model,
+          status: getHttpStatus(error),
+          willRetry: index < this.fallbacks.length - 1,
+        });
+      }
+    }
+    throw lastError;
   }
 }
 
@@ -200,10 +295,10 @@ function createDofeOpenAIChatModelWithFallback(
   } satisfies ChatOpenAIOptions;
   if (model !== DOFE_PRIMARY_CHAT_MODEL) return new ChatOpenAI(primary);
 
-  return new DofeFallbackChatOpenAI(
-    primary,
-    createDofeOpenAIChatModel(DOFE_FALLBACK_CHAT_MODEL, apiKey, baseURL),
+  const visionChain = DOFE_VISION_FALLBACK_MODELS.map((id) =>
+    createDofeOpenAIChatModel(id, apiKey, baseURL),
   );
+  return new DofeFallbackChatOpenAI(primary, visionChain);
 }
 
 export type LovartDofeAgent = Pick<
@@ -468,6 +563,34 @@ export function createStreamingChatModel(
 
 /** Known model-name prefixes that map to Google Gemini. */
 const GOOGLE_MODEL_PREFIXES = ["gemini-"];
+
+/**
+ * Per-message model selection. glm-5.2 (the default chat model) is text-only,
+ * so a message carrying an image attachment must run on a vision-capable model.
+ *
+ * This is done per-run in runtime.ts (each user message = one run = one freshly
+ * built agent) rather than by overriding ChatOpenAI._generate. The langchain
+ * agent runtime invokes the model through a path that does NOT call a
+ * ChatOpenAI subclass's overridden `_generate`/`_streamResponseChunks` —
+ * `bindTools(...).invoke(...)` reaches the OpenAI network call directly
+ * (verified empirically), so any subclass-based routing silently never fires in
+ * production. Building the agent with the right model routes at message
+ * granularity without depending on that (bypassed) override path.
+ *
+ * Returns the first vision-capable model for image turns on the text-only
+ * default; an explicit non-glm model chosen by the user is passed through.
+ */
+export function selectChatModelSpecifierForRun(
+  specifier: string | undefined,
+  hasImage: boolean,
+): string | undefined {
+  if (!hasImage) return specifier;
+  const modelId = specifier
+    ? toDofeRouterModelId(specifier)
+    : DOFE_PRIMARY_CHAT_MODEL;
+  if (modelId !== DOFE_PRIMARY_CHAT_MODEL) return specifier;
+  return `dofe:${DOFE_VISION_FALLBACK_MODELS[0]}`;
+}
 
 export function createDefaultModelSpecifier(
   env: Pick<ServerEnv, "agentModel" | "dofeModelApiKey" | "dofeModelBaseUrl">,

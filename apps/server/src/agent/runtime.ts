@@ -34,6 +34,7 @@ import {
   type LovartDofeAgentFactory,
   createDefaultModelSpecifier,
   createLovartDofeDeepAgent,
+  selectChatModelSpecifierForRun,
 } from "./deep-agent.js";
 import type { AgentPersistenceService } from "./persistence/index.js";
 import { adaptDeepAgentStream } from "./stream-adapter.js";
@@ -805,6 +806,22 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
               : createDefaultModelSpecifier({ agentModel: run.modelOverride })
             : options.model;
 
+          // glm-5.2 (the default) is text-only. If this message carries an
+          // attachment, build the agent on a vision-capable model for this run.
+          // Every attachment is rendered as an image_url content block when the
+          // user message is built below, so "has attachment" === "needs vision".
+          // Done per-run (each user message = one run) because the langchain
+          // agent runtime bypasses ChatOpenAI subclass _generate overrides — see
+          // selectChatModelSpecifierForRun. Attachment-free runs keep glm-5.2.
+          const runHasImageAttachment = !!run.attachments?.length;
+          const effectiveModel =
+            resolvedModel && typeof resolvedModel === "object"
+              ? resolvedModel
+              : selectChatModelSpecifierForRun(
+                  resolvedModel,
+                  runHasImageAttachment,
+                );
+
           // Build persistImage closure using the user's TOS/CDN client.
           // Client creation is deferred into the closure so it only runs
           // when an image is actually generated (avoids throwing in tests
@@ -932,7 +949,7 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
             env: options.env,
             objectStorage: options.objectStorage!,
             ...(credentials ? { credentials } : {}),
-            ...(resolvedModel ? { model: resolvedModel } : {}),
+            ...(effectiveModel ? { model: effectiveModel } : {}),
             ...(persistImage ? { persistImage } : {}),
             // execute 工具由 LocalShellBackend 自动提供，无需手动传递
             ...(submitImageJob ? { submitImageJob } : {}),
@@ -1068,6 +1085,26 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
             );
             userMessage = new HumanMessage(enrichedPrompt);
           }
+
+          // Confirm the image actually enters the agent here (it is built above
+          // as image_url parts). Compare against [model-router] model_boundary_input
+          // to localize where an image disappears between input and the model.
+          const builtContent = userMessage.content;
+          console.info("[agent-input] user_message_built", {
+            hasImage:
+              Array.isArray(builtContent) &&
+              builtContent.some(
+                (p) => (p as { type?: string }).type === "image_url",
+              ),
+            contentShape:
+              typeof builtContent === "string"
+                ? `string(len=${builtContent.length})`
+                : Array.isArray(builtContent)
+                  ? `array(${builtContent
+                      .map((p) => (p as { type?: string }).type)
+                      .join(",")})`
+                  : typeof builtContent,
+          });
 
           rlog.lap("stream_call_start");
           stream = agent.streamEvents(
