@@ -73,8 +73,9 @@ function normalizeHttpsUrl(value: string): string {
 }
 
 /**
- * Server-only TOS adapter. Write traffic uses the configured internal endpoint;
- * browser reads receive a short-lived URL signed for the external bucket domain.
+ * Server-only TOS adapter. Both writes (put/copy/delete) and signed read URLs
+ * go through the external TOS endpoint / bucket domain; see
+ * `createConfiguredTosObjectStorage` for why the internal endpoint is not used.
  */
 export function createTosObjectStorage(
   config: TosConfig,
@@ -148,14 +149,29 @@ function createTosObjectStorageForBucket(
   return self;
 }
 
-/** Loads the TOS SDK only in a configured server or Worker process. */
+/**
+ * Loads the TOS SDK only in a configured server or Worker process.
+ *
+ * The write client targets the EXTERNAL endpoint (`config.endpoint`,
+ * `TOS_ENDPOINT` / `*.volces.com`). The VPC-internal endpoint
+ * (`TOS_INTERNAL_ENDPOINT` / `*.ivolces.com`) is only reachable from inside
+ * Volcano Engine; when the process runs elsewhere (e.g. local dev) every
+ * put/copy/delete hangs until the SDK timeout and uploads fail with a generic
+ * 500. Signed read URLs are unaffected — they are produced against
+ * `config.bucketDomain` via `alternativeEndpoint`, not the client endpoint.
+ *
+ * TODO(@storage): `TOS_INTERNAL_ENDPOINT` / `TOS_INTERNAL_BUCKET_DOMAIN` are
+ * still parsed and required by `parseTosConfig` but no longer drive the write
+ * path. Revisit whether to drop them from the required set once no deployment
+ * relies on the internal endpoint.
+ */
 export function createConfiguredTosObjectStorage(
   config: TosConfig,
 ): TosObjectStorage {
   const client = new TosClient({
     accessKeyId: config.accessKey,
     accessKeySecret: config.secretKey,
-    endpoint: toHost(config.internalEndpoint),
+    endpoint: toHost(config.endpoint),
     region: config.region,
   }) as TosSdkClient;
 

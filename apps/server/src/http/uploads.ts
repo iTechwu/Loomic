@@ -75,7 +75,11 @@ export async function registerUploadRoutes(
           : undefined;
 
       const result = await options.uploadService.uploadFile(user, {
-        bucket: "project-assets",
+        // All uploads are persisted to the single physical TOS bucket
+        // ("dofe-system" / TOS_BUCKET). The logical "project-assets" name has
+        // no corresponding physical bucket, so forBucket() would target a
+        // non-existent bucket and putObject fails with NoSuchBucket.
+        bucket: "dofe-system",
         fileName: file.filename,
         fileBuffer,
         mimeType,
@@ -157,6 +161,10 @@ function sendUploadError(error: unknown, reply: FastifyReply) {
     );
   }
 
+  // Unexpected (non-upload-service) failure — e.g. response schema validation.
+  // Log the real cause for ops debugging; the client gets a sanitized message.
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error("[uploads] unexpected failure", { detail });
   return reply.code(500).send(
     applicationErrorResponseSchema.parse({
       error: {

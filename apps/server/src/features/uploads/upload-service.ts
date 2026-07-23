@@ -41,8 +41,18 @@ export function createUploadService(options: { repository: NativeDataRepository;
           throw new Error("Metadata authorization failed");
         }
         return { asset: mapAsset(asset), url: storage.createReadUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS) };
-      } catch {
-        logOperationalFailure("[upload-service] upload failed", "upload_create");
+      } catch (error) {
+        // Surface the underlying cause (TOS NoSuchBucket/timeout/credentials,
+        // DB error, or workspace authorization) for ops debugging. The client
+        // still receives the sanitized UploadServiceError below — only the
+        // server log sees the technical detail.
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error("[upload-service] upload failed", {
+          failureCategory: "upload_create",
+          bucket: input.bucket,
+          objectPath,
+          error: detail,
+        });
         throw new UploadServiceError("upload_failed", "Unable to upload asset.", 500);
       }
     },
@@ -72,5 +82,8 @@ function buildObjectPath(workspaceId: string, projectId: string | undefined, fil
 }
 
 function mapAsset(asset: NativeAssetRow): AssetObject {
-  return { bucket: asset.bucket, byteSize: asset.byte_size, createdAt: asset.created_at.toISOString(), id: asset.id, mimeType: asset.mime_type, objectPath: asset.object_path, projectId: asset.project_id, workspaceId: asset.workspace_id };
+  // pg returns bigint columns (byte_size) as strings, but assetObjectSchema
+  // expects a number — coerce here. Sizes are bounded by file limits, well
+  // within Number.MAX_SAFE_INTEGER. See job-repository for the same pattern.
+  return { bucket: asset.bucket, byteSize: asset.byte_size == null ? null : Number(asset.byte_size), createdAt: asset.created_at.toISOString(), id: asset.id, mimeType: asset.mime_type, objectPath: asset.object_path, projectId: asset.project_id, workspaceId: asset.workspace_id };
 }

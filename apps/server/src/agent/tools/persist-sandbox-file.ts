@@ -100,7 +100,10 @@ export function createPersistSandboxFileTool(deps: PersistSandboxFileDeps) {
           key: storagePath,
         });
         const asset = await deps.dataRepository.createAsset({
-          bucket: "project-assets",
+          // Same single-physical-bucket model as /api/uploads: writes target
+          // the "dofe-system" bucket (TOS_BUCKET); "project-assets" has no
+          // physical bucket and would fail with NoSuchBucket.
+          bucket: "dofe-system",
           byteSize: fileBuffer.length,
           createdBy: userId,
           etag: uploaded.etag,
