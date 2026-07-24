@@ -59,7 +59,18 @@ export function AgentModelSelector({
         if (!active) return;
         setModels(data.models);
         const selectedModel = selectedModelRef.current;
-        if (selectedModel && !data.models.some((candidate) => candidate.id === selectedModel)) {
+        // The gateway warms this catalog asynchronously. An empty successful
+        // response is therefore not evidence that a persisted selection is
+        // invalid; clearing it here made manual choices appear to "disappear".
+        if (
+          selectedModel &&
+          data.models.length > 0 &&
+          !data.models.some((candidate) => candidate.id === selectedModel)
+        ) {
+          console.warn("[agent-model] clearing unavailable selected model", {
+            selectedModel,
+            availableModelCount: data.models.length,
+          });
           setModel(null);
         }
       })

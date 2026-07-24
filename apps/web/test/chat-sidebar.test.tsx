@@ -65,6 +65,22 @@ describe("ChatSidebar", () => {
   let mockWs: WebSocketHandle;
 
   beforeEach(() => {
+    // Node's jsdom runner may expose a stub storage object. The selector and
+    // image preferences need a real per-test in-memory implementation.
+    const storage = new Map<string, string>();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+        clear: () => storage.clear(),
+        key: (index: number) => [...storage.keys()][index] ?? null,
+        get length() {
+          return storage.size;
+        },
+      } satisfies Storage,
+    });
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn(() => ({
@@ -149,6 +165,32 @@ describe("ChatSidebar", () => {
         sessionId: "session-canvas-1",
       }),
       expect.anything(),
+    );
+  });
+
+  it("keeps a manual model while the model catalog is temporarily empty", async () => {
+    window.localStorage.setItem("lovart.dofe:agent-model", "kimi-k3");
+
+    render(
+      <ToastProvider>
+        <ChatSidebar
+          accessToken="token_abc"
+          canvasId="canvas-1"
+          open
+          onToggle={() => {}}
+          ws={mockWs}
+        />
+      </ToastProvider>,
+    );
+
+    const input = await screen.findByPlaceholderText(/从一个想法开始/);
+    await userEvent.type(input, "keep model{Enter}");
+
+    await waitFor(() =>
+      expect(mockWs.startRun).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "kimi-k3" }),
+        expect.any(Function),
+      ),
     );
   });
 

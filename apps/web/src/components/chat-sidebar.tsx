@@ -66,6 +66,11 @@ type ChatSidebarProps = {
   selectedCanvasElements?: CanvasSelectedElement[];
 };
 
+// The server allows image jobs to run for up to seven minutes. Keep a small
+// margin for network delivery, then release the UI if a terminal WS event is
+// lost so a following message is never permanently blocked.
+export const STREAM_TERMINAL_TIMEOUT_MS = 8 * 60_000;
+
 export function ChatSidebar({
   accessToken,
   canvasId,
@@ -134,6 +139,10 @@ export function ChatSidebar({
   const abortRef = useRef(false);
   const activeRunIdRef = useRef<string | null>(null);
   const pendingCancelRef = useRef(false);
+  const streamTerminalTimerRef = useRef<{
+    runId: string;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
   const messageMentionsRef = useRef(messageMentions);
   messageMentionsRef.current = messageMentions;
   const selectedCanvasElementsRef = useRef(selectedCanvasElements);
@@ -168,6 +177,13 @@ export function ChatSidebar({
   agentModelRef.current = agentModel;
 
   const { toast: showToast } = useToast();
+
+  const clearStreamTerminalTimer = useCallback((runId?: string) => {
+    const current = streamTerminalTimerRef.current;
+    if (!current || (runId && current.runId !== runId)) return;
+    clearTimeout(current.timer);
+    streamTerminalTimerRef.current = null;
+  }, []);
 
   // ── Sidebar resize ──
   const SIDEBAR_MIN = 300;
@@ -493,10 +509,15 @@ export function ChatSidebar({
           resolveStream = r;
         });
 
+        const finishStream = () => {
+          clearStreamTerminalTimer(runIdRef.current);
+          resolveStream();
+        };
+
         const cleanup = ws.onEvent((event) => {
           if (!runIdRef.current || event.runId !== runIdRef.current) return;
           if (abortRef.current) {
-            resolveStream();
+            finishStream();
             return;
           }
 
@@ -559,7 +580,7 @@ export function ChatSidebar({
             event.type === "run.failed" ||
             event.type === "run.canceled"
           ) {
-            resolveStream();
+            finishStream();
           }
         });
 
@@ -607,12 +628,39 @@ export function ChatSidebar({
               runIdRef.current = id;
               activeRunIdRef.current = id;
 
+              clearStreamTerminalTimer(id);
+              const timer = setTimeout(() => {
+                if (streamTerminalTimerRef.current?.runId !== id) return;
+                streamTerminalTimerRef.current = null;
+                const timeoutEvent: StreamEvent = {
+                  type: "run.failed",
+                  runId: id,
+                  error: {
+                    code: "run_failed",
+                    message: "请求超时，已停止本次生成。请重试。",
+                  },
+                  timestamp: new Date().toISOString(),
+                };
+                console.warn("[chat] stream terminal timeout", {
+                  runId: id,
+                  timeoutMs: STREAM_TERMINAL_TIMEOUT_MS,
+                });
+                ws.cancelRun(id);
+                activeRunIdRef.current = null;
+                applyStreamEvent(timeoutEvent, assistantId, currentSessionId);
+                onStreamEvent?.(timeoutEvent);
+                showToast("请求超时，已停止本次生成，请重试", "error");
+                finishStream();
+              }, STREAM_TERMINAL_TIMEOUT_MS);
+              streamTerminalTimerRef.current = { runId: id, timer };
+
               // User clicked stop before the ack arrived — cancel immediately.
               if (pendingCancelRef.current) {
                 console.log("[chat] canceling run immediately after ack", {
                   runId: id,
                 });
                 ws.cancelRun(id);
+                clearStreamTerminalTimer(id);
                 pendingCancelRef.current = false;
               }
 
@@ -625,7 +673,12 @@ export function ChatSidebar({
 
         await streamDone;
         cleanup();
-      } catch {
+      } catch (error) {
+        console.error("[chat] run request failed", {
+          canvasId,
+          hasManualModel: Boolean(agentModelRef.current),
+          reason: error instanceof Error ? error.message : "unknown",
+        });
         updateSessionMessages(currentSessionId, (prev) =>
           prev.map((m) => {
             if (m.id !== assistantId) return m;
@@ -641,6 +694,7 @@ export function ChatSidebar({
           }),
         );
       } finally {
+        clearStreamTerminalTimer(runIdRef.current);
         setStreaming(false);
         // Only clear the active run ref if it still belongs to this invocation,
         // so a subsequent run isn't accidentally clobbered by the old finally.
@@ -665,6 +719,7 @@ export function ChatSidebar({
       autoTitleSession,
       accessTokenRef,
       activeSessionIdRef,
+      clearStreamTerminalTimer,
       setStreaming,
       showToast,
     ],
@@ -681,6 +736,7 @@ export function ChatSidebar({
     if (runId) {
       console.log("[chat] user requested stop", { runId });
       ws.cancelRun(runId);
+      clearStreamTerminalTimer(runId);
       activeRunIdRef.current = null;
     } else {
       console.log("[chat] user requested stop before ack");
@@ -688,7 +744,7 @@ export function ChatSidebar({
 
     // Allow immediate re-input; the run.canceled event will finalize the message.
     setStreaming(false);
-  }, [streaming, ws, setStreaming]);
+  }, [streaming, ws, clearStreamTerminalTimer, setStreaming]);
   const mentionPickerItems: MessageMentionPickerItem[] = [
     ...(onRequestCanvasImages ? onRequestCanvasImages() : []),
     ...brandKitMentionItems,

@@ -327,6 +327,7 @@ export type LovartDofeAgentFactory = (options: {
 
   submitImageJob?: SubmitImageJobFn;
   submitVideoJob?: SubmitVideoJobFn;
+  manualImageModelIds?: string[];
   store?: BaseStore;
   workspaceSkills?: WorkspaceSkillEntry[];
 }) => LovartDofeAgent;
@@ -352,6 +353,7 @@ export function createLovartDofeDeepAgent(options: {
 
   submitImageJob?: SubmitImageJobFn;
   submitVideoJob?: SubmitVideoJobFn;
+  manualImageModelIds?: string[];
   store?: BaseStore;
   workspaceSkills?: WorkspaceSkillEntry[];
 }): LovartDofeAgent {
@@ -416,6 +418,9 @@ export function createLovartDofeDeepAgent(options: {
 
       ...(options.submitImageJob
         ? { submitImageJob: options.submitImageJob }
+        : {}),
+      ...(options.manualImageModelIds?.length
+        ? { manualImageModelIds: options.manualImageModelIds }
         : {}),
       ...(options.submitVideoJob
         ? { submitVideoJob: options.submitVideoJob }

@@ -935,6 +935,15 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
                   ).designApiKey,
                 }
               : undefined;
+          const manualImageModelIds =
+            run.imageGenerationPreference?.mode === "manual"
+              ? run.imageGenerationPreference.models
+              : undefined;
+          if (manualImageModelIds?.length) {
+            rlog.lap("manual_image_model_constraint", {
+              modelIds: manualImageModelIds,
+            });
+          }
 
           agent = resolvedAgentFactory({
             backendResult,
@@ -953,6 +962,9 @@ export function createAgentRunService(options: CreateAgentRuntimeOptions) {
             ...(persistImage ? { persistImage } : {}),
             // execute 工具由 LocalShellBackend 自动提供，无需手动传递
             ...(submitImageJob ? { submitImageJob } : {}),
+            ...(manualImageModelIds?.length
+              ? { manualImageModelIds }
+              : {}),
             ...(submitVideoJob ? { submitVideoJob } : {}),
             ...(persistence ? { store: persistence.store } : {}),
             ...(workspaceSkills.length > 0 ? { workspaceSkills } : {}),

@@ -66,6 +66,7 @@ export function createMainAgentTools(
     sandboxDir?: string;
     submitImageJob?: SubmitImageJobFn;
     submitVideoJob?: SubmitVideoJobFn;
+    manualImageModelIds?: string[];
   },
 ) {
   const tools: StructuredTool[] = [
@@ -75,6 +76,9 @@ export function createMainAgentTools(
     createImageGenerateTool({
       ...(deps.persistImage ? { persistImage: deps.persistImage } : {}),
       ...(deps.submitImageJob ? { submitImageJob: deps.submitImageJob } : {}),
+      ...(deps.manualImageModelIds?.length
+        ? { manualModelIds: deps.manualImageModelIds }
+        : {}),
     }),
     createVideoGenerateTool({
       ...(deps.submitVideoJob ? { submitVideoJob: deps.submitVideoJob } : {}),

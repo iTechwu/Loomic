@@ -1,8 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runImageGenerate } from "./image-generate.js";
+import { createImageGenerateTool, runImageGenerate } from "./image-generate.js";
 
 describe("runImageGenerate", () => {
+  it("defaults omitted model calls to the manually selected model only", () => {
+    const tool = createImageGenerateTool({
+      availableModels: [
+        {
+          id: "default-image-model",
+          displayName: "Default image model",
+          description: "Default",
+          provider: "test",
+        },
+        {
+          id: "manual-image-model",
+          displayName: "Manual image model",
+          description: "Manual",
+          provider: "test",
+        },
+      ],
+      manualModelIds: ["manual-image-model"],
+    });
+
+    const parsed = tool.schema.parse({
+      title: "Manual image",
+      prompt: "Generate a poster",
+    });
+
+    expect(parsed.model).toBe("manual-image-model");
+    expect(
+      tool.schema.safeParse({
+        title: "Wrong model",
+        prompt: "Generate a poster",
+        model: "default-image-model",
+      }).success,
+    ).toBe(false);
+  });
+
   it("uses uploaded attachments as references when the tool call omits inputImages", async () => {
     const submitImageJob = vi.fn(async () => ({
       jobId: "job-1",

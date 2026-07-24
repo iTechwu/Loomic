@@ -420,6 +420,10 @@ export async function saveMessage(
 
 // --- Upload API ---
 
+// Keep the browser from waiting forever when the object-storage route is
+// unavailable. The attachment UI keeps the file locally and exposes retry.
+export const FILE_UPLOAD_TIMEOUT_MS = 60_000;
+
 export async function uploadFile(
   accessToken: string,
   file: File,
@@ -431,11 +435,30 @@ export async function uploadFile(
     formData.append("projectId", projectId);
   }
 
-  const response = await fetch(`${getServerBaseUrl()}/api/uploads`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    body: formData,
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, FILE_UPLOAD_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${getServerBaseUrl()}/api/uploads`, {
+      method: "POST",
+      headers: authHeaders(accessToken),
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("上传超时，请检查网络后重试。");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+
   if (!response.ok) return handleErrorResponse(response);
   return (await response.json()) as UploadResponse;
 }

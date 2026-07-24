@@ -17,13 +17,24 @@ const DEFAULT_MODEL = DEFAULT_IMAGE_MODEL;
  * Build the zod schema dynamically from the models available in the registry.
  * Falls back to a plain string field when no providers are registered.
  */
-function buildImageGenerateSchema(models: AvailableModel[]) {
-  const modelIds = models.map((m) => m.id);
+function buildImageGenerateSchema(
+  models: AvailableModel[],
+  manualModelIds?: string[],
+) {
+  // A manual preference is an allow-list, not a suggestion. Keeping it in the
+  // tool schema prevents an omitted `model` argument from silently using the
+  // global default and prevents a retry from switching to an unselected model.
+  const modelIds =
+    manualModelIds && manualModelIds.length > 0
+      ? manualModelIds
+      : models.map((m) => m.id);
   const defaultModel = modelIds.includes(DEFAULT_MODEL)
     ? DEFAULT_MODEL
     : modelIds[0] ?? DEFAULT_MODEL;
 
-  const modelDescription = models.length
+  const modelDescription = manualModelIds?.length
+    ? `Model to use. This run is restricted to the manually selected model(s): ${manualModelIds.join(", ")}. Do not use another model.`
+    : models.length
     ? `Model to use. Available:\n${models.map((m) => `- ${m.id}: ${m.displayName} — ${m.description}`).join("\n")}`
     : "Model identifier (no providers currently registered)";
 
@@ -315,12 +326,37 @@ export function createImageGenerateTool(deps?: {
   submitImageJob?: SubmitImageJobFn;
   /** Override for testing — defaults to querying the provider registry. */
   availableModels?: AvailableModel[];
+  /**
+   * User-selected image models for this run. When present, this is a strict
+   * allow-list rather than an LLM hint, so generation cannot fall back to the
+   * global default model.
+   */
+  manualModelIds?: string[];
 }) {
   const models = deps?.availableModels ?? getAvailableImageModels();
+  const manualModelIds = deps?.manualModelIds?.filter(
+    (model, index, values) =>
+      typeof model === "string" && model.length > 0 && values.indexOf(model) === index,
+  );
+  const modelIds =
+    manualModelIds && manualModelIds.length > 0
+      ? manualModelIds
+      : models.map((m) => m.id);
 
-  const modelSummary = models.length
-    ? models.map((m) => `${m.displayName} (${m.id})`).join(", ")
+  const modelSummary = modelIds.length
+    ? modelIds
+        .map((modelId) => {
+          const model = models.find((candidate) => candidate.id === modelId);
+          return model ? `${model.displayName} (${model.id})` : modelId;
+        })
+        .join(", ")
     : "No models available";
+
+  if (manualModelIds?.length) {
+    console.info("[generate_image] manual_model_constraint_applied", {
+      modelIds: manualModelIds,
+    });
+  }
 
   return tool(
     async (input: ImageGenerateInput, config) => {
@@ -337,7 +373,7 @@ export function createImageGenerateTool(deps?: {
     {
       name: "generate_image",
       description: `Generate an image using AI. Available models: ${modelSummary}. Returns the generated image URL.`,
-      schema: buildImageGenerateSchema(models),
+      schema: buildImageGenerateSchema(models, manualModelIds),
     },
   );
 }

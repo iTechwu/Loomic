@@ -2,12 +2,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import {
+  FILE_UPLOAD_TIMEOUT_MS,
   createRun,
   fetchModels,
   fetchViewer,
   fetchProjects,
   createProject,
   generateVideoDirect,
+  uploadFile,
 } from "../src/lib/server-api";
 
 const mockFetch = vi.fn();
@@ -232,5 +234,29 @@ describe("authenticated server API", () => {
     });
 
     await expect(fetchProjects("expired")).rejects.toThrow("unauthorized");
+  });
+
+  it("aborts a stalled upload and returns a retryable timeout message", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockImplementationOnce(
+      (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+
+    const upload = uploadFile(
+      "token_abc",
+      new File(["image"], "reference.png", { type: "image/png" }),
+    );
+    const timeoutError = expect(upload).rejects.toThrow(
+      "上传超时，请检查网络后重试。",
+    );
+    await vi.advanceTimersByTimeAsync(FILE_UPLOAD_TIMEOUT_MS);
+
+    await timeoutError;
+    vi.useRealTimers();
   });
 });
